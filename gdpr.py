@@ -46,7 +46,7 @@ class WorkspacesGDPRProvider(GDPRProvider):
         )
 
     def anonymize(self, user_id: int) -> None:
-        from .models import WorkspaceInvitation, WorkspaceMember
+        from .models import WorkspaceInvitation
 
         # Keep accepted invitation records but remove the invited_by link
         WorkspaceInvitation.objects.filter(
