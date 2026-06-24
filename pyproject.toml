@@ -25,7 +25,7 @@ all = []
 
 [tool.setuptools]
 package-dir = {"stapel_workspaces" = "."}
-packages = ["stapel_workspaces", "stapel_workspaces.migrations"]
+packages = ["stapel_workspaces", "stapel_workspaces.migrations", "stapel_workspaces.tests"]
 
 [tool.setuptools.package-data]
 stapel_workspaces = ["migrations/*.py", "migrations/**/*.py"]
