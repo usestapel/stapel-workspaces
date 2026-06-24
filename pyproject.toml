@@ -29,3 +29,7 @@ packages = ["stapel_workspaces", "stapel_workspaces.migrations", "stapel_workspa
 
 [tool.setuptools.package-data]
 stapel_workspaces = ["migrations/*.py", "migrations/**/*.py"]
+
+[tool.pytest.ini_options]
+django_find_project = false
+addopts = "--tb=short -q"
