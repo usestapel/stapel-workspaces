@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "stapel-workspaces"
+version = "0.1.0"
+description = "Team workspaces and RBAC Django app for the Stapel framework"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["django", "stapel", "workspaces", "teams", "rbac"]
+classifiers = [
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "stapel-core>=0.1.0",
+]
+
+[project.optional-dependencies]
+all = []
+
+[tool.setuptools]
+package-dir = {"stapel_workspaces" = "."}
+packages = ["stapel_workspaces", "stapel_workspaces.migrations"]
+
+[tool.setuptools.package-data]
+stapel_workspaces = ["migrations/*.py", "migrations/**/*.py"]

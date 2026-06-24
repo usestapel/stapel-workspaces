@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.member_joined",
+  "type": "object",
+  "required": ["workspace_id", "user_id", "role"],
+  "properties": {
+    "workspace_id": { "type": "integer" },
+    "user_id":      { "type": "integer" },
+    "role":         { "type": "string" }
+  },
+  "additionalProperties": false
+}

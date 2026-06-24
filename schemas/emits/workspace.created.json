@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.created",
+  "type": "object",
+  "required": ["workspace_id", "owner_id", "name", "type"],
+  "properties": {
+    "workspace_id": { "type": "integer" },
+    "owner_id":     { "type": "integer" },
+    "name":         { "type": "string" },
+    "type":         { "type": "string" }
+  },
+  "additionalProperties": false
+}
