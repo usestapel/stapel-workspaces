@@ -25,5 +25,15 @@ class Command(BaseBusConsumerCommand):
             self.stderr.write(f"user.registered: user {user_id} not found, skipping")
             return
         from stapel_workspaces.services import ensure_personal_workspace
-        ensure_personal_workspace(user)
-        self.stdout.write(f"Bootstrapped personal workspace for user {user_id}")
+        from stapel_workspaces.events import TOPIC_WORKSPACE_PERSONAL_CREATED
+        from stapel_core.bus import publish, Event as BusEvent
+        workspace = ensure_personal_workspace(user)
+        publish(TOPIC_WORKSPACE_PERSONAL_CREATED, BusEvent(
+            event_type="workspace.personal.created",
+            service="workspaces",
+            payload={
+                "user_id": user_id,
+                "workspace_id": str(workspace.id),
+            },
+        ))
+        self.stdout.write(f"Bootstrapped personal workspace {workspace.id} for user {user_id}")
