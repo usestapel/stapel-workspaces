@@ -1,8 +1,8 @@
 """Serializers for workspaces API."""
 
 from rest_framework import serializers
-from stapel_core.django.errors import IronValidationError
-from stapel_core.django.serializers import IronDataclassSerializer
+from stapel_core.django.api.errors import IronValidationError
+from stapel_core.django.api.serializers import IronDataclassSerializer
 
 from .dto import (
     InvitationAcceptRequest,
