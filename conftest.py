@@ -26,7 +26,8 @@ def pytest_configure(config):
             },
             DEFAULT_AUTO_FIELD="django.db.models.BigAutoField",
             USE_TZ=True,
-            ROOT_URLCONF="stapel_workspaces.urls",
+            APPEND_SLASH=False,
+            ROOT_URLCONF="stapel_workspaces.conftest_urls",
             CACHES={
                 "default": {
                     "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
