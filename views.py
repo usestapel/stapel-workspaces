@@ -4,8 +4,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.views import APIView
-
-from stapel_core.django.api.errors import IronResponse, IronErrorResponse
+from stapel_core.django.api.errors import StapelErrorResponse, StapelResponse
 from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
 
 from . import services
@@ -44,7 +43,9 @@ from .serializers import (
 )
 
 
-def _workspace_to_dto(ws: Workspace, my_role: str | None = None, member_count: int | None = None) -> WorkspaceResponse:
+def _workspace_to_dto(
+    ws: Workspace, my_role: str | None = None, member_count: int | None = None
+) -> WorkspaceResponse:
     if member_count is None:
         member_count = ws.members.filter(accepted_at__isnull=False).count()
     return WorkspaceResponse(
@@ -106,7 +107,7 @@ class WorkspaceListCreateView(APIView):
             if ws.deleted_at:
                 continue
             workspaces.append(_workspace_to_dto(ws, my_role=m.role))
-        return IronResponse(
+        return StapelResponse(
             WorkspaceListResponseSerializer(
                 WorkspaceListResponse(workspaces=workspaces)
             )
@@ -122,14 +123,14 @@ class WorkspaceListCreateView(APIView):
         data = ser.validated_data
         slug = getattr(data, "slug", None)
         if slug and Workspace.objects.filter(slug=slug).exists():
-            return IronErrorResponse(400, ERR_400_SLUG_TAKEN)
+            return StapelErrorResponse(400, ERR_400_SLUG_TAKEN)
         ws = services.create_workspace(
             user=request.user,
             name=data.name,
             slug=slug,
             type=data.type or "work",
         )
-        return IronResponse(
+        return StapelResponse(
             WorkspaceResponseSerializer(_workspace_to_dto(ws, my_role=Role.OWNER)),
             status=status.HTTP_201_CREATED,
         )
@@ -142,10 +143,10 @@ class WorkspaceDetailView(APIView):
     def _resolve(self, request, workspace_id):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
         if not ws:
-            return None, None, IronErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+            return None, None, StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         membership = require_role(ws.id, request.user.id, Role.VIEWER)
         if not membership:
-            return None, None, IronErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+            return None, None, StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         return ws, membership, None
 
     @extend_schema(responses={200: WorkspaceResponseSerializer})
@@ -155,10 +156,8 @@ class WorkspaceDetailView(APIView):
             return err
         membership.last_accessed_at = timezone.now()
         membership.save(update_fields=["last_accessed_at"])
-        return IronResponse(
-            WorkspaceResponseSerializer(
-                _workspace_to_dto(ws, my_role=membership.role)
-            )
+        return StapelResponse(
+            WorkspaceResponseSerializer(_workspace_to_dto(ws, my_role=membership.role))
         )
 
     @extend_schema(
@@ -170,24 +169,22 @@ class WorkspaceDetailView(APIView):
         if err:
             return err
         if not role_at_least(membership.role, Role.ADMIN):
-            return IronErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         ser = WorkspaceUpdateRequestSerializer(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
         new_slug = getattr(data, "slug", None)
         if new_slug and new_slug != ws.slug:
             if Workspace.objects.filter(slug=new_slug).exclude(id=ws.id).exists():
-                return IronErrorResponse(400, ERR_400_SLUG_TAKEN)
+                return StapelErrorResponse(400, ERR_400_SLUG_TAKEN)
             ws.slug = new_slug
         if getattr(data, "name", None):
             ws.name = data.name
         if getattr(data, "settings", None) is not None:
             ws.settings = data.settings
         ws.save()
-        return IronResponse(
-            WorkspaceResponseSerializer(
-                _workspace_to_dto(ws, my_role=membership.role)
-            )
+        return StapelResponse(
+            WorkspaceResponseSerializer(_workspace_to_dto(ws, my_role=membership.role))
         )
 
     @extend_schema(responses={204: None})
@@ -196,10 +193,10 @@ class WorkspaceDetailView(APIView):
         if err:
             return err
         if not role_at_least(membership.role, Role.OWNER):
-            return IronErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         ws.deleted_at = timezone.now()
         ws.save(update_fields=["deleted_at"])
-        return IronResponse(status=status.HTTP_204_NO_CONTENT)
+        return StapelResponse(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(tags=["Members"])
@@ -209,11 +206,11 @@ class MemberListView(APIView):
     @extend_schema(responses={200: MemberListResponseSerializer})
     def get(self, request, workspace_id):
         if not require_role(workspace_id, request.user.id, Role.VIEWER):
-            return IronErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         members = WorkspaceMember.objects.filter(
             workspace_id=workspace_id
         ).select_related("user")
-        return IronResponse(
+        return StapelResponse(
             MemberListResponseSerializer(
                 MemberListResponse(members=[_member_to_dto(m) for m in members])
             )
@@ -231,9 +228,9 @@ class MemberInviteView(APIView):
     def post(self, request, workspace_id):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
         if not ws:
-            return IronErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         if not require_role(ws.id, request.user.id, Role.ADMIN):
-            return IronErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         ser = MemberInviteRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
@@ -243,7 +240,7 @@ class MemberInviteView(APIView):
             )
             for e in data.emails
         ]
-        return IronResponse(
+        return StapelResponse(
             MemberInviteResponseSerializer(
                 MemberInviteResponse(
                     invitations=[_invitation_to_dto(i) for i in invitations]
@@ -259,12 +256,12 @@ class MemberDetailView(APIView):
 
     def _resolve(self, request, workspace_id, user_id):
         if not require_role(workspace_id, request.user.id, Role.ADMIN):
-            return None, IronErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+            return None, StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         member = WorkspaceMember.objects.filter(
             workspace_id=workspace_id, user_id=user_id
         ).first()
         if not member:
-            return None, IronErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
+            return None, StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         return member, None
 
     @extend_schema(
@@ -279,14 +276,18 @@ class MemberDetailView(APIView):
         ser.is_valid(raise_exception=True)
         new_role = ser.validated_data.role
         if member.role == Role.OWNER and new_role != Role.OWNER:
-            others = WorkspaceMember.objects.filter(
-                workspace_id=workspace_id, role=Role.OWNER
-            ).exclude(id=member.id).exists()
+            others = (
+                WorkspaceMember.objects.filter(
+                    workspace_id=workspace_id, role=Role.OWNER
+                )
+                .exclude(id=member.id)
+                .exists()
+            )
             if not others:
-                return IronErrorResponse(403, ERR_403_LAST_OWNER)
+                return StapelErrorResponse(403, ERR_403_LAST_OWNER)
         member.role = new_role
         member.save(update_fields=["role"])
-        return IronResponse(MemberResponseSerializer(_member_to_dto(member)))
+        return StapelResponse(MemberResponseSerializer(_member_to_dto(member)))
 
     @extend_schema(responses={204: None})
     def delete(self, request, workspace_id, user_id):
@@ -294,13 +295,17 @@ class MemberDetailView(APIView):
         if err:
             return err
         if member.role == Role.OWNER:
-            others = WorkspaceMember.objects.filter(
-                workspace_id=workspace_id, role=Role.OWNER
-            ).exclude(id=member.id).exists()
+            others = (
+                WorkspaceMember.objects.filter(
+                    workspace_id=workspace_id, role=Role.OWNER
+                )
+                .exclude(id=member.id)
+                .exists()
+            )
             if not others:
-                return IronErrorResponse(403, ERR_403_LAST_OWNER)
+                return StapelErrorResponse(403, ERR_403_LAST_OWNER)
         member.delete()
-        return IronResponse(status=status.HTTP_204_NO_CONTENT)
+        return StapelResponse(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(tags=["Members"])
@@ -317,15 +322,15 @@ class InvitationAcceptView(APIView):
         token = ser.validated_data.token
         inv = WorkspaceInvitation.objects.filter(token=token).first()
         if not inv:
-            return IronErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
         if inv.revoked_at:
-            return IronErrorResponse(400, ERR_400_INVITATION_REVOKED)
+            return StapelErrorResponse(400, ERR_400_INVITATION_REVOKED)
         if inv.accepted_at:
-            return IronErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
+            return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
         if inv.expires_at and inv.expires_at < timezone.now():
-            return IronErrorResponse(400, ERR_400_INVITATION_EXPIRED)
+            return StapelErrorResponse(400, ERR_400_INVITATION_EXPIRED)
         member = services.accept_invitation(invitation=inv, user=request.user)
-        return IronResponse(MemberResponseSerializer(_member_to_dto(member)))
+        return StapelResponse(MemberResponseSerializer(_member_to_dto(member)))
 
 
 @extend_schema(tags=["Internal"])
@@ -336,12 +341,16 @@ class InternalMembershipView(APIView):
 
     @extend_schema(responses={200: MemberResponseSerializer})
     def get(self, request, workspace_id, user_id):
-        member = WorkspaceMember.objects.filter(
-            workspace_id=workspace_id, user_id=user_id, accepted_at__isnull=False
-        ).select_related("user").first()
+        member = (
+            WorkspaceMember.objects.filter(
+                workspace_id=workspace_id, user_id=user_id, accepted_at__isnull=False
+            )
+            .select_related("user")
+            .first()
+        )
         if not member:
-            return IronErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
-        return IronResponse(MemberResponseSerializer(_member_to_dto(member)))
+            return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
+        return StapelResponse(MemberResponseSerializer(_member_to_dto(member)))
 
 
 class InternalPersonalWorkspaceView(APIView):
@@ -351,9 +360,10 @@ class InternalPersonalWorkspaceView(APIView):
 
     def post(self, request, user_id):
         from stapel_core.django.users.models import User
+
         try:
             user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
-            return IronErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         ws = services.ensure_personal_workspace(user)
-        return IronResponse({"workspace_id": str(ws.id)}, status=status.HTTP_200_OK)
+        return StapelResponse({"workspace_id": str(ws.id)}, status=status.HTTP_200_OK)

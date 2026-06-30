@@ -1,7 +1,7 @@
 """Serializers for workspaces API."""
 
 from rest_framework import serializers
-from stapel_core.django.api.errors import IronValidationError
+from stapel_core.django.api.errors import StapelValidationError
 from stapel_core.django.api.serializers import IronDataclassSerializer
 
 from .dto import (
@@ -37,7 +37,7 @@ class WorkspaceCreateRequestSerializer(IronDataclassSerializer):
 
     def validate_type(self, value):
         if value not in WorkspaceType.values:
-            raise IronValidationError(ERR_400_INVALID_ROLE)
+            raise StapelValidationError(ERR_400_INVALID_ROLE)
         return value
 
 
@@ -62,7 +62,7 @@ class MemberInviteRequestSerializer(IronDataclassSerializer):
 
     def validate_role(self, value):
         if value not in {Role.ADMIN, Role.MEMBER, Role.VIEWER}:
-            raise IronValidationError(ERR_400_INVALID_ROLE)
+            raise StapelValidationError(ERR_400_INVALID_ROLE)
         return value
 
     def validate_emails(self, value):
@@ -92,5 +92,5 @@ class MemberUpdateRequestSerializer(IronDataclassSerializer):
 
     def validate_role(self, value):
         if value not in Role.values:
-            raise IronValidationError(ERR_400_INVALID_ROLE)
+            raise StapelValidationError(ERR_400_INVALID_ROLE)
         return value
