@@ -1,5 +1,11 @@
+import uuid
+
+import pytest
+
+
 def pytest_configure(config):
     from django.conf import settings
+
     if not settings.configured:
         settings.configure(
             SECRET_KEY="test-secret-key-not-for-production",
@@ -34,3 +40,38 @@ def pytest_configure(config):
                 "workspaces": None,
             },
         )
+
+
+@pytest.fixture
+def api_client():
+    from rest_framework.test import APIClient
+
+    return APIClient()
+
+
+@pytest.fixture
+def user(db):
+    from stapel_core.django.users.models import User
+
+    return User.objects.create_user(
+        username=f"u-{uuid.uuid4().hex[:8]}",
+        email=f"{uuid.uuid4().hex[:8]}@example.com",
+        password="testpass-1234",
+    )
+
+
+@pytest.fixture
+def other_user(db):
+    from stapel_core.django.users.models import User
+
+    return User.objects.create_user(
+        username=f"u-{uuid.uuid4().hex[:8]}",
+        email=f"{uuid.uuid4().hex[:8]}@example.com",
+        password="testpass-1234",
+    )
+
+
+@pytest.fixture
+def authed_client(api_client, user):
+    api_client.force_authenticate(user=user)
+    return api_client
