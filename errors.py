@@ -1,6 +1,6 @@
 """Custom error keys for the workspaces service."""
 
-from stapel_core.django.errors import ErrorKeysView, register_service_errors
+from stapel_core.django.api.errors import ErrorKeysView, register_service_errors
 
 ERR_404_WORKSPACE_NOT_FOUND = "error.404.workspace_not_found"
 ERR_404_MEMBER_NOT_FOUND = "error.404.member_not_found"

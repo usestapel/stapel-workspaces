@@ -1,12 +1,13 @@
 """
 Workspace + membership model.
 
-iron-workspaces is the foundational service: every workspace-scoped
+stapel-workspaces is the foundational service: every workspace-scoped
 resource in other services carries `workspace_id` FK pointing at the
 Workspace row owned here.
 """
 
 import uuid
+
 from django.db import models
 from stapel_core.django.users.models import User
 

@@ -5,8 +5,8 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.views import APIView
 
-from stapel_core.django.errors import IronResponse, IronErrorResponse
-from stapel_core.django.permissions import IsServiceRequest, IsStaffUser
+from stapel_core.django.api.errors import IronResponse, IronErrorResponse
+from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
 
 from . import services
 from .dto import (

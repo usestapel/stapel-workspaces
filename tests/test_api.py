@@ -1,4 +1,4 @@
-"""API tests for iron-workspaces."""
+"""API tests for stapel-workspaces."""
 
 import pytest
 
@@ -88,9 +88,7 @@ class TestMembershipInvite:
         assert resp.json()["invitations"][0]["email"] == "new@example.com"
         assert ws.invitations.count() == 1
 
-    def test_non_admin_cannot_invite(
-        self, api_client, authed_client, user, other_user
-    ):
+    def test_non_admin_cannot_invite(self, api_client, authed_client, user, other_user):
         from stapel_workspaces.services import create_workspace
 
         ws = create_workspace(user=other_user, name="Theirs")
