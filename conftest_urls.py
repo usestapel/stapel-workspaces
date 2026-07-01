@@ -6,5 +6,5 @@ Mounts the workspaces API at /workspaces/api/workspaces/ to match the test fixtu
 from django.urls import include, path
 
 urlpatterns = [
-    path("workspaces/api/workspaces/", include("stapel_workspaces.urls")),
+    path("workspaces/api/workspaces", include("stapel_workspaces.urls")),
 ]
