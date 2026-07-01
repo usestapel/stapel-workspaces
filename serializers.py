@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from stapel_core.django.api.errors import StapelValidationError
-from stapel_core.django.api.serializers import IronDataclassSerializer
+from stapel_core.django.api.serializers import StapelDataclassSerializer
 
 from .dto import (
     InvitationAcceptRequest,
@@ -21,17 +21,17 @@ from .errors import ERR_400_INVALID_ROLE
 from .models import Role, WorkspaceType
 
 
-class WorkspaceResponseSerializer(IronDataclassSerializer):
+class WorkspaceResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = WorkspaceResponse
 
 
-class WorkspaceListResponseSerializer(IronDataclassSerializer):
+class WorkspaceListResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = WorkspaceListResponse
 
 
-class WorkspaceCreateRequestSerializer(IronDataclassSerializer):
+class WorkspaceCreateRequestSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = WorkspaceCreateRequest
 
@@ -41,22 +41,22 @@ class WorkspaceCreateRequestSerializer(IronDataclassSerializer):
         return value
 
 
-class WorkspaceUpdateRequestSerializer(IronDataclassSerializer):
+class WorkspaceUpdateRequestSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = WorkspaceUpdateRequest
 
 
-class MemberResponseSerializer(IronDataclassSerializer):
+class MemberResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = MemberResponse
 
 
-class MemberListResponseSerializer(IronDataclassSerializer):
+class MemberListResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = MemberListResponse
 
 
-class MemberInviteRequestSerializer(IronDataclassSerializer):
+class MemberInviteRequestSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = MemberInviteRequest
 
@@ -71,22 +71,22 @@ class MemberInviteRequestSerializer(IronDataclassSerializer):
         return [e.lower().strip() for e in value]
 
 
-class MemberInviteResponseSerializer(IronDataclassSerializer):
+class MemberInviteResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = MemberInviteResponse
 
 
-class InvitationResponseSerializer(IronDataclassSerializer):
+class InvitationResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = InvitationResponse
 
 
-class InvitationAcceptRequestSerializer(IronDataclassSerializer):
+class InvitationAcceptRequestSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = InvitationAcceptRequest
 
 
-class MemberUpdateRequestSerializer(IronDataclassSerializer):
+class MemberUpdateRequestSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = MemberUpdateRequest
 
