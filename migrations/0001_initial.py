@@ -46,7 +46,7 @@ class Migration(migrations.Migration):
                 ('revoked_at', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('invited_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
-                ('workspace', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='invitations', to='stapel_workspaces.workspace')),
+                ('workspace', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='invitations', to='workspaces.workspace')),
             ],
             options={
                 'db_table': 'workspaces_invitation',
@@ -62,7 +62,7 @@ class Migration(migrations.Migration):
                 ('last_accessed_at', models.DateTimeField(blank=True, null=True)),
                 ('invited_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='sent_workspace_invitations', to=settings.AUTH_USER_MODEL)),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='workspace_memberships', to=settings.AUTH_USER_MODEL)),
-                ('workspace', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='members', to='stapel_workspaces.workspace')),
+                ('workspace', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='members', to='workspaces.workspace')),
             ],
             options={
                 'db_table': 'workspaces_member',
