@@ -15,3 +15,8 @@ class WorkspacesConfig(AppConfig):
         # Action subscriptions (in-process in a monolith, bus consumer in
         # microservices — same code, transport chosen by STAPEL_COMM).
         from . import actions  # noqa: F401
+
+        # Function providers (workspaces.check_membership). register() is
+        # idempotent — ready() may run more than once.
+        from . import functions
+        functions.register()

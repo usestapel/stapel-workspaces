@@ -6,6 +6,8 @@ from rest_framework import permissions, status
 from rest_framework.views import APIView
 from stapel_core.django.api.errors import StapelErrorResponse, StapelResponse
 from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
+from stapel_core.django.workspaces import invalidate_membership_cache
+from stapel_core.signals import workspace_member_changed
 
 from . import services
 from .dto import (
@@ -293,6 +295,15 @@ class MemberDetailView(APIView):
                 return StapelErrorResponse(403, ERR_403_LAST_OWNER)
         member.role = new_role
         member.save(update_fields=["role"])
+        # Other services cache membership lookups — drop the stale role.
+        invalidate_membership_cache(workspace_id, user_id)
+        workspace_member_changed.send(
+            sender=WorkspaceMember,
+            workspace=member.workspace,
+            user=member.user,
+            role=member.role,
+            action="updated",
+        )
         return StapelResponse(MemberResponseSerializer(_member_to_dto(member)))
 
     @extend_schema(responses={204: None})
@@ -315,7 +326,19 @@ class MemberDetailView(APIView):
             )
             if not others:
                 return StapelErrorResponse(403, ERR_403_LAST_OWNER)
+        workspace = member.workspace
+        removed_user = member.user
+        removed_role = member.role
         member.delete()
+        # Other services cache membership lookups — drop the stale entry.
+        invalidate_membership_cache(workspace_id, user_id)
+        workspace_member_changed.send(
+            sender=WorkspaceMember,
+            workspace=workspace,
+            user=removed_user,
+            role=removed_role,
+            action="removed",
+        )
         return StapelResponse(status=status.HTTP_204_NO_CONTENT)
 
 

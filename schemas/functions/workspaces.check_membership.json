@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspaces.check_membership",
+  "description": "Payload for the workspaces.check_membership comm Function. Returns {\"is_member\": bool, \"role\": str|null}.",
+  "type": "object",
+  "required": ["workspace_id", "user_id"],
+  "properties": {
+    "workspace_id": { "type": "string", "format": "uuid" },
+    "user_id":      { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

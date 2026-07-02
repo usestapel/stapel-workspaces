@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.personal.created",
+  "description": "A personal workspace was auto-created for a user (first-login bootstrap).",
+  "type": "object",
+  "required": ["workspace_id", "user_id"],
+  "properties": {
+    "workspace_id": { "type": "string", "format": "uuid" },
+    "user_id":      { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

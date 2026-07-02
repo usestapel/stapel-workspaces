@@ -1,6 +1,15 @@
-"""Kafka events published by stapel-workspaces."""
+"""Events published by stapel-workspaces.
+
+Publishing goes through ``stapel_core.comm.emit`` (transactional outbox;
+in-process in a monolith, bus in microservices) — see services.py. The
+comm action name is ``workspace.personal.created``; its payload contract
+lives in schemas/emits/workspace.personal.created.json.
+"""
 from dataclasses import dataclass
 
+EVENT_WORKSPACE_PERSONAL_CREATED = "workspace.personal.created"
+
+# Legacy Kafka topic name kept for consumers still subscribed by topic.
 TOPIC_WORKSPACE_PERSONAL_CREATED = "stapel.workspaces.personal-created"
 
 
@@ -18,5 +27,6 @@ class WorkspacePersonalCreatedPayload:
 
 
 EVENT_REGISTRY = {
+    EVENT_WORKSPACE_PERSONAL_CREATED: WorkspacePersonalCreatedPayload,
     TOPIC_WORKSPACE_PERSONAL_CREATED: WorkspacePersonalCreatedPayload,
 }

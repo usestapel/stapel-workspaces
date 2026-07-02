@@ -1,13 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "workspace.created",
+  "description": "A workspace was created (the owner membership is seeded in the same transaction).",
   "type": "object",
   "required": ["workspace_id", "owner_id", "name", "type"],
   "properties": {
-    "workspace_id": { "type": "integer" },
-    "owner_id":     { "type": "integer" },
+    "workspace_id": { "type": "string", "format": "uuid" },
+    "owner_id":     { "type": "string", "format": "uuid" },
     "name":         { "type": "string" },
-    "type":         { "type": "string" }
+    "type":         { "type": "string", "enum": ["personal", "work"] }
   },
   "additionalProperties": false
 }
