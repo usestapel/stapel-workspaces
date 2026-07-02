@@ -1,7 +1,11 @@
 """Consume events published by stapel-auth."""
+import os
+
 from stapel_core.bus import BaseBusConsumerCommand, Event
 
-TOPIC_USER_REGISTERED = "stapel.auth.user-registered"
+# stapel-auth emits the action through stapel_core.comm; on the bus transport
+# the topic is the action name. Override via env for legacy topic layouts.
+TOPIC_USER_REGISTERED = os.getenv("STAPEL_TOPIC_USER_REGISTERED", "user.registered")
 
 
 class Command(BaseBusConsumerCommand):
@@ -25,10 +29,10 @@ class Command(BaseBusConsumerCommand):
             self.stderr.write(f"user.registered: user {user_id} not found, skipping")
             return
         from stapel_workspaces.services import ensure_personal_workspace
-        from stapel_workspaces.events import TOPIC_WORKSPACE_PERSONAL_CREATED
+        from stapel_workspaces.events import EVENT_WORKSPACE_PERSONAL_CREATED
         from stapel_core.bus import publish, Event as BusEvent
         workspace = ensure_personal_workspace(user)
-        publish(TOPIC_WORKSPACE_PERSONAL_CREATED, BusEvent(
+        publish(EVENT_WORKSPACE_PERSONAL_CREATED, BusEvent(
             event_type="workspace.personal.created",
             service="workspaces",
             payload={
