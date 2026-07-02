@@ -45,6 +45,26 @@ from .serializers import (
 )
 
 
+class SerializerSeamsMixin:
+    """Overridable serializer seams for API views.
+
+    Subclasses (or downstream projects) can swap the request/response
+    serializers without copying method bodies:
+
+        class MyWorkspaceDetailView(WorkspaceDetailView):
+            response_serializer_class = MyWorkspaceResponseSerializer
+    """
+
+    request_serializer_class = None
+    response_serializer_class = None
+
+    def get_request_serializer_class(self):
+        return self.request_serializer_class
+
+    def get_response_serializer_class(self):
+        return self.response_serializer_class
+
+
 def _workspace_to_dto(
     ws: Workspace, my_role: str | None = None, member_count: int | None = None
 ) -> WorkspaceResponse:
@@ -93,8 +113,14 @@ def _invitation_to_dto(inv: WorkspaceInvitation) -> InvitationResponse:
 
 
 @extend_schema(tags=["Workspaces"])
-class WorkspaceListCreateView(APIView):
+class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    request_serializer_class = WorkspaceCreateRequestSerializer
+    response_serializer_class = WorkspaceResponseSerializer
+    list_response_serializer_class = WorkspaceListResponseSerializer
+
+    def get_list_response_serializer_class(self):
+        return self.list_response_serializer_class
 
     @extend_schema(responses={200: WorkspaceListResponseSerializer})
     def get(self, request):
@@ -110,7 +136,7 @@ class WorkspaceListCreateView(APIView):
                 continue
             workspaces.append(_workspace_to_dto(ws, my_role=m.role))
         return StapelResponse(
-            WorkspaceListResponseSerializer(
+            self.get_list_response_serializer_class()(
                 WorkspaceListResponse(workspaces=workspaces)
             )
         )
@@ -120,7 +146,7 @@ class WorkspaceListCreateView(APIView):
         responses={201: WorkspaceResponseSerializer},
     )
     def post(self, request):
-        ser = WorkspaceCreateRequestSerializer(data=request.data)
+        ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
         slug = getattr(data, "slug", None)
@@ -133,14 +159,18 @@ class WorkspaceListCreateView(APIView):
             type=data.type or "work",
         )
         return StapelResponse(
-            WorkspaceResponseSerializer(_workspace_to_dto(ws, my_role=Role.OWNER)),
+            self.get_response_serializer_class()(
+                _workspace_to_dto(ws, my_role=Role.OWNER)
+            ),
             status=status.HTTP_201_CREATED,
         )
 
 
 @extend_schema(tags=["Workspaces"])
-class WorkspaceDetailView(APIView):
+class WorkspaceDetailView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    request_serializer_class = WorkspaceUpdateRequestSerializer
+    response_serializer_class = WorkspaceResponseSerializer
 
     def _resolve(self, request, workspace_id):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
@@ -159,7 +189,9 @@ class WorkspaceDetailView(APIView):
         membership.last_accessed_at = timezone.now()
         membership.save(update_fields=["last_accessed_at"])
         return StapelResponse(
-            WorkspaceResponseSerializer(_workspace_to_dto(ws, my_role=membership.role))
+            self.get_response_serializer_class()(
+                _workspace_to_dto(ws, my_role=membership.role)
+            )
         )
 
     @extend_schema(
@@ -172,7 +204,7 @@ class WorkspaceDetailView(APIView):
             return err
         if not role_at_least(membership.role, Role.ADMIN):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
-        ser = WorkspaceUpdateRequestSerializer(data=request.data, partial=True)
+        ser = self.get_request_serializer_class()(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
         new_slug = getattr(data, "slug", None)
@@ -186,7 +218,9 @@ class WorkspaceDetailView(APIView):
             ws.settings = data.settings
         ws.save()
         return StapelResponse(
-            WorkspaceResponseSerializer(_workspace_to_dto(ws, my_role=membership.role))
+            self.get_response_serializer_class()(
+                _workspace_to_dto(ws, my_role=membership.role)
+            )
         )
 
     @extend_schema(responses={204: None})
@@ -202,8 +236,9 @@ class WorkspaceDetailView(APIView):
 
 
 @extend_schema(tags=["Members"])
-class MemberListView(APIView):
+class MemberListView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    response_serializer_class = MemberListResponseSerializer
 
     @extend_schema(responses={200: MemberListResponseSerializer})
     def get(self, request, workspace_id):
@@ -213,15 +248,17 @@ class MemberListView(APIView):
             workspace_id=workspace_id
         ).select_related("user")
         return StapelResponse(
-            MemberListResponseSerializer(
+            self.get_response_serializer_class()(
                 MemberListResponse(members=[_member_to_dto(m) for m in members])
             )
         )
 
 
 @extend_schema(tags=["Members"])
-class MemberInviteView(APIView):
+class MemberInviteView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    request_serializer_class = MemberInviteRequestSerializer
+    response_serializer_class = MemberInviteResponseSerializer
 
     @extend_schema(
         request=MemberInviteRequestSerializer,
@@ -233,7 +270,7 @@ class MemberInviteView(APIView):
             return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         if not require_role(ws.id, request.user.id, Role.ADMIN):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
-        ser = MemberInviteRequestSerializer(data=request.data)
+        ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
         invitations = [
@@ -243,7 +280,7 @@ class MemberInviteView(APIView):
             for e in data.emails
         ]
         return StapelResponse(
-            MemberInviteResponseSerializer(
+            self.get_response_serializer_class()(
                 MemberInviteResponse(
                     invitations=[_invitation_to_dto(i) for i in invitations]
                 )
@@ -253,8 +290,10 @@ class MemberInviteView(APIView):
 
 
 @extend_schema(tags=["Members"])
-class MemberDetailView(APIView):
+class MemberDetailView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    request_serializer_class = MemberUpdateRequestSerializer
+    response_serializer_class = MemberResponseSerializer
 
     def _resolve(self, request, workspace_id, user_id):
         if not require_role(workspace_id, request.user.id, Role.ADMIN):
@@ -274,7 +313,7 @@ class MemberDetailView(APIView):
         member, err = self._resolve(request, workspace_id, user_id)
         if err:
             return err
-        ser = MemberUpdateRequestSerializer(data=request.data)
+        ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         new_role = ser.validated_data.role
         # Only owners may grant the OWNER role or change an owner's role —
@@ -304,7 +343,9 @@ class MemberDetailView(APIView):
             role=member.role,
             action="updated",
         )
-        return StapelResponse(MemberResponseSerializer(_member_to_dto(member)))
+        return StapelResponse(
+            self.get_response_serializer_class()(_member_to_dto(member))
+        )
 
     @extend_schema(responses={204: None})
     def delete(self, request, workspace_id, user_id):
@@ -343,15 +384,17 @@ class MemberDetailView(APIView):
 
 
 @extend_schema(tags=["Members"])
-class InvitationAcceptView(APIView):
+class InvitationAcceptView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    request_serializer_class = InvitationAcceptRequestSerializer
+    response_serializer_class = MemberResponseSerializer
 
     @extend_schema(
         request=InvitationAcceptRequestSerializer,
         responses={200: MemberResponseSerializer},
     )
     def post(self, request):
-        ser = InvitationAcceptRequestSerializer(data=request.data)
+        ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         token = ser.validated_data.token
         inv = WorkspaceInvitation.objects.filter(token=token).first()
@@ -373,14 +416,17 @@ class InvitationAcceptView(APIView):
             member = services.accept_invitation(invitation=inv, user=request.user)
         except ValueError:
             return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
-        return StapelResponse(MemberResponseSerializer(_member_to_dto(member)))
+        return StapelResponse(
+            self.get_response_serializer_class()(_member_to_dto(member))
+        )
 
 
 @extend_schema(tags=["Internal"])
-class InternalMembershipView(APIView):
+class InternalMembershipView(SerializerSeamsMixin, APIView):
     """Allow other services to check membership/role via X-API-KEY."""
 
     permission_classes = [IsServiceRequest | IsStaffUser]
+    response_serializer_class = MemberResponseSerializer
 
     @extend_schema(responses={200: MemberResponseSerializer})
     def get(self, request, workspace_id, user_id):
@@ -393,7 +439,9 @@ class InternalMembershipView(APIView):
         )
         if not member:
             return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
-        return StapelResponse(MemberResponseSerializer(_member_to_dto(member)))
+        return StapelResponse(
+            self.get_response_serializer_class()(_member_to_dto(member))
+        )
 
 
 class InternalPersonalWorkspaceView(APIView):
