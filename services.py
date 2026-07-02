@@ -55,11 +55,20 @@ def create_invitation(*, workspace: Workspace, email: str, role: str, invited_by
 
 @transaction.atomic
 def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMember:
-    invitation.accepted_at = timezone.now()
-    invitation.save(update_fields=["accepted_at"])
+    # Lock the invitation row: a single-use token must not be consumable
+    # twice by concurrent requests.
+    locked = (
+        WorkspaceInvitation.objects.select_for_update()
+        .filter(pk=invitation.pk, accepted_at__isnull=True)
+        .first()
+    )
+    if locked is None:
+        raise ValueError("invitation already used")
+    locked.accepted_at = timezone.now()
+    locked.save(update_fields=["accepted_at"])
     member, _ = WorkspaceMember.objects.get_or_create(
-        workspace=invitation.workspace,
+        workspace=locked.workspace,
         user=user,
-        defaults={"role": invitation.role, "accepted_at": timezone.now()},
+        defaults={"role": locked.role, "accepted_at": timezone.now()},
     )
     return member

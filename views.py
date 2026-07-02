@@ -275,6 +275,12 @@ class MemberDetailView(APIView):
         ser = MemberUpdateRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         new_role = ser.validated_data.role
+        # Only owners may grant the OWNER role or change an owner's role —
+        # otherwise any admin can promote themselves to owner.
+        if (new_role == Role.OWNER or member.role == Role.OWNER) and not require_role(
+            workspace_id, request.user.id, Role.OWNER
+        ):
+            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         if member.role == Role.OWNER and new_role != Role.OWNER:
             others = (
                 WorkspaceMember.objects.filter(
@@ -294,6 +300,11 @@ class MemberDetailView(APIView):
         member, err = self._resolve(request, workspace_id, user_id)
         if err:
             return err
+        # Only owners may remove an owner.
+        if member.role == Role.OWNER and not require_role(
+            workspace_id, request.user.id, Role.OWNER
+        ):
+            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         if member.role == Role.OWNER:
             others = (
                 WorkspaceMember.objects.filter(
@@ -329,7 +340,16 @@ class InvitationAcceptView(APIView):
             return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
         if inv.expires_at and inv.expires_at < timezone.now():
             return StapelErrorResponse(400, ERR_400_INVITATION_EXPIRED)
-        member = services.accept_invitation(invitation=inv, user=request.user)
+        # Invitations are personal: any token holder must not be able to
+        # join with the invited role under a different account.
+        if (request.user.email or "").lower() != inv.email.lower():
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        if inv.workspace.deleted_at:
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        try:
+            member = services.accept_invitation(invitation=inv, user=request.user)
+        except ValueError:
+            return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
         return StapelResponse(MemberResponseSerializer(_member_to_dto(member)))
 
 

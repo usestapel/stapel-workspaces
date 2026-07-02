@@ -12,7 +12,7 @@ requires-python = ">=3.11"
 keywords = ["django", "stapel", "workspaces", "teams", "rbac"]
 classifiers = [
     "Framework :: Django",
-    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.2",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
@@ -25,10 +25,16 @@ all = []
 
 [tool.setuptools]
 package-dir = {"stapel_workspaces" = "."}
-packages = ["stapel_workspaces", "stapel_workspaces.migrations", "stapel_workspaces.tests"]
+packages = [
+    "stapel_workspaces",
+    "stapel_workspaces.migrations",
+    "stapel_workspaces.tests",
+    "stapel_workspaces.management",
+    "stapel_workspaces.management.commands",
+]
 
 [tool.setuptools.package-data]
-stapel_workspaces = ["migrations/*.py", "migrations/**/*.py"]
+stapel_workspaces = ["migrations/*.py", "schemas/**/*.json", "migrations/**/*.py"]
 
 [tool.pytest.ini_options]
 django_find_project = false
