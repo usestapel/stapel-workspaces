@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-07-04
+
+### Added
+- `MODULE.md` — agent-facing extension-point map (part of the July 2026
+  framework-wide documentation sweep). No functional changes.
+
 ## 0.3.0 — 2026-07-03
 
 No functional changes — version alignment with the Stapel 0.3
