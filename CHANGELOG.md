@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.5 — 2026-07-06
+
+### Packaging
+- Tests excluded from the built wheel/sdist (the `stapel_workspaces.tests`
+  and `stapel_workspaces.tests.brownfield_users` subpackages are no longer
+  listed in `[tool.setuptools] packages`). Added `[project.urls]`, completed
+  the trove classifiers (MIT/OSI, Python 3.13, `Typing :: Typed`, OS
+  Independent, `3 :: Only`, Development Status) and a `[tool.ruff]` lint
+  section (single source shared with the git hooks/CI).
+
+
 ## 0.3.4 — 2026-07-05
 
 ### Changed
