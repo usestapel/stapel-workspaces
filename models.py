@@ -8,8 +8,8 @@ Workspace row owned here.
 
 import uuid
 
+from django.conf import settings
 from django.db import models
-from stapel_core.django.users.models import User
 
 
 class WorkspaceType(models.TextChoices):
@@ -32,7 +32,9 @@ class Workspace(models.Model):
         max_length=16, choices=WorkspaceType.choices, default=WorkspaceType.PERSONAL
     )
     owner = models.ForeignKey(
-        User, on_delete=models.PROTECT, related_name="owned_workspaces"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="owned_workspaces",
     )
     settings = models.JSONField(default=dict, blank=True)
     storage_used_bytes = models.BigIntegerField(default=0)
@@ -60,11 +62,13 @@ class WorkspaceMember(models.Model):
         Workspace, on_delete=models.CASCADE, related_name="members"
     )
     user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="workspace_memberships"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="workspace_memberships",
     )
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.MEMBER)
     invited_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -100,7 +104,7 @@ class WorkspaceInvitation(models.Model):
     email = models.EmailField()
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.MEMBER)
     invited_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )
     token = models.CharField(max_length=64, unique=True)
     expires_at = models.DateTimeField()

@@ -23,7 +23,8 @@ class Command(BaseBusConsumerCommand):
             self.stderr.write(f"user.registered event missing user_id: {payload}")
             return
         try:
-            from stapel_core.django.users.models import User
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
             self.stderr.write(f"user.registered: user {user_id} not found, skipping")

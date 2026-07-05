@@ -450,7 +450,9 @@ class InternalPersonalWorkspaceView(APIView):
     permission_classes = [IsServiceRequest | IsStaffUser]
 
     def post(self, request, user_id):
-        from stapel_core.django.users.models import User
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
 
         try:
             user = User.objects.get(pk=user_id)

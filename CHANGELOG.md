@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.3 — 2026-07-05
+
+### Fixed
+- Reference `settings.AUTH_USER_MODEL` not the concrete `User` — unblocks
+  custom user models / brownfield adoption. The `Workspace.owner`,
+  `WorkspaceMember.user`, `WorkspaceMember.invited_by` and
+  `WorkspaceInvitation.invited_by` FKs now target the swappable
+  `settings.AUTH_USER_MODEL`, and `services`, `views` and
+  `consume_auth_events` resolve the user via
+  `django.contrib.auth.get_user_model()` instead of importing
+  `stapel_core.django.users.models.User`. A host with a custom
+  `accounts.User(AbstractStapelUser)` as `AUTH_USER_MODEL` no longer hits
+  `ValueError: ... must be a "User" instance` when creating a
+  `WorkspaceMember`. No migration/DB change: the FKs already deconstructed
+  to `settings.AUTH_USER_MODEL` (the initial migration used
+  `migrations.swappable_dependency`), so `makemigrations` reports no changes.
+
+
 ## 0.3.2 — 2026-07-05
 
 ### Fixed

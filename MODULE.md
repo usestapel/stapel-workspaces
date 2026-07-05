@@ -57,10 +57,13 @@ consumer-side membership cache TTL (`stapel_core.django.workspaces.CACHE_TTL_SEC
 ### Swappable models
 
 None. `Workspace`, `WorkspaceMember`, `WorkspaceInvitation` are not swappable and have
-fixed `db_table` names (`workspaces_*`). The user binding follows stapel-core: FKs
-target the stapel-core user model (migrations declare `settings.AUTH_USER_MODEL`); host
-projects extend the user by subclassing `AbstractStapelUser` and pointing
-`AUTH_USER_MODEL` at it (see `stapel_core.django.users.models`).
+fixed `db_table` names (`workspaces_*`). The user binding follows standard Django: the
+FKs (`Workspace.owner`, `WorkspaceMember.user`/`invited_by`,
+`WorkspaceInvitation.invited_by`) target `settings.AUTH_USER_MODEL`, and runtime code
+resolves the user via `django.contrib.auth.get_user_model()` — never the concrete
+`stapel_core.django.users.models.User`. Host projects extend the user by subclassing
+`AbstractStapelUser` and pointing `AUTH_USER_MODEL` at it (see
+`stapel_core.django.users.models`).
 
 To attach extra per-workspace data without a fork:
 

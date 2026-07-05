@@ -93,8 +93,10 @@ def _send_invitation_notification(invitation: WorkspaceInvitation) -> None:
     the invite stays listable/resendable either way.
     """
     try:
-        from stapel_core.django.users.models import User
+        from django.contrib.auth import get_user_model
         from stapel_core.notifications import request_notification
+
+        User = get_user_model()
 
         path = f"/invitations/{invitation.token}/accept"
         frontend_url = (getattr(settings, "FRONTEND_URL", "") or "").rstrip("/")
