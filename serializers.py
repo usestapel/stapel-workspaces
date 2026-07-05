@@ -94,3 +94,9 @@ class MemberUpdateRequestSerializer(StapelDataclassSerializer):
         if value not in Role.values:
             raise StapelValidationError(ERR_400_INVALID_ROLE)
         return value
+
+
+class InternalPersonalWorkspaceResponseSerializer(serializers.Serializer):
+    """Get-or-create result for a user's personal workspace (service-to-service)."""
+
+    workspace_id = serializers.UUIDField(help_text="Personal workspace UUID.")

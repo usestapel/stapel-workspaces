@@ -6,6 +6,7 @@ from rest_framework import permissions, status
 from rest_framework.views import APIView
 from stapel_core.django.api.errors import StapelErrorResponse, StapelResponse
 from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
+from stapel_core.django.openapi.schemas import StapelErrorSerializer
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 
@@ -32,6 +33,7 @@ from .errors import (
 from .models import Role, Workspace, WorkspaceInvitation, WorkspaceMember
 from .permissions import require_role, role_at_least
 from .serializers import (
+    InternalPersonalWorkspaceResponseSerializer,
     InvitationAcceptRequestSerializer,
     MemberInviteRequestSerializer,
     MemberInviteResponseSerializer,
@@ -444,11 +446,19 @@ class InternalMembershipView(SerializerSeamsMixin, APIView):
         )
 
 
+@extend_schema(tags=["Internal"])
 class InternalPersonalWorkspaceView(APIView):
     """Get-or-create the personal workspace for a given user_id."""
 
     permission_classes = [IsServiceRequest | IsStaffUser]
 
+    @extend_schema(
+        request=None,
+        responses={
+            200: InternalPersonalWorkspaceResponseSerializer,
+            404: StapelErrorSerializer,
+        },
+    )
     def post(self, request, user_id):
         from django.contrib.auth import get_user_model
 

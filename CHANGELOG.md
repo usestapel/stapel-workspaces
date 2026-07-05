@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.4 — 2026-07-05
+
+### Changed
+- OpenAPI: `@extend_schema` for `InternalPersonalWorkspaceView` (POST get-or-create
+  personal workspace). Documents `request=None`, `200` →
+  `InternalPersonalWorkspaceResponseSerializer` (`workspace_id`), `404` →
+  `StapelErrorSerializer` — resolves the drf-spectacular "unable to guess
+  serializer" error so the generated client is typed.
+
 ## 0.3.3 — 2026-07-05
 
 ### Fixed
