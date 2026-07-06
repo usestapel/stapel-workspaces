@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.9 — 2026-07-06
+
+### Changed — admin-suite AS-5: `@access` category rollout
+
+Applies the `stapel_core.access` category decorators (admin-suite §0/AS-5 sweep,
+docs/admin-suite.md) to this module's models and swaps the affected `ModelAdmin`
+to `stapel_core.django.admin.base.StapelModelAdmin`.
+
+- `WorkspaceInvitation` decorated `@access.secret` (`secret_fields = ("token",)`,
+  pinned explicitly even though pattern detection on the field name would also
+  catch it) — its bearer invite token is never returned by the invite-creation
+  API and is now masked in the admin rather than shown in plaintext to any
+  staff with model permissions; only a superuser can view/mutate the row.
+  `@access.ops` was considered (the model has the `expires_at`/single-use shape
+  the doc calls out) and rejected: `ops`'s admin-layer lockout is total — even a
+  superuser cannot add/change/delete — and this repo has no application-level
+  revoke endpoint, so `revoked_at` is only ever set via a direct admin edit;
+  `ops` would have removed the only working revoke path, `secret` keeps it open
+  to superusers.
+- `Workspace` and `WorkspaceMember` stay undecorated (implicit
+  `@access.standard`) — both are business tables staff work with directly
+  (the admin-suite doc's own worked example names `Workspace`).
+- Attribute-only change: no migrations
+  (`makemigrations workspaces --check --dry-run` reports no changes).
+
 ## 0.3.8 — 2026-07-06
 
 ### Added — ru error catalog + bilingual error reference (i18n-shipping волна 2)

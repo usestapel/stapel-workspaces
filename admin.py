@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from stapel_core.django.admin.base import StapelModelAdmin
+
 from .models import Workspace, WorkspaceInvitation, WorkspaceMember
 
 
@@ -20,8 +22,12 @@ class WorkspaceMemberAdmin(admin.ModelAdmin):
 
 
 @admin.register(WorkspaceInvitation)
-class WorkspaceInvitationAdmin(admin.ModelAdmin):
+class WorkspaceInvitationAdmin(StapelModelAdmin):
+    # secret category (AS-3): superuser-only at the admin layer, `token`
+    # masked — it is a bearer capability (secrets.token_urlsafe) email-gated
+    # only at accept time, not safe to show in plaintext to any staff.
     list_display = ["workspace", "email", "role", "expires_at", "accepted_at", "revoked_at"]
     list_filter = ["role", "accepted_at", "revoked_at"]
     search_fields = ["workspace__name", "email"]
-    readonly_fields = ["id", "token", "created_at"]
+    readonly_fields = ["id", "created_at"]
+    secret_fields = ("token",)  # explicit — pattern detection would match too

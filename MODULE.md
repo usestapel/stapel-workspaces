@@ -25,7 +25,7 @@ registries). Everything below is verifiable against the code in this repo.
 | Bus consumer (`management/commands/consume_auth_events.py`) | Listens on `user.registered` (consumer group `workspaces-auth-events`) → `ensure_personal_workspace()` → publishes `workspace.personal.created` |
 | GDPR (`gdpr.py`, `apps.py`) | `WorkspacesGDPRProvider` (section `"workspaces"`), registered with `stapel_core.gdpr.gdpr_registry` in `AppConfig.ready()`; export (memberships, owned workspaces, sent invites), delete (memberships removed, pending sent invites deleted, owned workspaces **soft**-deleted), anonymize (`invited_by` cleared on accepted invites) |
 | Errors (`errors.py`) | `WORKSPACES_ERRORS` keys (`error.404.workspace_not_found`, `error.403.forbidden_workspace`, `error.403.last_owner_cannot_be_removed`, `error.400.invitation_expired`, ...) registered via `register_service_errors`; `WorkspacesErrorKeysView` |
-| Admin (`admin.py`) | `ModelAdmin`s for all three models (invitation `token` read-only) |
+| Admin (`admin.py`) | `Workspace` / `WorkspaceMember` plain `ModelAdmin`s (business, undecorated); `WorkspaceInvitation` is `@access.secret` and subclasses `StapelModelAdmin` — see "Admin categories" below |
 | Public API (`__init__.py`, PEP 562 lazy) | `__all__ = ["create_workspace", "ensure_personal_workspace", "create_invitation", "accept_invitation", "CHECK_MEMBERSHIP", "check_membership", "EVENT_WORKSPACE_PERSONAL_CREATED", "WorkspacesGDPRProvider"]` |
 
 Consumer-side helpers live in **stapel-core**, not here: `stapel_core.django.workspaces`
@@ -180,6 +180,29 @@ gate's W-counter, cleared by `translate_catalogs --approve`). Gate + regenerate:
 missing/stale/params/byte-instability); regenerate with
 `STAPEL_REGEN_ERROR_I18N=1 pytest tests/test_error_i18n.py::test_regen` and commit
 `translations/errors.ru.json`, `translations/.state.json`, `docs/errors.{en,ru}.md`.
+
+### Admin categories (`stapel_core.access`, admin-suite AS-5)
+
+`Workspace` and `WorkspaceMember` are business tables and stay undecorated (implicit
+`@access.standard` — the doc's own worked example literally names `Workspace`, and
+`WorkspaceMember` is the core membership/role table staff manage directly).
+
+`WorkspaceInvitation` is decorated `@access.secret` and its `ModelAdmin` subclasses
+`stapel_core.django.admin.base.StapelModelAdmin` (`secret_fields = ("token",)`,
+pinned explicitly though pattern detection on the field name would also catch it).
+Its `token` (`secrets.token_urlsafe(32)`, unique, single-use) is a bearer capability
+— the invite-accept API endpoint deliberately never returns it in the response DTO,
+only the notification email carries it — so plaintext exposure in the admin is the
+same class of risk as `ScopeToken` (`stapel-core/django/gateway/models.py`), the
+reference `@access.secret` precedent with the same `token` + `expires_at` +
+`revoked_at` shape. `@access.ops` was considered and rejected: the admin layer's
+read-only lockout for `ops` applies even to a superuser (`StapelModelAdmin.
+has_add_permission` et al. hard-`return False`), and there is no application-level
+revoke endpoint in this repo today — `revoked_at` is only ever set via a direct
+admin edit (or GDPR bulk-delete of unaccepted invites) — so `ops` would remove the
+only working revoke path. `@access.secret` keeps that path open to superusers while
+masking the token from any lower-privileged staff view. Attribute-only change: no
+migrations (`makemigrations workspaces --check --dry-run` reports no changes).
 
 ## Anti-patterns
 

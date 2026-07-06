@@ -11,6 +11,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from stapel_core.access.declaration import access
+
 
 class WorkspaceType(models.TextChoices):
     PERSONAL = "personal", "Personal"
@@ -94,6 +96,7 @@ class WorkspaceMember(models.Model):
         return f"{self.user_id} @ {self.workspace_id} ({self.role})"
 
 
+@access.secret  # bearer invite token: superuser-only, token masked in admin (AS-3)
 class WorkspaceInvitation(models.Model):
     """Pending invite by email — resolved into WorkspaceMember on acceptance."""
 
