@@ -159,6 +159,28 @@ projects connect receivers freely; cross-service reactions must use the comm eve
 |---|---|---|---|
 | `workspace_member_changed` | `WorkspaceMember` | `workspace`, `user`, `role`, `action` (`"added"` \| `"updated"` \| `"removed"`) | `services.create_workspace` (owner seed), `services.accept_invitation` (added), `views.MemberDetailView.patch` (updated), `views.MemberDetailView.delete` (removed) |
 
+**Error localization** (i18n-shipping.md §5): `docs/errors.json` is the existing
+en canon codegen artifact (the array of `{code, status, params, remediation,
+en}` entries emitted by core's `generate_error_keys` from `errors.py`'s
+`register_service_errors` call, plus the cross-cutting `verification`/`captcha`
+keys). ru ships as a flat `translations/errors.ru.json` catalog with a
+`translations/.state.json` provenance sidecar, and human-readable references
+[Errors (EN)](docs/errors.en.md) · [Ошибки (RU)](docs/errors.ru.md). Semantics of
+the i18n seams (library-standard §3.3 — MODULE.md states the merge semantics of
+each key): the **error registry** is `dict.update`/**last-wins** (a host
+`errors.py` autodiscovered after ours overrides an en text — and its raise-time
+render — without a fork); the **locale catalogs** are discovered over
+INSTALLED_APPS and merged **later-wins** (a host app's
+`translations/errors.<lang>.json` overrides our texts, and an override MUST keep
+the canon's `{param}` slots — gated). ru provenance is honest: 50 keys seeded
+from the curated `stapel-translate` builtin fixtures (`origin: seed:stapel-builtin`,
+no tokens spent), 2 keys machine-translated (`origin: llm`, unreviewed — the
+gate's W-counter, cleared by `translate_catalogs --approve`). Gate + regenerate:
+`tests/test_error_i18n.py` (`check_translation_catalogs` — E on
+missing/stale/params/byte-instability); regenerate with
+`STAPEL_REGEN_ERROR_I18N=1 pytest tests/test_error_i18n.py::test_regen` and commit
+`translations/errors.ru.json`, `translations/.state.json`, `docs/errors.{en,ru}.md`.
+
 ## Anti-patterns
 
 - **Don't import `stapel_workspaces` from another Stapel module** (and don't import
