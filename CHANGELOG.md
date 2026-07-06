@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.6 — 2026-07-06
+
+### Changed
+- Pinned `stapel-core` to the `>=0.8,<0.9` window (library-standard §7.1: one
+  minor window; floor `0.8.0` is published on PyPI — no pin into the void).
+- CI: added the release-track job (library-standard §7.4) — installs the package
+  the way an end user does (`pip install .`, dependencies resolved from PyPI
+  strictly by the declared pins, no git-main core, no editable siblings), asserts
+  `stapel-core` resolves inside the `0.8` window, and runs an import smoke.
+  Advisory (continue-on-error) until the whole stapel graph is on PyPI; becomes
+  the blocking precondition for a `vX.Y.Z` tag once it is.
+
+
 ## 0.3.5 — 2026-07-06
 
 ### Packaging
