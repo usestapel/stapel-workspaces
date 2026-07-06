@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.7 — 2026-07-06
+
+### Added
+- Declarative error registry with machine-readable remediation hints. Every
+  `error.<status>.<name>` key the service raises now carries a `remediation`
+  from the finite vocabulary (`retry | wait_and_retry | reauthenticate |
+  verify | fix_input | contact_support | bug`), declared alongside the keys via
+  `register_service_errors(..., remediation=...)`.
+- `docs/errors.json` codegen artifact (`generate_error_keys`) — the
+  language-agnostic registry of every key with its `status`, `{param}` slots,
+  `remediation`, and English text — plus a byte-stable drift gate
+  (`tests/test_error_keys.py`, mirrors the flow-doc/schema.json discipline).
+- Canon remediation overrides where the frontend status+name heuristic lies
+  (7 of 11 keys): `*_not_found` → `fix_input` (heuristic retries a 404,
+  looping the lookup); `forbidden_workspace` → `contact_support` (not-a-member
+  boundary — no field to fix, an owner must invite/promote); `last_owner…` →
+  `fix_input` (self-serve precondition "transfer ownership first");
+  `invitation_expired`/`invitation_revoked` → `contact_support` (dead,
+  immutable token — only the owner can re-invite; the heuristic says retry for
+  expired, which loops on a spent token). The reasoning is documented per key
+  in `errors.py`.
+
+### Changed
+- Test settings now install `stapel_core.django.apps.CommonDjangoConfig` so the
+  `generate_error_keys` management command is available to the drift gate.
+
+
 ## 0.3.6 — 2026-07-06
 
 ### Changed

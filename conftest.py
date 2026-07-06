@@ -15,6 +15,9 @@ def pytest_configure(config):
                 "django.contrib.sessions",
                 "django.contrib.messages",
                 "django.contrib.admin",
+                # CommonDjangoConfig ships the stapel_core management commands
+                # (generate_error_keys, used by the errors.json drift gate).
+                "stapel_core.django.apps.CommonDjangoConfig",
                 "stapel_core.django.users",
                 "rest_framework",
                 "stapel_workspaces",
