@@ -181,6 +181,62 @@ missing/stale/params/byte-instability); regenerate with
 `STAPEL_REGEN_ERROR_I18N=1 pytest tests/test_error_i18n.py::test_regen` and commit
 `translations/errors.ru.json`, `translations/.state.json`, `docs/errors.{en,ru}.md`.
 
+### Contract emission — the `schema` + `flows` + `errors` triad
+
+This module emits its **own** machine-readable API contract, per-module, so the
+frontend codegen can read a committed, version-pinned artifact instead of
+checking out the monolith aggregate at floating `main` (contract-pipeline.md
+§2, verdict **A**: contract = a reviewable commit, like `docs/errors.json`
+always was). Copied from stapel-auth's reference implementation. The triad
+lives in `docs/`:
+
+```
+docs/schema.json   drf-spectacular OpenAPI, this module only, canonical /workspaces/api/ prefix
+docs/flows.json    generate_flow_docs machine artifact — empty array (no @flow_step yet)
+docs/errors.json   generate_error_keys registry (the original per-module etalon)
+```
+
+The emitted `schema.json` is **byte-identical to the monolith aggregate's
+workspaces slice** — the 8 paths under `/workspaces/api/` plus their transitive
+`$ref` component closure (self-contained: workspaces' own response/request
+schemas + core's `StapelError`; no sibling module needed for closure, unlike
+auth↔gdpr). `tests/test_contract.py::test_matches_monolith_workspaces_slice`
+asserts it in the workspace (skipped in module CI, where the monolith isn't
+checked out).
+
+**Harness** (three small files, plus the shared mechanism in
+`stapel_tools.codegen`):
+- `_codegen_settings.py` — the single `settings.configure(**kwargs)` block,
+  shared with `conftest.py` so the test instance and the codegen instance can
+  never drift. `contract=True` swaps in the production `REST_FRAMEWORK` (DRF
+  caches it on first access, so it must be right at configure time).
+- `codegen_urls.py` — mounts `stapel_workspaces.urls` alone at the canonical
+  `workspaces/api/` prefix, exactly as the monolith does (no sibling co-mount:
+  workspaces is the only module under this prefix in
+  `stapel-example-monolith/svc-app/core/urls.py`).
+- `_codegen.py` — configures the instance on `codegen_urls`, forces
+  `spectacular_settings.SCHEMA_PATH_PREFIX = "/"` (drf-spectacular derives
+  operationIds from the common path prefix of all endpoints — `/` in the
+  multi-module monolith, so operationIds keep the mount segment,
+  `workspaces_api_*`), and **explicitly calls**
+  `stapel_core.django.openapi.swagger._register_jwt_auth_extension()`. The
+  monolith's own urls.py triggers this drf-spectacular security-scheme
+  registration as a side effect of importing `get_dev_urls()`; auth's harness
+  gets it for free only because its co-mounted `stapel_gdpr.urls` happens to
+  call the same registration — workspaces has no such sibling, so the harness
+  registers it directly. Without this, protected endpoints would emit without
+  their monolith `security: [{"JWTCookieAuth": []}]` entry (a real
+  byte-identity delta, not a `$ref` closure gap).
+
+**Gate:** `make contract` re-emits; `make contract-check` regenerates into a
+temp dir and diffs — identical discipline to `test_error_keys`. The
+CI-enforced gate is `tests/test_contract.py` (pytest, run in the module's
+venv). Regenerate after any serializer/view/url/error change:
+
+    make contract        # or: python -m stapel_workspaces._codegen --out docs
+
+then commit `docs/{schema,flows,errors}.json`.
+
 ### Admin categories (`stapel_core.access`, admin-suite AS-5)
 
 `Workspace` and `WorkspaceMember` are business tables and stay undecorated (implicit

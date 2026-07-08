@@ -1,5 +1,54 @@
 # Changelog
 
+## [Unreleased]
+
+### Added — per-module contract emission: `schema` + `flows` triad (contract-pipeline.md Wave 1)
+
+stapel-workspaces now emits its **own** API contract per-module, completing the
+triad `docs/{schema,flows,errors}.json` (`errors.json` already existed). The
+frontend codegen can now read workspaces' committed artifacts instead of the
+monolith aggregate at floating `main` — contract-pipeline.md verdict **A**
+(contract = a reviewable, version-pinned commit). Copies the stapel-auth ETALON
+harness (`_codegen_settings.py` / `codegen_urls.py` / `_codegen.py` / `Makefile`
+/ `tests/test_contract.py`), adapted for this module's shape.
+
+- **Harness** (reuses `stapel_tools.codegen`, adds ~90 lines of per-module config):
+  - `_codegen_settings.py` — single source of truth for the `settings.configure`
+    block, shared with `conftest.py` (extracted, no test-behavior change); a
+    `contract=True` mode swaps in the production `REST_FRAMEWORK`.
+  - `codegen_urls.py` — mounts `stapel_workspaces.urls` alone at the canonical
+    `workspaces/api/` prefix (exactly as the monolith does — no sibling is
+    co-mounted under this prefix, unlike auth+gdpr).
+  - `_codegen.py` — the `python -m stapel_workspaces._codegen --out docs`
+    entrypoint. Explicitly calls
+    `stapel_core.django.openapi.swagger._register_jwt_auth_extension()`: the
+    monolith's own `urls.py` triggers this drf-spectacular extension
+    registration as a *global* side effect of importing `get_dev_urls()`
+    (auth's harness gets it for free only because its co-mounted
+    `stapel_gdpr.urls` happens to call the same registration); without it,
+    protected endpoints would emit without their monolith
+    `security: [{"JWTCookieAuth": []}]` entry — a real byte-identity delta,
+    not a `$ref` component-closure gap.
+- **`docs/schema.json`** (new) — drf-spectacular OpenAPI for workspaces only,
+  canonical prefix; **`docs/flows.json`** (new) — empty array, this module has
+  no `@flow_step` annotations yet.
+- **Byte-identity** with the monolith aggregate's workspaces slice (paths under
+  `/workspaces/api/` + their component closure) is **exact**: 8 paths, 13-
+  component closure (`WorkspaceResponse`, `MemberResponse`, `StapelError`, …),
+  zero diff vs the monolith's committed + freshly-regenerated aggregate.
+  `errors.json` re-emission is also byte-identical to the previously-committed
+  artifact. No sibling module needed co-mounting for closure (contract-
+  pipeline.md §9 Q2): the workspaces slice's `$ref` closure is self-contained
+  (workspaces + core's `StapelError`).
+- **Gate:** `make contract` / `make contract-check`; `tests/test_contract.py`
+  (drift + determinism + canonical-prefix + monolith-slice identity) is the
+  CI-enforced gate. The monolith-slice identity test is skipped outside the
+  workspace (module CI checks out only this repo).
+- No friction from the workspaces brownfield User-model hardcode (already
+  resolved upstream, see "fix: workspaces uses AUTH_USER_MODEL not concrete
+  User") — the harness mounts cleanly on `AUTH_USER_MODEL="users.User"`,
+  same as the existing test conftest.
+
 ## 0.3.9 — 2026-07-06
 
 ### Changed — admin-suite AS-5: `@access` category rollout

@@ -1,0 +1,959 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/workspaces/api/": {
+      "get": {
+        "operationId": "workspaces_api_retrieve",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceListResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "workspaces_api_create",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                },
+                "examples": {
+                  "WorkspaceResponse": {
+                    "value": {
+                      "id": "0192f...",
+                      "name": "Acme Engineering",
+                      "slug": "acme-eng",
+                      "type": "work",
+                      "owner_id": "0192a...",
+                      "my_role": "owner",
+                      "created_at": "2026-05-20T10:00:00Z",
+                      "updated_at": "2026-05-20T10:00:00Z"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/{workspace_id}": {
+      "get": {
+        "operationId": "workspaces_api_retrieve_2",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                },
+                "examples": {
+                  "WorkspaceResponse": {
+                    "value": {
+                      "id": "0192f...",
+                      "name": "Acme Engineering",
+                      "slug": "acme-eng",
+                      "type": "work",
+                      "owner_id": "0192a...",
+                      "my_role": "owner",
+                      "created_at": "2026-05-20T10:00:00Z",
+                      "updated_at": "2026-05-20T10:00:00Z"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      },
+      "patch": {
+        "operationId": "workspaces_api_partial_update",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Workspaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedWorkspaceUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedWorkspaceUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedWorkspaceUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                },
+                "examples": {
+                  "WorkspaceResponse": {
+                    "value": {
+                      "id": "0192f...",
+                      "name": "Acme Engineering",
+                      "slug": "acme-eng",
+                      "type": "work",
+                      "owner_id": "0192a...",
+                      "my_role": "owner",
+                      "created_at": "2026-05-20T10:00:00Z",
+                      "updated_at": "2026-05-20T10:00:00Z"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "workspaces_api_destroy",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/workspaces/api/{workspace_id}/members": {
+      "get": {
+        "operationId": "workspaces_api_members_retrieve",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberListResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/{workspace_id}/members/{user_id}": {
+      "patch": {
+        "operationId": "workspaces_api_members_partial_update",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedMemberUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedMemberUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedMemberUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                },
+                "examples": {
+                  "MemberResponse": {
+                    "value": {
+                      "id": "0192...",
+                      "role": "admin"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "workspaces_api_members_destroy",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/workspaces/api/{workspace_id}/members/invite": {
+      "post": {
+        "operationId": "workspaces_api_members_invite_create",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInviteRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInviteRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberInviteResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/internal/{workspace_id}/members/{user_id}": {
+      "get": {
+        "operationId": "workspaces_api_internal_members_retrieve",
+        "description": "Allow other services to check membership/role via X-API-KEY.\n\n**Permissions:** `OperandHolder`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Internal"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                },
+                "examples": {
+                  "MemberResponse": {
+                    "value": {
+                      "id": "0192...",
+                      "role": "admin"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/internal/users/{user_id}/personal": {
+      "post": {
+        "operationId": "workspaces_api_internal_users_personal_create",
+        "description": "Get-or-create the personal workspace for a given user_id.\n\n**Permissions:** `OperandHolder`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Internal"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalPersonalWorkspaceResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/invitations/accept": {
+      "post": {
+        "operationId": "workspaces_api_invitations_accept_create",
+        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationAcceptRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationAcceptRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationAcceptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                },
+                "examples": {
+                  "MemberResponse": {
+                    "value": {
+                      "id": "0192...",
+                      "role": "admin"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "InternalPersonalWorkspaceResponse": {
+        "type": "object",
+        "description": "Get-or-create result for a user's personal workspace (service-to-service).",
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Personal workspace UUID."
+          }
+        },
+        "required": [
+          "workspace_id"
+        ]
+      },
+      "InvitationAcceptRequest": {
+        "type": "object",
+        "description": "Accept an invite.",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Invite token from the email link"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "InvitationResponse": {
+        "type": "object",
+        "description": "InvitationResponse(id: uuid.UUID, workspace_id: uuid.UUID, email: str, role: str, expires_at: str, accepted_at: Optional[str], revoked_at: Optional[str], created_at: str)",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "accepted_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "revoked_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted_at",
+          "created_at",
+          "email",
+          "expires_at",
+          "id",
+          "revoked_at",
+          "role",
+          "workspace_id"
+        ]
+      },
+      "MemberInviteRequest": {
+        "type": "object",
+        "description": "Invite payload.",
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "One or more emails to invite",
+            "example": [
+              "alice@example.com"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "description": "Role to grant on acceptance",
+            "example": "member"
+          }
+        },
+        "required": [
+          "emails"
+        ]
+      },
+      "MemberInviteResponse": {
+        "type": "object",
+        "description": "MemberInviteResponse(invitations: List[ForwardRef('InvitationResponse')] = <factory>)",
+        "properties": {
+          "invitations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvitationResponse"
+            }
+          }
+        }
+      },
+      "MemberListResponse": {
+        "type": "object",
+        "description": "MemberListResponse(members: List[stapel_workspaces.dto.MemberResponse] = <factory>)",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            }
+          }
+        }
+      },
+      "MemberResponse": {
+        "type": "object",
+        "description": "Workspace member.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Membership UUID",
+            "example": "0192..."
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workspace UUID"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User UUID"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "description": "User email (best-effort, from JWT claim cache)"
+          },
+          "role": {
+            "type": "string",
+            "description": "owner / admin / member / viewer",
+            "example": "admin"
+          },
+          "invited_at": {
+            "type": "string",
+            "description": "ISO 8601 invite timestamp"
+          },
+          "accepted_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 acceptance timestamp; null while pending"
+          },
+          "last_accessed_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 last access; null if never accessed"
+          }
+        },
+        "required": [
+          "accepted_at",
+          "email",
+          "id",
+          "invited_at",
+          "last_accessed_at",
+          "role",
+          "user_id",
+          "workspace_id"
+        ]
+      },
+      "PatchedMemberUpdateRequest": {
+        "type": "object",
+        "description": "MemberUpdateRequest(role: str)",
+        "properties": {
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "PatchedWorkspaceUpdateRequest": {
+        "type": "object",
+        "description": "WorkspaceUpdateRequest(name: Optional[str] = None, slug: Optional[str] = None, settings: Optional[dict] = None)",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {},
+            "nullable": true
+          }
+        }
+      },
+      "StapelError": {
+        "type": "object",
+        "description": "Structured error returned by all Stapel API endpoints.",
+        "properties": {
+          "localizable_error": {
+            "type": "string",
+            "description": "Translation key for client-side localization",
+            "example": "error.404.not_found"
+          },
+          "error": {
+            "type": "string",
+            "description": "Human-readable message in English",
+            "example": "Requested resource not found"
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Context values for template placeholders",
+            "example": {
+              "retry_after": 30
+            }
+          }
+        },
+        "required": [
+          "error",
+          "localizable_error"
+        ]
+      },
+      "WorkspaceCreateRequest": {
+        "type": "object",
+        "description": "Create-workspace payload.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name",
+            "example": "Acme Engineering"
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL-safe identifier (auto-generated when omitted)",
+            "example": "acme-eng"
+          },
+          "type": {
+            "type": "string",
+            "description": "personal or work",
+            "example": "work"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "WorkspaceListResponse": {
+        "type": "object",
+        "description": "WorkspaceListResponse(workspaces: List[stapel_workspaces.dto.WorkspaceResponse] = <factory>)",
+        "properties": {
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceResponse"
+            }
+          }
+        }
+      },
+      "WorkspaceResponse": {
+        "type": "object",
+        "description": "Workspace details.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workspace UUID",
+            "example": "0192f..."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name",
+            "example": "Acme Engineering"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL-safe identifier",
+            "example": "acme-eng"
+          },
+          "type": {
+            "type": "string",
+            "description": "Workspace category",
+            "example": "work"
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Owner user UUID",
+            "example": "0192a..."
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Workspace settings JSON"
+          },
+          "storage_used_bytes": {
+            "type": "integer",
+            "description": "Bytes currently stored"
+          },
+          "storage_limit_bytes": {
+            "type": "integer",
+            "description": "Plan-determined cap"
+          },
+          "member_count": {
+            "type": "integer",
+            "description": "Number of members"
+          },
+          "my_role": {
+            "type": "string",
+            "nullable": true,
+            "description": "Role of the requesting user",
+            "example": "owner"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "ISO 8601 creation time",
+            "example": "2026-05-20T10:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "ISO 8601 last update time",
+            "example": "2026-05-20T10:00:00Z"
+          }
+        },
+        "required": [
+          "created_at",
+          "id",
+          "member_count",
+          "my_role",
+          "name",
+          "owner_id",
+          "settings",
+          "slug",
+          "storage_limit_bytes",
+          "storage_used_bytes",
+          "type",
+          "updated_at"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "JWTCookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "stapel_jwt",
+        "description": "JWT token stored in cookie. Login via /auth/admin/ to get the cookie."
+      }
+    }
+  }
+}
