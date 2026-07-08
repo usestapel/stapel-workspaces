@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/usestapel/stapel-workspaces/actions/workflows/ci.yml/badge.svg)](https://github.com/usestapel/stapel-workspaces/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/usestapel/stapel-workspaces/graph/badge.svg)](https://codecov.io/gh/usestapel/stapel-workspaces)
+[![PyPI](https://img.shields.io/pypi/v/stapel-workspaces.svg)](https://pypi.org/project/stapel-workspaces/)
 
 > Team workspaces and RBAC — roles, invitations, membership, storage quotas
 
