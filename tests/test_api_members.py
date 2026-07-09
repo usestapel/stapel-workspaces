@@ -39,6 +39,18 @@ def _add_member(ws, user, role):
     )
 
 
+def _named_user(first, last, email):
+    from stapel_core.django.users.models import User
+
+    return User.objects.create_user(
+        username=f"u-{uuid.uuid4().hex[:8]}",
+        email=email,
+        first_name=first,
+        last_name=last,
+        password="testpass-1234",
+    )
+
+
 @pytest.mark.django_db
 class TestMemberList:
     def test_requires_auth(self, api_client, user):
@@ -61,6 +73,103 @@ class TestMemberList:
     def test_non_member_403(self, authed_client, other_user):
         ws = _create_ws(other_user)
         resp = authed_client.get(f"{BASE}/{ws.id}/members")
+        assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+class TestMemberListSearchPagination:
+    """?search= + limit/offset + stable display-name sort (BACKLOG G12)."""
+
+    def test_search_by_email(self, authed_client, user):
+        ws = _create_ws(user)
+        alice = _named_user("Alice", "Anderson", "alice@picker.test")
+        _add_member(ws, alice, Role.MEMBER)
+        _add_member(ws, _named_user("Bob", "Brown", "bob@picker.test"), Role.MEMBER)
+        resp = authed_client.get(f"{BASE}/{ws.id}/members?search=ALICE@pick")
+        assert resp.status_code == 200, resp.content
+        ids = [m["user_id"] for m in resp.json()["members"]]
+        assert ids == [str(alice.id)]
+
+    def test_search_by_display_name_case_insensitive(self, authed_client, user):
+        ws = _create_ws(user)
+        alice = _named_user("Alice", "Anderson", "alice@picker.test")
+        _add_member(ws, alice, Role.MEMBER)
+        _add_member(ws, _named_user("Bob", "Brown", "bob@picker.test"), Role.MEMBER)
+        # last name
+        resp = authed_client.get(f"{BASE}/{ws.id}/members?search=anderson")
+        assert [m["user_id"] for m in resp.json()["members"]] == [str(alice.id)]
+        # full display name ("Alice Anderson") also matches
+        resp2 = authed_client.get(f"{BASE}/{ws.id}/members?search=alice ander")
+        assert [m["user_id"] for m in resp2.json()["members"]] == [str(alice.id)]
+
+    def test_search_empty_result(self, authed_client, user):
+        ws = _create_ws(user)
+        _add_member(
+            ws, _named_user("Alice", "Anderson", "alice@picker.test"), Role.MEMBER
+        )
+        resp = authed_client.get(f"{BASE}/{ws.id}/members?search=nobody-zzz")
+        assert resp.status_code == 200
+        assert resp.json()["members"] == []
+
+    def test_stable_sort_by_display_name(self, authed_client, user):
+        ws = _create_ws(user)
+        cara = _named_user("Cara", "C", "cara@picker.test")
+        anna = _named_user("Anna", "A", "anna@picker.test")
+        bella = _named_user("Bella", "B", "bella@picker.test")
+        for u in (cara, anna, bella):  # inserted out of order
+            _add_member(ws, u, Role.MEMBER)
+        # scope out the owner (its email domain differs) to assert pure order
+        resp = authed_client.get(f"{BASE}/{ws.id}/members?search=picker.test")
+        ids = [m["user_id"] for m in resp.json()["members"]]
+        assert ids == [str(anna.id), str(bella.id), str(cara.id)]
+
+    def test_pagination_limit_offset(self, authed_client, user):
+        ws = _create_ws(user)
+        for i in range(4):
+            _add_member(
+                ws, _named_user(f"M{i}", "X", f"m{i}@picker.test"), Role.MEMBER
+            )
+        base = f"{BASE}/{ws.id}/members"
+        full = [m["user_id"] for m in authed_client.get(base).json()["members"]]
+        assert len(full) == 5  # 4 members + owner
+        page1 = authed_client.get(f"{base}?limit=2&offset=0").json()["members"]
+        page2 = authed_client.get(f"{base}?limit=2&offset=2").json()["members"]
+        assert [m["user_id"] for m in page1] == full[:2]
+        assert [m["user_id"] for m in page2] == full[2:4]
+
+    def test_offset_without_limit(self, authed_client, user):
+        ws = _create_ws(user)
+        for i in range(3):
+            _add_member(
+                ws, _named_user(f"M{i}", "X", f"m{i}@picker.test"), Role.MEMBER
+            )
+        base = f"{BASE}/{ws.id}/members"
+        full = [m["user_id"] for m in authed_client.get(base).json()["members"]]
+        tail = authed_client.get(f"{base}?offset=2").json()["members"]
+        assert [m["user_id"] for m in tail] == full[2:]
+
+    def test_no_params_returns_all_backward_compatible(self, authed_client, user):
+        ws = _create_ws(user)
+        _add_member(
+            ws, _named_user("Alice", "Anderson", "alice@picker.test"), Role.MEMBER
+        )
+        resp = authed_client.get(f"{BASE}/{ws.id}/members")
+        assert resp.status_code == 200
+        assert len(resp.json()["members"]) == 2  # owner + member
+
+    def test_invalid_pagination_params_ignored(self, authed_client, user):
+        ws = _create_ws(user)
+        _add_member(
+            ws, _named_user("Alice", "Anderson", "alice@picker.test"), Role.MEMBER
+        )
+        resp = authed_client.get(f"{BASE}/{ws.id}/members?limit=abc&offset=-5")
+        assert resp.status_code == 200
+        assert len(resp.json()["members"]) == 2
+
+    def test_search_foreign_workspace_403(self, api_client, user, other_user):
+        ws = _create_ws(other_user)
+        api_client.force_authenticate(user=user)
+        resp = api_client.get(f"{BASE}/{ws.id}/members?search=alice")
         assert resp.status_code == 403
 
 

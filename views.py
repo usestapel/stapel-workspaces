@@ -1,5 +1,7 @@
 """DRF views for the workspaces service."""
 
+from django.db.models import CharField, F, Q, Value
+from django.db.models.functions import Coalesce, Concat, Lower, NullIf, Trim
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
@@ -99,6 +101,43 @@ def _member_to_dto(m: WorkspaceMember) -> MemberResponse:
         accepted_at=m.accepted_at.isoformat() if m.accepted_at else None,
         last_accessed_at=m.last_accessed_at.isoformat() if m.last_accessed_at else None,
     )
+
+
+def _member_display_name_expr():
+    """SQL expression for a member's display name.
+
+    Mirrors how the member surface already *presents* a member — ``_member_to_dto``
+    joins ``user`` and surfaces its identity — but resolves the name the way a
+    people-picker shows it: prefer the user's full name, fall back to username,
+    then email. Used for BOTH ``?search=`` matching and the stable ordering so
+    every downstream multi-tenant project stops hand-rolling its own member
+    listing (BACKLOG G12).
+    """
+    full_name = Trim(
+        Concat(
+            Coalesce(F("user__first_name"), Value("")),
+            Value(" "),
+            Coalesce(F("user__last_name"), Value("")),
+        )
+    )
+    return Coalesce(
+        NullIf(full_name, Value("")),
+        F("user__username"),
+        F("user__email"),
+        Value(""),
+        output_field=CharField(),
+    )
+
+
+def _parse_non_negative_int(raw, default):
+    """Parse a query-param int, tolerating junk: bad/negative values → default."""
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return value if value >= 0 else default
 
 
 def _invitation_to_dto(inv: WorkspaceInvitation) -> InvitationResponse:
@@ -244,11 +283,41 @@ class MemberListView(SerializerSeamsMixin, APIView):
 
     @extend_schema(responses={200: MemberListResponseSerializer})
     def get(self, request, workspace_id):
+        # List workspace members. Optional, backward-compatible query params
+        # (no docstring here on purpose: drf-spectacular turns a method
+        # docstring into the OpenAPI operation description, which would break
+        # this module's byte-identity with the monolith contract slice):
+        #   * search        — case-insensitive substring on email OR display
+        #                      name (full name / username); lets a people-picker
+        #                      filter server-side instead of pulling every
+        #                      member (BACKLOG G12).
+        #   * limit/offset  — opt-in pagination window; non-negative ints, junk
+        #                      ignored. Order is stable (display name, then id)
+        #                      so pages never overlap or skip rows.
+        # With no params the full list is returned, only now deterministically
+        # ordered.
         if not require_role(workspace_id, request.user.id, Role.VIEWER):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
-        members = WorkspaceMember.objects.filter(
-            workspace_id=workspace_id
-        ).select_related("user")
+        members = (
+            WorkspaceMember.objects.filter(workspace_id=workspace_id)
+            .select_related("user")
+            .annotate(_display_name=_member_display_name_expr())
+            .order_by(Lower("_display_name"), "id")
+        )
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            members = members.filter(
+                Q(_display_name__icontains=search)
+                | Q(user__email__icontains=search)
+            )
+        # Pagination is opt-in: with neither param set the whole list is
+        # returned (pre-G12 behaviour, only now deterministically ordered).
+        limit = _parse_non_negative_int(request.query_params.get("limit"), None)
+        offset = _parse_non_negative_int(request.query_params.get("offset"), 0)
+        if limit is not None:
+            members = members[offset : offset + limit]
+        elif offset:
+            members = members[offset:]
         return StapelResponse(
             self.get_response_serializer_class()(
                 MemberListResponse(members=[_member_to_dto(m) for m in members])

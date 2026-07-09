@@ -49,6 +49,29 @@ harness (`_codegen_settings.py` / `codegen_urls.py` / `_codegen.py` / `Makefile`
   User") — the harness mounts cleanly on `AUTH_USER_MODEL="users.User"`,
   same as the existing test conftest.
 
+## 0.4.0 — 2026-07-10
+
+### Added — member listing: `?search=`, `limit`/`offset`, stable display-name sort (BACKLOG G12)
+
+`GET /{workspace_id}/members` now supports server-side filtering and pagination,
+so every downstream multi-tenant project with a people-picker stops re-writing
+its own member listing (the G12 gap surfaced during a client import).
+
+- **`?search=`** — case-insensitive substring match on the member's email **or**
+  display name. Display name resolves the way the surface already presents a
+  member (it joins `user`): full name → username → email, via a single
+  `Coalesce(NullIf(Trim(Concat(first, last))), username, email)` expression
+  reused for both the filter and the sort.
+- **`limit` / `offset`** — opt-in pagination window; non-negative ints, junk
+  values are ignored (no new 4xx surface). Ordering is **stable** (display name,
+  then `id`) so windows never overlap or skip rows.
+- **Backward-compatible:** with no query params the full member list is returned
+  exactly as before — only now in a deterministic, name-sorted order.
+- Behaviour-only: the emitted OpenAPI contract (`docs/schema.json`) is
+  **unchanged** and stays byte-identical to the monolith aggregate's workspaces
+  slice — the params are read directly off the request, not declared as
+  `OpenApiParameter`, to preserve that identity gate.
+
 ## 0.3.9 — 2026-07-06
 
 ### Changed — admin-suite AS-5: `@access` category rollout
