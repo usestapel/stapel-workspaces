@@ -1,5 +1,7 @@
 """URL configuration for the workspaces app."""
 
+from typing import NamedTuple
+
 from django.urls import path
 
 from .views import (
@@ -49,3 +51,24 @@ urlpatterns = [
         name="workspace-internal-personal",
     ),
 ]
+
+
+class GateEntry(NamedTuple):
+    """One gated URL block: which flags gate which url patterns (capability-config.md §2 p.2).
+
+    ``flags`` compose with OR — the block is mounted while ANY flag is on,
+    and disappears only when ALL of them are off. Empty flags = always on.
+    """
+    name: str
+    flags: tuple
+    patterns: tuple
+
+
+#: Gate registry (capability-config.md §2 p.2): workspaces has no settings
+#: namespace at all (no conf.py) and therefore no config gates — the whole
+#: URL surface is a single always-on block. Declared as a registry entry
+#: (rather than left implicit) so the capabilities.json emitter has a
+#: uniform mechanism across every module.
+GATE_REGISTRY: dict = {
+    'workspaces.api': GateEntry('workspaces.api', (), tuple(urlpatterns)),
+}

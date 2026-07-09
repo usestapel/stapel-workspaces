@@ -1,0 +1,46 @@
+{
+  "module": "stapel-workspaces",
+  "version": "0.3.9",
+  "provides": "Team workspaces and tenancy: personal and work workspaces with owner/admin/member/viewer roles, email invitations with single-use tokens, last-owner protection, per-workspace settings and storage quotas, plus internal service-to-service membership checks — the foundational scope other modules attach their workspace_id to.",
+  "axes": [],
+  "extension_points": [
+    {
+      "name": "Workspace.settings",
+      "kind": "json_settings",
+      "summary": "A JSON bag on every workspace, PATCHable through the workspace API — the sanctioned place for app-level per-workspace preferences without schema changes."
+    },
+    {
+      "name": "AUTH_USER_MODEL",
+      "kind": "swappable_model",
+      "summary": "Standard Django user swap — owner/member/inviter FKs target settings.AUTH_USER_MODEL; the module resolves users via get_user_model(), never a concrete class."
+    },
+    {
+      "name": "serializer_seams",
+      "kind": "class_override",
+      "summary": "Every public view declares request/response serializer seams (SerializerSeamsMixin) — subclass the view, override the attribute, remount the URL."
+    },
+    {
+      "name": "role_capabilities",
+      "kind": "consumer_api",
+      "summary": "Map the fixed owner/admin/member/viewer roles to app-specific capabilities in host code via role_at_least/require_role (in-service) or the workspaces.check_membership comm Function (cross-service, no import)."
+    }
+  ],
+  "operations_total": 12,
+  "requires": [
+    {
+      "module": "stapel-core",
+      "optional": false,
+      "reason": "comm bus (workspace.* emits, workspaces.check_membership Function, user.registered consumer), JWT authentication, GDPR provider registry"
+    },
+    {
+      "module": "stapel-auth",
+      "optional": true,
+      "reason": "emits the user.registered event that triggers personal-workspace creation and issues the authenticated sessions the workspace endpoints require; decoupled via the comm bus"
+    },
+    {
+      "module": "stapel-notifications",
+      "optional": true,
+      "reason": "delivers the workspace.invitation email this module requests via request_notification; invitation creation succeeds regardless (best-effort)"
+    }
+  ]
+}
