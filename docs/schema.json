@@ -242,6 +242,30 @@
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Opt-in pagination window size (non-negative integer; junk/negative values are ignored). Omit to return the full list."
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Opt-in pagination offset (non-negative integer; junk/negative values are treated as 0). Order is stable (display name, then id) so pages never overlap or skip rows."
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive substring filter matched against a member's email OR display name (full name / username). Lets a people-picker filter server-side instead of pulling every member."
+          },
+          {
             "in": "path",
             "name": "workspace_id",
             "schema": {

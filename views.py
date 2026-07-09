@@ -3,7 +3,7 @@
 from django.db.models import CharField, F, Q, Value
 from django.db.models.functions import Coalesce, Concat, Lower, NullIf, Trim
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import permissions, status
 from rest_framework.views import APIView
 from stapel_core.django.api.errors import StapelErrorResponse, StapelResponse
@@ -281,7 +281,46 @@ class MemberListView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     response_serializer_class = MemberListResponseSerializer
 
-    @extend_schema(responses={200: MemberListResponseSerializer})
+    @extend_schema(
+        responses={200: MemberListResponseSerializer},
+        parameters=[
+            OpenApiParameter(
+                name="search",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Case-insensitive substring filter matched against a "
+                    "member's email OR display name (full name / username). "
+                    "Lets a people-picker filter server-side instead of "
+                    "pulling every member."
+                ),
+            ),
+            OpenApiParameter(
+                name="limit",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Opt-in pagination window size (non-negative integer; "
+                    "junk/negative values are ignored). Omit to return the "
+                    "full list."
+                ),
+            ),
+            OpenApiParameter(
+                name="offset",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Opt-in pagination offset (non-negative integer; "
+                    "junk/negative values are treated as 0). Order is stable "
+                    "(display name, then id) so pages never overlap or skip "
+                    "rows."
+                ),
+            ),
+        ],
+    )
     def get(self, request, workspace_id):
         # List workspace members. Optional, backward-compatible query params
         # (no docstring here on purpose: drf-spectacular turns a method

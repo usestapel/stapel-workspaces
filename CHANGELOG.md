@@ -67,10 +67,12 @@ its own member listing (the G12 gap surfaced during a client import).
   then `id`) so windows never overlap or skip rows.
 - **Backward-compatible:** with no query params the full member list is returned
   exactly as before — only now in a deterministic, name-sorted order.
-- Behaviour-only: the emitted OpenAPI contract (`docs/schema.json`) is
-  **unchanged** and stays byte-identical to the monolith aggregate's workspaces
-  slice — the params are read directly off the request, not declared as
-  `OpenApiParameter`, to preserve that identity gate.
+- **OpenAPI contract:** `search`, `limit` and `offset` are declared as
+  `OpenApiParameter` (drf-spectacular) on the members-`GET` operation, each with
+  a description, so they appear in `docs/schema.json` and the frontend codegen
+  sees them — no shadow contract. The monolith aggregate's workspaces slice was
+  regenerated in the same change, so the byte-identity gate
+  (`test_matches_monolith_workspaces_slice`) stays green.
 
 ## 0.3.9 — 2026-07-06
 
