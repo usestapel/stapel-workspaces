@@ -1,12 +1,13 @@
 """DRF views for the workspaces service."""
 
 from django.db.models import CharField, F, Q, Value
-from django.db.models.functions import Coalesce, Concat, Lower, NullIf, Trim
+from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import permissions, status
 from rest_framework.views import APIView
 from stapel_core.django.api.errors import StapelErrorResponse, StapelResponse
+from stapel_core.django.api.pagination import AnchorPagination
 from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
 from stapel_core.django.openapi.schemas import StapelErrorSerializer
 from stapel_core.django.workspaces import invalidate_membership_cache
@@ -16,7 +17,6 @@ from . import services
 from .dto import (
     InvitationResponse,
     MemberInviteResponse,
-    MemberListResponse,
     MemberResponse,
     WorkspaceListResponse,
     WorkspaceResponse,
@@ -39,7 +39,6 @@ from .serializers import (
     InvitationAcceptRequestSerializer,
     MemberInviteRequestSerializer,
     MemberInviteResponseSerializer,
-    MemberListResponseSerializer,
     MemberResponseSerializer,
     MemberUpdateRequestSerializer,
     WorkspaceCreateRequestSerializer,
@@ -127,17 +126,6 @@ def _member_display_name_expr():
         Value(""),
         output_field=CharField(),
     )
-
-
-def _parse_non_negative_int(raw, default):
-    """Parse a query-param int, tolerating junk: bad/negative values → default."""
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return default
-    return value if value >= 0 else default
 
 
 def _invitation_to_dto(inv: WorkspaceInvitation) -> InvitationResponse:
@@ -276,13 +264,32 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         return StapelResponse(status=status.HTTP_204_NO_CONTENT)
 
 
+class MemberPagination(AnchorPagination):
+    """Anchor pagination for the member list.
+
+    Workspace members carry no ``created_at``; ``invited_at`` (``auto_now_add``)
+    IS the membership's creation timestamp — the direct analog of the ETALON
+    modules' ``CreatedAtAnchorPagination`` (stapel-notifications /
+    stapel-tasks). ``AnchorPagination`` supports only a single monotonic anchor
+    (no composite ``name,id``), so the former display-name sort is dropped in
+    favour of this stable, insertion-safe anchor: cursor windows must not shift
+    under concurrent writes (stapel-core mandate; CHANGELOG 0.4.0).
+    """
+
+    anchor_field = "invited_at"
+    ordering = "-invited_at"
+    page_size = 100
+    max_page_size = 500
+
+
 @extend_schema(tags=["Members"])
 class MemberListView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
-    response_serializer_class = MemberListResponseSerializer
+    pagination_class = MemberPagination
+    response_serializer_class = MemberResponseSerializer
 
     @extend_schema(
-        responses={200: MemberListResponseSerializer},
+        responses={200: MemberResponseSerializer(many=True)},
         parameters=[
             OpenApiParameter(
                 name="search",
@@ -296,52 +303,25 @@ class MemberListView(SerializerSeamsMixin, APIView):
                     "pulling every member."
                 ),
             ),
-            OpenApiParameter(
-                name="limit",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Opt-in pagination window size (non-negative integer; "
-                    "junk/negative values are ignored). Omit to return the "
-                    "full list."
-                ),
-            ),
-            OpenApiParameter(
-                name="offset",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Opt-in pagination offset (non-negative integer; "
-                    "junk/negative values are treated as 0). Order is stable "
-                    "(display name, then id) so pages never overlap or skip "
-                    "rows."
-                ),
-            ),
         ],
     )
     def get(self, request, workspace_id):
-        # List workspace members. Optional, backward-compatible query params
-        # (no docstring here on purpose: drf-spectacular turns a method
-        # docstring into the OpenAPI operation description, which would break
-        # this module's byte-identity with the monolith contract slice):
-        #   * search        — case-insensitive substring on email OR display
-        #                      name (full name / username); lets a people-picker
-        #                      filter server-side instead of pulling every
-        #                      member (BACKLOG G12).
-        #   * limit/offset  — opt-in pagination window; non-negative ints, junk
-        #                      ignored. Order is stable (display name, then id)
-        #                      so pages never overlap or skip rows.
-        # With no params the full list is returned, only now deterministically
-        # ordered.
+        # List workspace members, anchor-paginated (stapel-core mandate:
+        # limit/offset windows are forbidden — they slip rows under concurrent
+        # writes). The paginator emits anchor/limit/direction and orders by the
+        # -invited_at cursor. (No docstring here on purpose: drf-spectacular
+        # turns a method docstring into the OpenAPI operation description, which
+        # would break this module's byte-identity with the monolith contract
+        # slice.)
+        #   * search — case-insensitive substring on email OR display name
+        #              (full name / username); lets a people-picker filter
+        #              server-side instead of pulling every member (BACKLOG G12).
         if not require_role(workspace_id, request.user.id, Role.VIEWER):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         members = (
             WorkspaceMember.objects.filter(workspace_id=workspace_id)
             .select_related("user")
             .annotate(_display_name=_member_display_name_expr())
-            .order_by(Lower("_display_name"), "id")
         )
         search = (request.query_params.get("search") or "").strip()
         if search:
@@ -349,19 +329,11 @@ class MemberListView(SerializerSeamsMixin, APIView):
                 Q(_display_name__icontains=search)
                 | Q(user__email__icontains=search)
             )
-        # Pagination is opt-in: with neither param set the whole list is
-        # returned (pre-G12 behaviour, only now deterministically ordered).
-        limit = _parse_non_negative_int(request.query_params.get("limit"), None)
-        offset = _parse_non_negative_int(request.query_params.get("offset"), 0)
-        if limit is not None:
-            members = members[offset : offset + limit]
-        elif offset:
-            members = members[offset:]
-        return StapelResponse(
-            self.get_response_serializer_class()(
-                MemberListResponse(members=[_member_to_dto(m) for m in members])
-            )
-        )
+        paginator = MemberPagination()
+        page = paginator.paginate_queryset(members, request)
+        response_cls = self.get_response_serializer_class()
+        items = [response_cls(_member_to_dto(m)).data for m in page]
+        return paginator.get_paginated_response(items)
 
 
 @extend_schema(tags=["Members"])

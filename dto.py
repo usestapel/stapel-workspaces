@@ -91,11 +91,6 @@ class MemberResponse:
 
 
 @dataclass
-class MemberListResponse:
-    members: List[MemberResponse] = field(default_factory=list)
-
-
-@dataclass
 class MemberInviteRequest:
     """Invite payload.
 

@@ -111,7 +111,7 @@ untouched.
 |---|---|---|---|
 | `WorkspaceListCreateView` | `""` — mount root (`workspace-list`) | `WorkspaceCreateRequestSerializer` | `WorkspaceResponseSerializer`; list: `WorkspaceListResponseSerializer` |
 | `WorkspaceDetailView` | `<uuid:workspace_id>` (`workspace-detail`) | `WorkspaceUpdateRequestSerializer` | `WorkspaceResponseSerializer` |
-| `MemberListView` | `<ws>/members` (`workspace-members`) | — | `MemberListResponseSerializer` |
+| `MemberListView` | `<ws>/members` (`workspace-members`) | — | `MemberResponseSerializer` (anchor-paginated: `?search=`, `anchor`/`limit`/`direction`) |
 | `MemberInviteView` | `<ws>/members/invite` (`workspace-member-invite`) | `MemberInviteRequestSerializer` | `MemberInviteResponseSerializer` |
 | `MemberDetailView` | `<ws>/members/<user_id>` (`workspace-member-detail`) | `MemberUpdateRequestSerializer` | `MemberResponseSerializer` |
 | `InvitationAcceptView` | `invitations/accept` (`workspace-invitation-accept`) | `InvitationAcceptRequestSerializer` | `MemberResponseSerializer` |

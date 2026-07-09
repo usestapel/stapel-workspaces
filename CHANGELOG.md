@@ -51,28 +51,41 @@ harness (`_codegen_settings.py` / `codegen_urls.py` / `_codegen.py` / `Makefile`
 
 ## 0.4.0 — 2026-07-10
 
-### Added — member listing: `?search=`, `limit`/`offset`, stable display-name sort (BACKLOG G12)
+### Added — member listing: `?search=` + anchor pagination (BACKLOG G12)
 
-`GET /{workspace_id}/members` now supports server-side filtering and pagination,
-so every downstream multi-tenant project with a people-picker stops re-writing
-its own member listing (the G12 gap surfaced during a client import).
+`GET /{workspace_id}/members` now supports server-side filtering and cursor
+pagination, so every downstream multi-tenant project with a people-picker stops
+re-writing its own member listing (the G12 gap surfaced during a client import).
 
 - **`?search=`** — case-insensitive substring match on the member's email **or**
   display name. Display name resolves the way the surface already presents a
   member (it joins `user`): full name → username → email, via a single
-  `Coalesce(NullIf(Trim(Concat(first, last))), username, email)` expression
-  reused for both the filter and the sort.
-- **`limit` / `offset`** — opt-in pagination window; non-negative ints, junk
-  values are ignored (no new 4xx surface). Ordering is **stable** (display name,
-  then `id`) so windows never overlap or skip rows.
-- **Backward-compatible:** with no query params the full member list is returned
-  exactly as before — only now in a deterministic, name-sorted order.
-- **OpenAPI contract:** `search`, `limit` and `offset` are declared as
-  `OpenApiParameter` (drf-spectacular) on the members-`GET` operation, each with
-  a description, so they appear in `docs/schema.json` and the frontend codegen
-  sees them — no shadow contract. The monolith aggregate's workspaces slice was
-  regenerated in the same change, so the byte-identity gate
-  (`test_matches_monolith_workspaces_slice`) stays green.
+  `Coalesce(NullIf(Trim(Concat(first, last))), username, email)` expression.
+- **Anchor pagination (stapel-core mandate).** The list is paginated with
+  `stapel_core.django.api.pagination.AnchorPagination` — the cursor family that
+  is **mandatory everywhere** in Stapel; `limit`/`offset` is banned because its
+  windows slip rows (skip/dupe) under concurrent writes. The members endpoint
+  now exposes the anchor surface (`anchor` / `limit` / `direction`) and returns
+  the anchor envelope (`items`, `next_anchor`, `prev_anchor`, `has_next`,
+  `has_prev`, `count`), exactly like the ETALON modules stapel-notifications /
+  stapel-tasks (`CreatedAtAnchorPagination`).
+- **Sort dropped to the anchor — display-name ordering removed.**
+  `AnchorPagination` supports only a **single monotonic** anchor; it has no
+  composite (`name,id`) cursor, so a display-name-sorted, insertion-safe window
+  is not expressible. Members carry no `created_at`; the analog of the ETALON's
+  `-created_at` is **`-invited_at`** (`auto_now_add` — the membership's creation
+  timestamp), so the list is now ordered newest-invited-first. Consistency with
+  the codebase-wide `limit`/`offset` ban wins over name ordering.
+- **Breaking vs the un-tagged, un-published 0.4.0 dev surface only:** the earlier
+  in-development shape (`limit`/`offset`, `{"members": [...]}`, stable
+  display-name sort) is gone; the now-dead `MemberListResponse` DTO / serializer
+  were removed. No released version ever exposed the `limit`/`offset` form.
+- **OpenAPI contract:** `search` is declared as an `OpenApiParameter`; the
+  `anchor`/`limit`/`direction` params + the `PaginatedMemberResponseList`
+  response are emitted by the paginator, so they appear in `docs/schema.json`
+  and the frontend codegen sees them — no shadow contract. The monolith
+  aggregate's workspaces slice was regenerated in the same change, so the
+  byte-identity gate (`test_matches_monolith_workspaces_slice`) stays green.
 
 ## 0.3.9 — 2026-07-06
 

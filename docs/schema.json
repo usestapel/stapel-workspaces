@@ -238,24 +238,41 @@
     },
     "/workspaces/api/{workspace_id}/members": {
       "get": {
-        "operationId": "workspaces_api_members_retrieve",
+        "operationId": "workspaces_api_members_list",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
+            "name": "anchor",
+            "required": false,
             "in": "query",
-            "name": "limit",
+            "description": "Anchor value to paginate from (exclusive)",
             "schema": {
-              "type": "integer"
-            },
-            "description": "Opt-in pagination window size (non-negative integer; junk/negative values are ignored). Omit to return the full list."
+              "type": "string"
+            }
           },
           {
+            "name": "direction",
+            "required": false,
             "in": "query",
-            "name": "offset",
+            "description": "Pagination direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "next",
+                "prev",
+                "center"
+              ],
+              "default": "next"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Number of items (default 100, max 500)",
             "schema": {
               "type": "integer"
-            },
-            "description": "Opt-in pagination offset (non-negative integer; junk/negative values are treated as 0). Order is stable (display name, then id) so pages never overlap or skip rows."
+            }
           },
           {
             "in": "query",
@@ -288,7 +305,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemberListResponse"
+                  "$ref": "#/components/schemas/PaginatedMemberResponseList"
+                },
+                "examples": {
+                  "MemberResponse": {
+                    "value": {
+                      "id": "0192...",
+                      "role": "admin"
+                    }
+                  }
                 }
               }
             },
@@ -729,18 +754,6 @@
           }
         }
       },
-      "MemberListResponse": {
-        "type": "object",
-        "description": "MemberListResponse(members: List[stapel_workspaces.dto.MemberResponse] = <factory>)",
-        "properties": {
-          "members": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MemberResponse"
-            }
-          }
-        }
-      },
       "MemberResponse": {
         "type": "object",
         "description": "Workspace member.",
@@ -795,6 +808,45 @@
           "role",
           "user_id",
           "workspace_id"
+        ]
+      },
+      "PaginatedMemberResponseList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            }
+          },
+          "next_anchor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Anchor value for next page"
+          },
+          "prev_anchor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Anchor value for previous page"
+          },
+          "has_next": {
+            "type": "boolean",
+            "description": "Whether there are more items after this page"
+          },
+          "has_prev": {
+            "type": "boolean",
+            "description": "Whether there are items before this page"
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of items in current page"
+          }
+        },
+        "required": [
+          "items",
+          "has_next",
+          "has_prev",
+          "count"
         ]
       },
       "PatchedMemberUpdateRequest": {

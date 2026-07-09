@@ -53,11 +53,16 @@ class TestPublicAPI:
 class TestSerializerSeams:
     def test_subclass_can_swap_response_serializer(self, user):
         """A view subclass overriding response_serializer_class changes the
-        payload without touching the method bodies."""
-        from stapel_workspaces.serializers import MemberListResponseSerializer
+        payload without touching the method bodies.
+
+        The member list is anchor-paginated: the per-item response serializer
+        (``MemberResponseSerializer``) is the seam, mirroring the ETALON
+        modules, and the body is the anchor envelope (``items`` + cursor meta).
+        """
+        from stapel_workspaces.serializers import MemberResponseSerializer
         from stapel_workspaces.views import MemberDetailView, MemberListView
 
-        class StampedSerializer(MemberListResponseSerializer):
+        class StampedSerializer(MemberResponseSerializer):
             def to_representation(self, instance):
                 data = super().to_representation(instance)
                 data["swapped"] = True
@@ -73,8 +78,8 @@ class TestSerializerSeams:
         force_authenticate(request, user=user)
         resp = StampedMemberListView.as_view()(request, workspace_id=ws.id)
         assert resp.status_code == 200
-        assert resp.data["swapped"] is True
-        assert len(resp.data["members"]) == 1
+        assert len(resp.data["items"]) == 1
+        assert resp.data["items"][0]["swapped"] is True
 
         # Defaults are exposed as class attributes on every view.
         assert (

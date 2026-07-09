@@ -9,7 +9,6 @@ from .dto import (
     InvitationResponse,
     MemberInviteRequest,
     MemberInviteResponse,
-    MemberListResponse,
     MemberResponse,
     MemberUpdateRequest,
     WorkspaceCreateRequest,
@@ -49,11 +48,6 @@ class WorkspaceUpdateRequestSerializer(StapelDataclassSerializer):
 class MemberResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = MemberResponse
-
-
-class MemberListResponseSerializer(StapelDataclassSerializer):
-    class Meta:
-        dataclass = MemberListResponse
 
 
 class MemberInviteRequestSerializer(StapelDataclassSerializer):

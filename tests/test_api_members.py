@@ -63,7 +63,7 @@ class TestMemberList:
         api_client.force_authenticate(user=user)
         resp = api_client.get(f"{BASE}/{ws.id}/members")
         assert resp.status_code == 200, resp.content
-        members = resp.json()["members"]
+        members = resp.json()["items"]
         assert len(members) == 2
         by_user = {m["user_id"]: m for m in members}
         assert by_user[str(other_user.id)]["role"] == Role.OWNER
@@ -76,9 +76,26 @@ class TestMemberList:
         assert resp.status_code == 403
 
 
+def _stamp_invited_at(member, when):
+    """Force a member's ``invited_at`` (``auto_now_add`` normally sets it).
+
+    The anchor is ``-invited_at``; to make ordering / window seams
+    deterministic the tests assign explicit, distinct creation timestamps.
+    """
+    WorkspaceMember.objects.filter(pk=member.pk).update(invited_at=when)
+    member.invited_at = when
+    return member
+
+
 @pytest.mark.django_db
 class TestMemberListSearchPagination:
-    """?search= + limit/offset + stable display-name sort (BACKLOG G12)."""
+    """?search= + anchor pagination (stapel-core mandate; BACKLOG G12).
+
+    The former display-name sort is gone: ``AnchorPagination`` supports only a
+    single monotonic anchor (no composite ``name,id``), so the list is ordered
+    by the ``-invited_at`` cursor — consistency with the whole-codebase
+    limit/offset ban wins over name ordering (CHANGELOG 0.4.0).
+    """
 
     def test_search_by_email(self, authed_client, user):
         ws = _create_ws(user)
@@ -87,7 +104,7 @@ class TestMemberListSearchPagination:
         _add_member(ws, _named_user("Bob", "Brown", "bob@picker.test"), Role.MEMBER)
         resp = authed_client.get(f"{BASE}/{ws.id}/members?search=ALICE@pick")
         assert resp.status_code == 200, resp.content
-        ids = [m["user_id"] for m in resp.json()["members"]]
+        ids = [m["user_id"] for m in resp.json()["items"]]
         assert ids == [str(alice.id)]
 
     def test_search_by_display_name_case_insensitive(self, authed_client, user):
@@ -97,10 +114,10 @@ class TestMemberListSearchPagination:
         _add_member(ws, _named_user("Bob", "Brown", "bob@picker.test"), Role.MEMBER)
         # last name
         resp = authed_client.get(f"{BASE}/{ws.id}/members?search=anderson")
-        assert [m["user_id"] for m in resp.json()["members"]] == [str(alice.id)]
+        assert [m["user_id"] for m in resp.json()["items"]] == [str(alice.id)]
         # full display name ("Alice Anderson") also matches
         resp2 = authed_client.get(f"{BASE}/{ws.id}/members?search=alice ander")
-        assert [m["user_id"] for m in resp2.json()["members"]] == [str(alice.id)]
+        assert [m["user_id"] for m in resp2.json()["items"]] == [str(alice.id)]
 
     def test_search_empty_result(self, authed_client, user):
         ws = _create_ws(user)
@@ -109,62 +126,116 @@ class TestMemberListSearchPagination:
         )
         resp = authed_client.get(f"{BASE}/{ws.id}/members?search=nobody-zzz")
         assert resp.status_code == 200
-        assert resp.json()["members"] == []
+        body = resp.json()
+        assert body["items"] == []
+        assert body["has_next"] is False
 
-    def test_stable_sort_by_display_name(self, authed_client, user):
+    def test_order_is_by_invited_at_anchor_newest_first(self, authed_client, user):
+        """Output order is the module anchor (-invited_at), not display name."""
         ws = _create_ws(user)
-        cara = _named_user("Cara", "C", "cara@picker.test")
-        anna = _named_user("Anna", "A", "anna@picker.test")
-        bella = _named_user("Bella", "B", "bella@picker.test")
-        for u in (cara, anna, bella):  # inserted out of order
-            _add_member(ws, u, Role.MEMBER)
-        # scope out the owner (its email domain differs) to assert pure order
+        cara = _add_member(ws, _named_user("Cara", "C", "cara@picker.test"), Role.MEMBER)
+        anna = _add_member(ws, _named_user("Anna", "A", "anna@picker.test"), Role.MEMBER)
+        bella = _add_member(ws, _named_user("Bella", "B", "bella@picker.test"), Role.MEMBER)
+        t0 = timezone.now()
+        # Insertion order cara, anna, bella — stamp so newest-first is bella,
+        # anna, cara (deliberately NOT alphabetical, to prove name sort is gone).
+        _stamp_invited_at(cara, t0)
+        _stamp_invited_at(anna, t0 + timezone.timedelta(minutes=1))
+        _stamp_invited_at(bella, t0 + timezone.timedelta(minutes=2))
         resp = authed_client.get(f"{BASE}/{ws.id}/members?search=picker.test")
-        ids = [m["user_id"] for m in resp.json()["members"]]
-        assert ids == [str(anna.id), str(bella.id), str(cara.id)]
+        ids = [m["user_id"] for m in resp.json()["items"]]
+        assert ids == [str(bella.user_id), str(anna.user_id), str(cara.user_id)]
 
-    def test_pagination_limit_offset(self, authed_client, user):
+    def test_first_page_and_next_by_anchor(self, authed_client, user):
         ws = _create_ws(user)
+        base = f"{BASE}/{ws.id}/members"
+        # 4 members + owner; stamp distinct, ascending invited_at.
+        t0 = timezone.now()
+        members = []
         for i in range(4):
-            _add_member(
+            m = _add_member(
                 ws, _named_user(f"M{i}", "X", f"m{i}@picker.test"), Role.MEMBER
             )
-        base = f"{BASE}/{ws.id}/members"
-        full = [m["user_id"] for m in authed_client.get(base).json()["members"]]
-        assert len(full) == 5  # 4 members + owner
-        page1 = authed_client.get(f"{base}?limit=2&offset=0").json()["members"]
-        page2 = authed_client.get(f"{base}?limit=2&offset=2").json()["members"]
-        assert [m["user_id"] for m in page1] == full[:2]
-        assert [m["user_id"] for m in page2] == full[2:4]
+            _stamp_invited_at(m, t0 + timezone.timedelta(minutes=i + 1))
+            members.append(m)
+        # newest-first traversal: m3, m2, m1, m0, owner
+        full = [m["user_id"] for m in authed_client.get(base).json()["items"]]
+        assert len(full) == 5
 
-    def test_offset_without_limit(self, authed_client, user):
+        p1 = authed_client.get(base, {"limit": 2}).json()
+        assert [m["user_id"] for m in p1["items"]] == full[:2]
+        assert p1["has_next"] is True
+        assert p1["next_anchor"]
+
+        # anchor is passed via the params dict so its "+00:00" tz offset is
+        # URL-encoded (a bare "+" in a query string would decode to a space).
+        p2 = authed_client.get(base, {"limit": 2, "anchor": p1["next_anchor"]}).json()
+        assert [m["user_id"] for m in p2["items"]] == full[2:4]
+
+        p3 = authed_client.get(base, {"limit": 2, "anchor": p2["next_anchor"]}).json()
+        assert [m["user_id"] for m in p3["items"]] == full[4:]
+        assert p3["has_next"] is False
+
+    def test_window_seam_holds_under_insert_no_skip_no_dupe(self, authed_client, user):
+        """THE rule: a row inserted into the already-served range must not shift
+        the next window. Offset pagination would dupe/skip here; the anchor
+        resumes from a value, so page 2 is exactly m2's successors.
+        """
         ws = _create_ws(user)
-        for i in range(3):
-            _add_member(
+        base = f"{BASE}/{ws.id}/members"
+        t0 = timezone.now()
+        # invited_at: owner oldest (created with ws), then m0..m3 ascending.
+        m = {}
+        for i in range(4):
+            mm = _add_member(
                 ws, _named_user(f"M{i}", "X", f"m{i}@picker.test"), Role.MEMBER
             )
-        base = f"{BASE}/{ws.id}/members"
-        full = [m["user_id"] for m in authed_client.get(base).json()["members"]]
-        tail = authed_client.get(f"{base}?offset=2").json()["members"]
-        assert [m["user_id"] for m in tail] == full[2:]
+            # spacing of 10 min leaves room to insert a row *between* two of them
+            _stamp_invited_at(mm, t0 + timezone.timedelta(minutes=10 * (i + 1)))
+            m[i] = mm
+        # newest-first: m3, m2, m1, m0, owner
+        p1 = authed_client.get(base, {"limit": 2}).json()
+        page1_ids = [x["user_id"] for x in p1["items"]]
+        assert page1_ids == [str(m[3].user_id), str(m[2].user_id)]
 
-    def test_no_params_returns_all_backward_compatible(self, authed_client, user):
+        # Insert a NEW member INTO the already-served range: invited_at between
+        # m2 and m3 (i.e. it logically belongs on page 1). Under limit/offset,
+        # page-2-at-offset-2 would now re-serve m2 (a duplicate); the anchor
+        # must not.
+        intruder = _add_member(
+            ws, _named_user("Zed", "Z", "zed@picker.test"), Role.MEMBER
+        )
+        _stamp_invited_at(
+            intruder, t0 + timezone.timedelta(minutes=35)
+        )  # between m2 (30) and m3 (40) — inside the range page 1 already served
+
+        p2 = authed_client.get(base, {"limit": 2, "anchor": p1["next_anchor"]}).json()
+        page2_ids = [x["user_id"] for x in p2["items"]]
+        # Exactly m2's true successors — no dupe of m2, no skip of m1.
+        assert page2_ids == [str(m[1].user_id), str(m[0].user_id)]
+        assert set(page1_ids).isdisjoint(page2_ids)
+        assert str(intruder.user_id) not in page2_ids  # it belonged on page 1
+
+    def test_junk_limit_falls_back_to_page_size(self, authed_client, user):
+        ws = _create_ws(user)
+        _add_member(
+            ws, _named_user("Alice", "Anderson", "alice@picker.test"), Role.MEMBER
+        )
+        resp = authed_client.get(f"{BASE}/{ws.id}/members?limit=abc")
+        assert resp.status_code == 200
+        assert len(resp.json()["items"]) == 2  # owner + member, junk limit ignored
+
+    def test_no_params_returns_first_page(self, authed_client, user):
         ws = _create_ws(user)
         _add_member(
             ws, _named_user("Alice", "Anderson", "alice@picker.test"), Role.MEMBER
         )
         resp = authed_client.get(f"{BASE}/{ws.id}/members")
         assert resp.status_code == 200
-        assert len(resp.json()["members"]) == 2  # owner + member
-
-    def test_invalid_pagination_params_ignored(self, authed_client, user):
-        ws = _create_ws(user)
-        _add_member(
-            ws, _named_user("Alice", "Anderson", "alice@picker.test"), Role.MEMBER
-        )
-        resp = authed_client.get(f"{BASE}/{ws.id}/members?limit=abc&offset=-5")
-        assert resp.status_code == 200
-        assert len(resp.json()["members"]) == 2
+        body = resp.json()
+        assert len(body["items"]) == 2  # owner + member (below page_size)
+        assert body["has_next"] is False
+        assert body["has_prev"] is False
 
     def test_search_foreign_workspace_403(self, api_client, user, other_user):
         ws = _create_ws(other_user)
