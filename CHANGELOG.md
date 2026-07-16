@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-07-17
+
+### Changed
+- `stapel-core` ceiling raised `>=0.10,<0.11` → `>=0.10,<0.12` (core 0.11
+  fleet re-pin: default bus, nav, config-checks, error params/language —
+  additive for modules).
+- `docs/schema.json` regenerated against core 0.11.2 — error object gained
+  `error_language` field and a reworded `error` description; no drift
+  otherwise.
+
 ## [0.4.2] — 2026-07-16
 
 ### Changed
