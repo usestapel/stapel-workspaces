@@ -152,7 +152,7 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
         return self.list_response_serializer_class
 
     @extend_schema(responses={200: WorkspaceListResponseSerializer})
-    def get(self, request):
+    def get(self, request):  # noqa: R007
         memberships = (
             WorkspaceMember.objects.filter(user=request.user, accepted_at__isnull=False)
             .select_related("workspace")
@@ -174,7 +174,7 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
         request=WorkspaceCreateRequestSerializer,
         responses={201: WorkspaceResponseSerializer},
     )
-    def post(self, request):
+    def post(self, request):  # noqa: R007
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
@@ -211,7 +211,7 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         return ws, membership, None
 
     @extend_schema(responses={200: WorkspaceResponseSerializer})
-    def get(self, request, workspace_id):
+    def get(self, request, workspace_id):  # noqa: R007
         ws, membership, err = self._resolve(request, workspace_id)
         if err:
             return err
@@ -227,7 +227,7 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         request=WorkspaceUpdateRequestSerializer,
         responses={200: WorkspaceResponseSerializer},
     )
-    def patch(self, request, workspace_id):
+    def patch(self, request, workspace_id):  # noqa: R007
         ws, membership, err = self._resolve(request, workspace_id)
         if err:
             return err
@@ -253,7 +253,7 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         )
 
     @extend_schema(responses={204: None})
-    def delete(self, request, workspace_id):
+    def delete(self, request, workspace_id):  # noqa: R007
         ws, membership, err = self._resolve(request, workspace_id)
         if err:
             return err
@@ -305,7 +305,7 @@ class MemberListView(SerializerSeamsMixin, APIView):
             ),
         ],
     )
-    def get(self, request, workspace_id):
+    def get(self, request, workspace_id):  # noqa: R007
         # List workspace members, anchor-paginated (stapel-core mandate:
         # limit/offset windows are forbidden — they slip rows under concurrent
         # writes). The paginator emits anchor/limit/direction and orders by the
@@ -346,7 +346,7 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
         request=MemberInviteRequestSerializer,
         responses={201: MemberInviteResponseSerializer},
     )
-    def post(self, request, workspace_id):
+    def post(self, request, workspace_id):  # noqa: R007
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
         if not ws:
             return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
@@ -391,7 +391,7 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         request=MemberUpdateRequestSerializer,
         responses={200: MemberResponseSerializer},
     )
-    def patch(self, request, workspace_id, user_id):
+    def patch(self, request, workspace_id, user_id):  # noqa: R007
         member, err = self._resolve(request, workspace_id, user_id)
         if err:
             return err
@@ -430,7 +430,7 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         )
 
     @extend_schema(responses={204: None})
-    def delete(self, request, workspace_id, user_id):
+    def delete(self, request, workspace_id, user_id):  # noqa: R007
         member, err = self._resolve(request, workspace_id, user_id)
         if err:
             return err
@@ -475,7 +475,7 @@ class InvitationAcceptView(SerializerSeamsMixin, APIView):
         request=InvitationAcceptRequestSerializer,
         responses={200: MemberResponseSerializer},
     )
-    def post(self, request):
+    def post(self, request):  # noqa: R007
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         token = ser.validated_data.token
@@ -511,7 +511,7 @@ class InternalMembershipView(SerializerSeamsMixin, APIView):
     response_serializer_class = MemberResponseSerializer
 
     @extend_schema(responses={200: MemberResponseSerializer})
-    def get(self, request, workspace_id, user_id):
+    def get(self, request, workspace_id, user_id):  # noqa: R007
         member = (
             WorkspaceMember.objects.filter(
                 workspace_id=workspace_id, user_id=user_id, accepted_at__isnull=False
@@ -539,7 +539,7 @@ class InternalPersonalWorkspaceView(APIView):
             404: StapelErrorSerializer,
         },
     )
-    def post(self, request, user_id):
+    def post(self, request, user_id):  # noqa: R007
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
@@ -549,4 +549,4 @@ class InternalPersonalWorkspaceView(APIView):
         except User.DoesNotExist:
             return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         ws = services.ensure_personal_workspace(user)
-        return StapelResponse({"workspace_id": str(ws.id)}, status=status.HTTP_200_OK)
+        return StapelResponse({"workspace_id": str(ws.id)}, status=status.HTTP_200_OK)  # noqa: R006

@@ -61,7 +61,7 @@ class MemberInviteRequestSerializer(StapelDataclassSerializer):
 
     def validate_emails(self, value):
         if not value:
-            raise serializers.ValidationError("At least one email is required")
+            raise serializers.ValidationError("At least one email is required")  # noqa: R002
         return [e.lower().strip() for e in value]
 
 

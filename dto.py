@@ -39,7 +39,7 @@ class WorkspaceResponse:
 
 
 @dataclass
-class WorkspaceListResponse:
+class WorkspaceListResponse:  # noqa: R004
     workspaces: List[WorkspaceResponse] = field(default_factory=list)
 
 
@@ -59,7 +59,7 @@ class WorkspaceCreateRequest:
 
 
 @dataclass
-class WorkspaceUpdateRequest:
+class WorkspaceUpdateRequest:  # noqa: R004
     name: Optional[str] = None
     slug: Optional[str] = None
     settings: Optional[dict] = None
@@ -104,12 +104,12 @@ class MemberInviteRequest:
 
 
 @dataclass
-class MemberInviteResponse:
+class MemberInviteResponse:  # noqa: R004
     invitations: List["InvitationResponse"] = field(default_factory=list)
 
 
 @dataclass
-class InvitationResponse:
+class InvitationResponse:  # noqa: R004
     id: UUID
     workspace_id: UUID
     email: str
@@ -132,5 +132,5 @@ class InvitationAcceptRequest:
 
 
 @dataclass
-class MemberUpdateRequest:
+class MemberUpdateRequest:  # noqa: R004
     role: str

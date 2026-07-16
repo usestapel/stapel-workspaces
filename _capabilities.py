@@ -21,7 +21,7 @@ def main(argv=None):
     return run_capabilities_cli(
         argv,
         repo=Path(__file__).resolve().parent,
-        canonical_prefix="/workspaces/api",
+        canonical_prefix="/workspaces/api/v1",
         defaults={},
         registry=GATE_REGISTRY,
         is_axis=lambda k: False,

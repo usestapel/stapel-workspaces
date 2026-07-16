@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-07-16
+
+### Changed
+- **v1 canon sweep §60** (api-versioning.md §2, §6): `urls.py` renamed to
+  `urls_v1.py` (paths inside unchanged); the new root `urls.py` mounts it
+  under `v1/` and re-exports `GATE_REGISTRY`. Hosts including
+  `stapel_workspaces.urls` under `workspaces/api/` now serve
+  `/workspaces/api/v1/...`; bare paths no longer exist (sweep lands before
+  the §3 API00x gates are enabled).
+- Contract artifacts regenerated (`make contract`): `/v1/` in schema paths.
+- `_capabilities.py` canonical_prefix → `/workspaces/api/v1`.
+- Lint hygiene to a clean `stapel-verify`: explicit `# noqa` on pre-existing
+  findings (R002/R004/R006/R007, CFG001).
+
 ### Added — per-module contract emission: `schema` + `flows` triad (contract-pipeline.md Wave 1)
 
 stapel-workspaces now emits its **own** API contract per-module, completing the

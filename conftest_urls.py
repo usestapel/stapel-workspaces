@@ -12,7 +12,7 @@ from django.urls import include, path
 
 urlpatterns = [
     # Detail/invite routes: URL has slash before UUID, so this prefix strips correctly.
-    path("workspaces/api/workspaces/", include("stapel_workspaces.urls")),
+    path("workspaces/api/workspaces/", include("stapel_workspaces.urls_v1")),
     # List/create route: URL has no trailing slash; this prefix matches and passes '' to sub-patterns.
-    path("workspaces/api/workspaces", include("stapel_workspaces.urls")),
+    path("workspaces/api/workspaces", include("stapel_workspaces.urls_v1")),
 ]

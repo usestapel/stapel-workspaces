@@ -5,9 +5,9 @@
     "version": "0.0.0"
   },
   "paths": {
-    "/workspaces/api/": {
+    "/workspaces/api/v1/": {
       "get": {
-        "operationId": "workspaces_api_retrieve",
+        "operationId": "workspaces_api_v1_retrieve",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Workspaces"
@@ -31,7 +31,7 @@
         }
       },
       "post": {
-        "operationId": "workspaces_api_create",
+        "operationId": "workspaces_api_v1_create",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Workspaces"
@@ -89,9 +89,9 @@
         }
       }
     },
-    "/workspaces/api/{workspace_id}": {
+    "/workspaces/api/v1/{workspace_id}": {
       "get": {
-        "operationId": "workspaces_api_retrieve_2",
+        "operationId": "workspaces_api_v1_retrieve_2",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
@@ -140,7 +140,7 @@
         }
       },
       "patch": {
-        "operationId": "workspaces_api_partial_update",
+        "operationId": "workspaces_api_v1_partial_update",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
@@ -208,7 +208,7 @@
         }
       },
       "delete": {
-        "operationId": "workspaces_api_destroy",
+        "operationId": "workspaces_api_v1_destroy",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
@@ -236,9 +236,9 @@
         }
       }
     },
-    "/workspaces/api/{workspace_id}/members": {
+    "/workspaces/api/v1/{workspace_id}/members": {
       "get": {
-        "operationId": "workspaces_api_members_list",
+        "operationId": "workspaces_api_v1_members_list",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
@@ -322,9 +322,9 @@
         }
       }
     },
-    "/workspaces/api/{workspace_id}/members/{user_id}": {
+    "/workspaces/api/v1/{workspace_id}/members/{user_id}": {
       "patch": {
-        "operationId": "workspaces_api_members_partial_update",
+        "operationId": "workspaces_api_v1_members_partial_update",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
@@ -395,7 +395,7 @@
         }
       },
       "delete": {
-        "operationId": "workspaces_api_members_destroy",
+        "operationId": "workspaces_api_v1_members_destroy",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
@@ -432,9 +432,9 @@
         }
       }
     },
-    "/workspaces/api/{workspace_id}/members/invite": {
+    "/workspaces/api/v1/{workspace_id}/members/invite": {
       "post": {
-        "operationId": "workspaces_api_members_invite_create",
+        "operationId": "workspaces_api_v1_members_invite_create",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
@@ -489,9 +489,9 @@
         }
       }
     },
-    "/workspaces/api/internal/{workspace_id}/members/{user_id}": {
+    "/workspaces/api/v1/internal/{workspace_id}/members/{user_id}": {
       "get": {
-        "operationId": "workspaces_api_internal_members_retrieve",
+        "operationId": "workspaces_api_v1_internal_members_retrieve",
         "description": "Allow other services to check membership/role via X-API-KEY.\n\n**Permissions:** `OperandHolder`",
         "parameters": [
           {
@@ -543,9 +543,9 @@
         }
       }
     },
-    "/workspaces/api/internal/users/{user_id}/personal": {
+    "/workspaces/api/v1/internal/users/{user_id}/personal": {
       "post": {
-        "operationId": "workspaces_api_internal_users_personal_create",
+        "operationId": "workspaces_api_v1_internal_users_personal_create",
         "description": "Get-or-create the personal workspace for a given user_id.\n\n**Permissions:** `OperandHolder`",
         "parameters": [
           {
@@ -590,9 +590,9 @@
         }
       }
     },
-    "/workspaces/api/invitations/accept": {
+    "/workspaces/api/v1/invitations/accept": {
       "post": {
-        "operationId": "workspaces_api_invitations_accept_create",
+        "operationId": "workspaces_api_v1_invitations_accept_create",
         "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Members"
