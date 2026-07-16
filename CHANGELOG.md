@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-07-17
+
+### Fixed
+- `docs/capabilities.json` regenerated again — 0.4.3's release commit ran
+  `make contract` before the version bump landed, so the committed file
+  still baked in `0.4.2` (`test_capabilities_envelope` caught it in the
+  0.4.3 publish retry).
+
 ## [0.4.3] — 2026-07-17
 
 ### Changed
