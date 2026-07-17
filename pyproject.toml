@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-workspaces"
-version = "0.5.0"
+version = "0.5.1"
 description = "Team workspaces and RBAC Django app for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,7 +24,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "stapel-core>=0.10,<0.12",
+    "stapel-core>=0.10,<0.13",
 ]
 
 [project.urls]
