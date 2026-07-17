@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-17
+
+### Removed
+- **Legacy Kafka-topic remnants swept** (breaking → minor per house law):
+  - `events.TOPIC_WORKSPACE_PERSONAL_CREATED` — alias for the retired Kafka
+    topic `stapel.workspaces.personal-created`; no importers anywhere in the
+    workspace. Use `EVENT_WORKSPACE_PERSONAL_CREATED`.
+  - The duplicate `EVENT_REGISTRY` entry keyed by that alias (registry keeps
+    the single canonical `workspace.personal.created` entry).
+  - `STAPEL_TOPIC_USER_REGISTERED` env override in `consume_auth_events` —
+    existed only for legacy topic layouts; on the bus transport the topic is
+    always the action name (`user.registered`), now hard-coded. MODULE.md
+    config table and override guidance updated.
+
 ## [0.4.4] — 2026-07-17
 
 ### Fixed

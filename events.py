@@ -9,11 +9,6 @@ from dataclasses import dataclass
 
 EVENT_WORKSPACE_PERSONAL_CREATED = "workspace.personal.created"
 
-# On the bus transport the topic is the action name. The old Kafka topic
-# ``stapel.workspaces.personal-created`` is retired; alias kept for any
-# importer still referencing the old name.
-TOPIC_WORKSPACE_PERSONAL_CREATED = EVENT_WORKSPACE_PERSONAL_CREATED
-
 
 @dataclass
 class WorkspacePersonalCreatedPayload:
@@ -30,5 +25,4 @@ class WorkspacePersonalCreatedPayload:
 
 EVENT_REGISTRY = {
     EVENT_WORKSPACE_PERSONAL_CREATED: WorkspacePersonalCreatedPayload,
-    TOPIC_WORKSPACE_PERSONAL_CREATED: WorkspacePersonalCreatedPayload,
 }

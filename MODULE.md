@@ -44,7 +44,6 @@ This module has **no `AppSettings` namespace** (no `conf.py`; there is no
 | Key | Kind | Default | What it customizes |
 |---|---|---|---|
 | `FRONTEND_URL` | flat Django setting | `""` | Base URL for the invitation accept link (`{FRONTEND_URL}/invitations/{token}/accept`) in the invite notification (`services._send_invitation_notification`) |
-| `STAPEL_TOPIC_USER_REGISTERED` | env var | `"user.registered"` | Topic the `consume_auth_events` command subscribes to (legacy topic layouts) |
 | `STAPEL_COMM` / `STAPEL_BUS_BACKEND` | core namespaces (`stapel_core.comm.config`, `stapel_core.bus`) | — | Transport for all emits/consumes/function calls (in-process in a monolith, bus in microservices) — deployment config, not code |
 | `WORKSPACES_SERVICE_URL`, `SERVICE_API_KEY` | env vars (consumer side, in `stapel_core.django.workspaces`) | `http://stapel-workspaces:8000`, `""` | Where other services reach the internal membership API, and the `X-API-KEY` they present |
 
@@ -304,8 +303,7 @@ above: reacting to workspace/membership changes (receivers on
 (serializer seams + URL remount), extra per-workspace data (`Workspace.settings` JSON
 or a side table with a FK), the invite link base (`FRONTEND_URL`), the invite email's
 template/wording (the `"workspace.invitation"` notification is rendered by the
-notifications stack, not here), transport and topics (`STAPEL_COMM`,
-`STAPEL_TOPIC_USER_REGISTERED`).
+notifications stack, not here), transport (`STAPEL_COMM`).
 
 **Upstream contribution** (Stapel-owned, via the contribution pipeline) when the change
 alters module-owned contracts or invariants: new roles or hierarchy changes (enum +

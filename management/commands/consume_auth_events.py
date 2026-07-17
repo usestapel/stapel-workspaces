@@ -1,11 +1,9 @@
 """Consume events published by stapel-auth."""
-import os
-
 from stapel_core.bus import BaseBusConsumerCommand, Event
 
 # stapel-auth emits the action through stapel_core.comm; on the bus transport
-# the topic is the action name. Override via env for legacy topic layouts.
-TOPIC_USER_REGISTERED = os.getenv("STAPEL_TOPIC_USER_REGISTERED", "user.registered")  # noqa: CFG001
+# the topic is the action name.
+TOPIC_USER_REGISTERED = "user.registered"
 
 
 class Command(BaseBusConsumerCommand):
