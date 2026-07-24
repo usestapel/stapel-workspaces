@@ -76,6 +76,10 @@
       "hash": "bfa776284d45f2b3",
       "origin": "seed:stapel-builtin"
     },
+    "error.400.invitation_declined": {
+      "hash": "1a2de800d95a713d",
+      "origin": "llm"
+    },
     "error.400.invitation_expired": {
       "hash": "7186297b9461421e",
       "origin": "seed:stapel-builtin"
@@ -184,6 +188,10 @@
       "hash": "b79d6998c7b1fe74",
       "origin": "seed:stapel-builtin"
     },
+    "error.409.email_already_registered": {
+      "hash": "715ff9f7621c1ce5",
+      "origin": "llm"
+    },
     "error.410.gone": {
       "hash": "9b3a484bf2478795",
       "origin": "seed:stapel-builtin"
@@ -219,6 +227,10 @@
     "error.500.internal": {
       "hash": "ab827e3fe17da220",
       "origin": "seed:stapel-builtin"
+    },
+    "error.503.auth_unavailable": {
+      "hash": "c01407bc09695de1",
+      "origin": "llm"
     }
   }
 }

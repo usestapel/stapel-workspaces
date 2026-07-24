@@ -15,6 +15,8 @@ class TestPublicAPI:
                 "ensure_personal_workspace",
                 "create_invitation",
                 "accept_invitation",
+                "decline_invitation",
+                "issue_invitation_login_grant",
                 "CHECK_MEMBERSHIP",
                 "check_membership",
                 "CHECK_CAPABILITY",

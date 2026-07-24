@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
-from stapel_core.comm import emit
+from stapel_core.comm import call, emit
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 
@@ -106,7 +106,10 @@ def _send_invitation_notification(invitation: WorkspaceInvitation) -> None:
 
         User = get_user_model()
 
-        path = f"/invitations/{invitation.token}/accept"
+        # Canonical frontend invite route (org-program spec §B1): the pair's
+        # InviteAcceptFlow lives at /invite/{token}. FRONTEND_URL is the
+        # established flat-setting canon for the frontend base URL here.
+        path = f"/invite/{invitation.token}"
         frontend_url = (getattr(settings, "FRONTEND_URL", "") or "").rstrip("/")
         accept_url = f"{frontend_url}{path}" if frontend_url else path
 
@@ -142,13 +145,69 @@ def _send_invitation_notification(invitation: WorkspaceInvitation) -> None:
         )
 
 
+#: comm Function owned by stapel-auth (>= 0.11): mints a single-use login
+#: grant token bound to an email (org-program spec §B3).
+ISSUE_LOGIN_GRANT = "auth.issue_login_grant"
+
+
+def issue_invitation_login_grant(
+    *, invitation: WorkspaceInvitation, language: str | None = None
+) -> str:
+    """Mint a login grant for a not-yet-registered invitee (claim step).
+
+    Calls ``auth.issue_login_grant`` with ``create_if_missing`` — the
+    verified account materializes when the holder exchanges the grant at
+    auth's ``/grant/exchange/``. The invitation is deliberately NOT
+    consumed: accept stays a separate, conscious step after account setup.
+
+    comm wiring errors (``FunctionNotRegistered`` /
+    ``FunctionRouteNotConfigured``) propagate to the caller — an invite
+    flow without auth is meaningless, so the view degrades to 503, never
+    to allow. The returned token is a credential: never log it.
+    """
+    payload: dict = {
+        "email": invitation.email,
+        "verified_email": True,
+        "create_if_missing": True,
+    }
+    if language:
+        payload["language"] = language
+    result = call(ISSUE_LOGIN_GRANT, payload) or {}
+    return result["grant_token"]
+
+
+@transaction.atomic
+def decline_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceInvitation:
+    """Mark a pending invitation as declined by the invitee.
+
+    Decline ≠ revoke: this is the invitee's terminal "no" (the workspace's
+    withdrawal is ``revoked_at``). Same row-lock discipline as accept — a
+    single-use token must not race its own state transitions.
+    """
+    locked = (
+        WorkspaceInvitation.objects.select_for_update()
+        .filter(
+            pk=invitation.pk,
+            accepted_at__isnull=True,
+            declined_at__isnull=True,
+            revoked_at__isnull=True,
+        )
+        .first()
+    )
+    if locked is None:
+        raise ValueError("invitation is not pending")
+    locked.declined_at = timezone.now()
+    locked.save(update_fields=["declined_at"])
+    return locked
+
+
 @transaction.atomic
 def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMember:
     # Lock the invitation row: a single-use token must not be consumable
     # twice by concurrent requests.
     locked = (
         WorkspaceInvitation.objects.select_for_update()
-        .filter(pk=invitation.pk, accepted_at__isnull=True)
+        .filter(pk=invitation.pk, accepted_at__isnull=True, declined_at__isnull=True)
         .first()
     )
     if locked is None:

@@ -7,6 +7,8 @@ from stapel_core.django.api.serializers import StapelDataclassSerializer
 from .capabilities import effective_roles
 from .dto import (
     InvitationAcceptRequest,
+    InvitationClaimResponse,
+    InvitationPreviewResponse,
     InvitationResponse,
     MemberInviteRequest,
     MemberInviteResponse,
@@ -79,6 +81,16 @@ class MemberInviteResponseSerializer(StapelDataclassSerializer):
 class InvitationResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = InvitationResponse
+
+
+class InvitationPreviewResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = InvitationPreviewResponse
+
+
+class InvitationClaimResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = InvitationClaimResponse
 
 
 class InvitationAcceptRequestSerializer(StapelDataclassSerializer):

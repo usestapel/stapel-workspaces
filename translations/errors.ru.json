@@ -18,6 +18,7 @@
   "error.400.invalid_ad_id": "Недопустимый идентификатор объявления",
   "error.400.invalid_role": "Недопустимая роль",
   "error.400.invitation_already_used": "Приглашение уже было использовано",
+  "error.400.invitation_declined": "Приглашение было отклонено",
   "error.400.invitation_expired": "Срок действия приглашения истёк",
   "error.400.invitation_revoked": "Приглашение было отозвано",
   "error.400.validation_error": "Ошибка валидации",
@@ -45,6 +46,7 @@
   "error.406.not_acceptable": "Недопустимый формат ответа",
   "error.408.request_timeout": "Время ожидания запроса истекло",
   "error.409.conflict": "Ресурс уже существует",
+  "error.409.email_already_registered": "Аккаунт с этим email уже существует — войдите в него",
   "error.410.gone": "Ресурс был безвозвратно удалён",
   "error.413.payload_too_large": "Тело запроса слишком большое",
   "error.415.unsupported_media_type": "Неподдерживаемый тип данных",
@@ -53,5 +55,6 @@
   "error.423.verification_locked": "Слишком много неудачных попыток — подтверждение заблокировано",
   "error.429.rate_limit": "Слишком много попыток. Повторите попытку через {retry_after_minutes} мин.",
   "error.429.too_many_requests": "Слишком много запросов. Пожалуйста, повторите попытку позже.",
-  "error.500.internal": "Что-то пошло не так"
+  "error.500.internal": "Что-то пошло не так",
+  "error.503.auth_unavailable": "Сервис аутентификации недоступен; повторите попытку позже"
 }

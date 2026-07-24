@@ -71,6 +71,13 @@ _MACHINE_RU = {
         "Тариф владельца рабочего пространства не включает эту возможность",
     "error.402.member_limit_reached":
         "Достигнут лимит участников рабочего пространства ({limit})",
+    # 0.7 invite flow (org-program spec §B2, Wave 2).
+    "error.400.invitation_declined":
+        "Приглашение было отклонено",
+    "error.409.email_already_registered":
+        "Аккаунт с этим email уже существует — войдите в него",
+    "error.503.auth_unavailable":
+        "Сервис аутентификации недоступен; повторите попытку позже",
 }
 
 

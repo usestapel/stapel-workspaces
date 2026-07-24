@@ -123,6 +123,38 @@ class InvitationResponse:  # noqa: R004
 
 
 @dataclass
+class InvitationPreviewResponse:
+    """Public (AllowAny) invitation preview — what the /invite/{token} page renders before any auth decision.
+
+    Attributes:
+        workspace_name: Display name of the inviting workspace. Example: Acme Engineering
+        role: Role granted on acceptance. Example: member
+        email_masked: Invited email, masked for the public page. Example: m***@e***.com
+        status: Invitation state. One of pending / expired / revoked / accepted / declined. Example: pending
+        email_registered: Whether an account already exists for the invited email — steers the frontend to login vs claim. Example: false
+        expires_at: ISO 8601 expiry time. Example: 2026-07-31T10:00:00Z
+    """
+
+    workspace_name: str
+    role: str
+    email_masked: str
+    status: str
+    email_registered: bool
+    expires_at: str
+
+
+@dataclass
+class InvitationClaimResponse:
+    """Login-grant mint for an unregistered invitee (claim step).
+
+    Attributes:
+        grant_token: Single-use, short-lived login grant token — exchange it at auth's POST /grant/exchange/ for a session (creates the verified account). A credential: never log it.
+    """
+
+    grant_token: str
+
+
+@dataclass
 class InvitationAcceptRequest:
     """Accept an invite.
 

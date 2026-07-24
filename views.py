@@ -1,13 +1,20 @@
 """DRF views for the workspaces service."""
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import CharField, F, Q, Value
 from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import permissions, status
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from stapel_core.comm import emit
+from stapel_core.comm.exceptions import (
+    FunctionNotRegistered,
+    FunctionRouteNotConfigured,
+)
+from stapel_core.core.language import parse_accept_language
 from stapel_core.django.api.errors import StapelErrorResponse, StapelResponse
 from stapel_core.django.api.pagination import AnchorPagination
 from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
@@ -23,6 +30,8 @@ from .capabilities import (
     role_has_capability,
 )
 from .dto import (
+    InvitationClaimResponse,
+    InvitationPreviewResponse,
     InvitationResponse,
     MemberInviteResponse,
     MemberResponse,
@@ -33,6 +42,7 @@ from .dto import (
 )
 from .errors import (
     ERR_400_INVITATION_ALREADY_USED,
+    ERR_400_INVITATION_DECLINED,
     ERR_400_INVITATION_EXPIRED,
     ERR_400_INVITATION_REVOKED,
     ERR_400_SLUG_TAKEN,
@@ -44,6 +54,8 @@ from .errors import (
     ERR_404_INVITATION_NOT_FOUND,
     ERR_404_MEMBER_NOT_FOUND,
     ERR_404_WORKSPACE_NOT_FOUND,
+    ERR_409_EMAIL_ALREADY_REGISTERED,
+    ERR_503_AUTH_UNAVAILABLE,
 )
 from .events import (
     EVENT_WORKSPACE_MEMBER_REMOVED,
@@ -54,6 +66,8 @@ from .permissions import get_membership, require_role, role_at_least
 from .serializers import (
     InternalPersonalWorkspaceResponseSerializer,
     InvitationAcceptRequestSerializer,
+    InvitationClaimResponseSerializer,
+    InvitationPreviewResponseSerializer,
     MemberInviteRequestSerializer,
     MemberInviteResponseSerializer,
     MemberResponseSerializer,
@@ -161,6 +175,85 @@ def _member_display_name_expr():
         Value(""),
         output_field=CharField(),
     )
+
+
+def _invitation_state_error(inv: WorkspaceInvitation):
+    """Shared 400 mapping for acting on a non-pending invitation.
+
+    Used by accept, decline and claim so all three agree on the state
+    machine and its precedence (revoked > accepted > declined > expired —
+    the same order ``WorkspaceInvitation.status`` derives its label in).
+    Returns ``None`` while the invitation is actionable (pending).
+    """
+    if inv.revoked_at:
+        return StapelErrorResponse(400, ERR_400_INVITATION_REVOKED)
+    if inv.accepted_at:
+        return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
+    if inv.declined_at:
+        return StapelErrorResponse(400, ERR_400_INVITATION_DECLINED)
+    if inv.expires_at and inv.expires_at < timezone.now():
+        return StapelErrorResponse(400, ERR_400_INVITATION_EXPIRED)
+    return None
+
+
+def _mask_email(email: str) -> str:
+    """Mask an email for the public invitation preview: ``m***@e***.com``.
+
+    First character of the local part and of the domain name survive, the
+    TLD stays readable — enough for the invitee to recognize their own
+    address, useless for harvesting.
+    """
+    local, _, domain = email.partition("@")
+    domain_name, dot, tld = domain.rpartition(".")
+    masked_local = f"{local[:1] or '*'}***"
+    if dot:
+        return f"{masked_local}@{domain_name[:1] or '*'}***.{tld}"
+    return f"{masked_local}@{domain[:1] or '*'}***"
+
+
+def _email_registered(email: str) -> bool:
+    """Whether an account already exists for the invited email (spec §B2)."""
+    return get_user_model().objects.filter(email__iexact=email).exists()
+
+
+class TokenPathNoLogMixin:
+    """Keep the invite token out of the logs (org-program spec §B2).
+
+    The invite-flow endpoints carry the bearer token in the URL path, and
+    Django's request logging writes ``request.path`` for every 4xx/5xx
+    response (``django.core.handlers.base`` → ``log_response``) — which
+    would persist the secret in plaintext logs on any miss (404 probe,
+    expired token, throttle 429...). ``log_response`` honours the
+    documented ``_has_been_logged`` flag on the response; setting it here
+    suppresses exactly that path log for these views. Runs in
+    ``finalize_response`` so DRF-handled exceptions (401/403/429) are
+    covered too. Module code never logs the token either.
+    """
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        if response.status_code >= 400:
+            response._has_been_logged = True
+        return response
+
+
+class InvitationThrottle(ScopedRateThrottle):
+    """Enumeration backstop for the AllowAny invitation endpoints.
+
+    The invite token is a bearer secret, but a public endpoint still must
+    not be free to enumerate. DRF resolves scoped rates from the global
+    ``DEFAULT_THROTTLE_RATES`` setting, which a library module cannot own —
+    the rate is read from the module namespace instead
+    (``STAPEL_WORKSPACES["INVITATION_THROTTLE"]``; the stapel-geo
+    ``GeocodingThrottle`` canon). ``None`` disables throttling.
+    """
+
+    scope = "workspace-invitation"
+
+    def get_rate(self):
+        from .conf import workspaces_settings
+
+        return workspaces_settings.INVITATION_THROTTLE
 
 
 def _invitation_to_dto(inv: WorkspaceInvitation) -> InvitationResponse:
@@ -612,12 +705,9 @@ class InvitationAcceptView(SerializerSeamsMixin, APIView):
         inv = WorkspaceInvitation.objects.filter(token=token).first()
         if not inv:
             return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
-        if inv.revoked_at:
-            return StapelErrorResponse(400, ERR_400_INVITATION_REVOKED)
-        if inv.accepted_at:
-            return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
-        if inv.expires_at and inv.expires_at < timezone.now():
-            return StapelErrorResponse(400, ERR_400_INVITATION_EXPIRED)
+        err = _invitation_state_error(inv)
+        if err:
+            return err
         # Invitations are personal: any token holder must not be able to
         # join with the invited role under a different account.
         if (request.user.email or "").lower() != inv.email.lower():
@@ -642,6 +732,134 @@ class InvitationAcceptView(SerializerSeamsMixin, APIView):
             return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
         return StapelResponse(
             self.get_response_serializer_class()(_member_to_dto(member))
+        )
+
+
+@extend_schema(tags=["Members"])
+class InvitationPreviewView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
+    """Public invitation preview — what the /invite/{token} page renders.
+
+    AllowAny by design (org-program spec §B2): the invitee has no session
+    yet; the token in the URL is the bearer secret. The response leaks
+    nothing harvestable — the email is masked, and ``status`` /
+    ``email_registered`` are exactly what the frontend flow machine needs
+    to route (login vs claim vs terminal-state screen). Throttled as an
+    enumeration backstop. The token is never logged.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [InvitationThrottle]
+    throttle_scope = "workspace-invitation"
+    response_serializer_class = InvitationPreviewResponseSerializer
+
+    @extend_schema(responses={200: InvitationPreviewResponseSerializer})
+    def get(self, request, token):  # noqa: R007
+        inv = (
+            WorkspaceInvitation.objects.select_related("workspace")
+            .filter(token=token)
+            .first()
+        )
+        if not inv or inv.workspace.deleted_at:
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        return StapelResponse(
+            self.get_response_serializer_class()(
+                InvitationPreviewResponse(
+                    workspace_name=inv.workspace.name,
+                    role=inv.role,
+                    email_masked=_mask_email(inv.email),
+                    status=inv.status,
+                    email_registered=_email_registered(inv.email),
+                    expires_at=inv.expires_at.isoformat(),
+                )
+            )
+        )
+
+
+@extend_schema(tags=["Members"])
+class InvitationDeclineView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
+    """Decline an invitation — the invitee's terminal "no" (spec §B2).
+
+    Authenticated + email-match, exactly like accept: only the invited
+    account may resolve the invitation, in either direction. Decline ≠
+    revoke — both states stay distinguishable in the preview ``status``.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(request=None, responses={204: None})
+    def post(self, request, token):  # noqa: R007
+        inv = (
+            WorkspaceInvitation.objects.select_related("workspace")
+            .filter(token=token)
+            .first()
+        )
+        if not inv:
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        err = _invitation_state_error(inv)
+        if err:
+            return err
+        # Invitations are personal: any token holder must not be able to
+        # resolve the invitation under a different account.
+        if (request.user.email or "").lower() != inv.email.lower():
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        if inv.workspace.deleted_at:
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        try:
+            services.decline_invitation(invitation=inv, user=request.user)
+        except ValueError:
+            # Raced its own state transition between the checks and the
+            # locked update — the token was consumed either way.
+            return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
+        return StapelResponse(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Members"])
+class InvitationClaimView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
+    """Mint a login grant for a not-yet-registered invitee (spec §B2-B3).
+
+    AllowAny — the whole point is that no account exists yet. Only valid
+    for ``email_registered == false``: an existing account gets 409 and the
+    frontend switches to login. The grant comes from auth's
+    ``auth.issue_login_grant`` comm Function (``create_if_missing`` — the
+    verified account materializes on exchange); if that Function is not
+    wired, the answer is an honest 503 — an invite flow without auth is
+    meaningless, so this seam never degrades to allow. The invitation is
+    NOT consumed here: accept stays a separate, deliberate step after
+    setup. Neither the invite token nor the grant token is ever logged.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [InvitationThrottle]
+    throttle_scope = "workspace-invitation"
+    response_serializer_class = InvitationClaimResponseSerializer
+
+    @extend_schema(request=None, responses={200: InvitationClaimResponseSerializer})
+    def post(self, request, token):  # noqa: R007
+        inv = (
+            WorkspaceInvitation.objects.select_related("workspace")
+            .filter(token=token)
+            .first()
+        )
+        if not inv or inv.workspace.deleted_at:
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        err = _invitation_state_error(inv)
+        if err:
+            return err
+        if _email_registered(inv.email):
+            return StapelErrorResponse(409, ERR_409_EMAIL_ALREADY_REGISTERED)
+        language = parse_accept_language(
+            request.META.get("HTTP_ACCEPT_LANGUAGE", "")
+        )
+        try:
+            grant_token = services.issue_invitation_login_grant(
+                invitation=inv, language=language
+            )
+        except (FunctionNotRegistered, FunctionRouteNotConfigured):
+            return StapelErrorResponse(503, ERR_503_AUTH_UNAVAILABLE)
+        return StapelResponse(
+            self.get_response_serializer_class()(
+                InvitationClaimResponse(grant_token=grant_token)
+            )
         )
 
 

@@ -602,6 +602,120 @@
         }
       }
     },
+    "/workspaces/api/v1/invitations/{token}": {
+      "get": {
+        "operationId": "workspaces_api_v1_invitations_retrieve",
+        "description": "Public invitation preview — what the /invite/{token} page renders.\n\nAllowAny by design (org-program spec §B2): the invitee has no session\nyet; the token in the URL is the bearer secret. The response leaks\nnothing harvestable — the email is masked, and ``status`` /\n``email_registered`` are exactly what the frontend flow machine needs\nto route (login vs claim vs terminal-state screen). Throttled as an\nenumeration backstop. The token is never logged.\n\n**Permissions:** `AllowAny`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreviewResponse"
+                },
+                "examples": {
+                  "InvitationPreviewResponse": {
+                    "value": {
+                      "workspace_name": "Acme Engineering",
+                      "role": "member",
+                      "email_masked": "m***@e***.com",
+                      "status": "pending",
+                      "expires_at": "2026-07-31T10:00:00Z"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/invitations/{token}/claim": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_claim_create",
+        "description": "Mint a login grant for a not-yet-registered invitee (spec §B2-B3).\n\nAllowAny — the whole point is that no account exists yet. Only valid\nfor ``email_registered == false``: an existing account gets 409 and the\nfrontend switches to login. The grant comes from auth's\n``auth.issue_login_grant`` comm Function (``create_if_missing`` — the\nverified account materializes on exchange); if that Function is not\nwired, the answer is an honest 503 — an invite flow without auth is\nmeaningless, so this seam never degrades to allow. The invitation is\nNOT consumed here: accept stays a separate, deliberate step after\nsetup. Neither the invite token nor the grant token is ever logged.\n\n**Permissions:** `AllowAny`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationClaimResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/invitations/{token}/decline": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_decline_create",
+        "description": "Decline an invitation — the invitee's terminal \"no\" (spec §B2).\n\nAuthenticated + email-match, exactly like accept: only the invited\naccount may resolve the invitation, in either direction. Decline ≠\nrevoke — both states stay distinguishable in the preview ``status``.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
     "/workspaces/api/v1/invitations/accept": {
       "post": {
         "operationId": "workspaces_api_v1_invitations_accept_create",
@@ -710,6 +824,62 @@
         },
         "required": [
           "token"
+        ]
+      },
+      "InvitationClaimResponse": {
+        "type": "object",
+        "description": "Login-grant mint for an unregistered invitee (claim step).",
+        "properties": {
+          "grant_token": {
+            "type": "string",
+            "description": "Single-use, short-lived login grant token — exchange it at auth's POST /grant/exchange/ for a session (creates the verified account). A credential: never log it"
+          }
+        },
+        "required": [
+          "grant_token"
+        ]
+      },
+      "InvitationPreviewResponse": {
+        "type": "object",
+        "description": "Public (AllowAny) invitation preview — what the /invite/{token} page renders before any auth decision.",
+        "properties": {
+          "workspace_name": {
+            "type": "string",
+            "description": "Display name of the inviting workspace",
+            "example": "Acme Engineering"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role granted on acceptance",
+            "example": "member"
+          },
+          "email_masked": {
+            "type": "string",
+            "description": "Invited email, masked for the public page",
+            "example": "m***@e***.com"
+          },
+          "status": {
+            "type": "string",
+            "description": "Invitation state. One of pending / expired / revoked / accepted / declined",
+            "example": "pending"
+          },
+          "email_registered": {
+            "type": "boolean",
+            "description": "Whether an account already exists for the invited email — steers the frontend to login vs claim"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "ISO 8601 expiry time",
+            "example": "2026-07-31T10:00:00Z"
+          }
+        },
+        "required": [
+          "email_masked",
+          "email_registered",
+          "expires_at",
+          "role",
+          "status",
+          "workspace_name"
         ]
       },
       "InvitationResponse": {

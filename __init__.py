@@ -7,6 +7,9 @@ Service functions (``stapel_workspaces.services``):
 - ``ensure_personal_workspace`` — get-or-create a user's personal workspace.
 - ``create_invitation`` — invite an email address to a workspace.
 - ``accept_invitation`` — resolve an invitation into a membership.
+- ``decline_invitation`` — the invitee's terminal "no" (≠ revoke).
+- ``issue_invitation_login_grant`` — mint an ``auth.issue_login_grant``
+  token for a not-yet-registered invitee (claim step, 0.7).
 
 comm Function providers (``stapel_workspaces.functions``):
 - ``CHECK_MEMBERSHIP`` — name of the ``workspaces.check_membership``
@@ -47,6 +50,8 @@ _EXPORTS = {
     "ensure_personal_workspace": ".services",
     "create_invitation": ".services",
     "accept_invitation": ".services",
+    "decline_invitation": ".services",
+    "issue_invitation_login_grant": ".services",
     "CHECK_MEMBERSHIP": ".functions",
     "check_membership": ".functions",
     "CHECK_CAPABILITY": ".functions",

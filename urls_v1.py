@@ -8,6 +8,9 @@ from .views import (
     InternalMembershipView,
     InternalPersonalWorkspaceView,
     InvitationAcceptView,
+    InvitationClaimView,
+    InvitationDeclineView,
+    InvitationPreviewView,
     MemberDetailView,
     MemberInviteView,
     MemberListView,
@@ -39,6 +42,24 @@ urlpatterns = [
         "invitations/accept",
         InvitationAcceptView.as_view(),
         name="workspace-invitation-accept",
+    ),
+    # Public invite-flow surface (org-program spec §B2). Declared AFTER the
+    # literal invitations/accept route so "accept" can never be read as a
+    # token (real tokens are 43-char urlsafe strings anyway).
+    path(
+        "invitations/<str:token>",
+        InvitationPreviewView.as_view(),
+        name="workspace-invitation-preview",
+    ),
+    path(
+        "invitations/<str:token>/decline",
+        InvitationDeclineView.as_view(),
+        name="workspace-invitation-decline",
+    ),
+    path(
+        "invitations/<str:token>/claim",
+        InvitationClaimView.as_view(),
+        name="workspace-invitation-claim",
     ),
     # Internal API for service-to-service membership checks
     path(

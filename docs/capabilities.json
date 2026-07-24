@@ -1,7 +1,7 @@
 {
   "module": "stapel-workspaces",
-  "version": "0.6.0",
-  "provides": "Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens, last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.",
+  "version": "0.7.0",
+  "provides": "Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.",
   "axes": [],
   "extension_points": [
     {
@@ -30,7 +30,7 @@
       "summary": "Raise individual capabilities to the high step-up level via STAPEL_WORKSPACES[\"CAPABILITY_LEVELS\"] (merged over the builtin members.provision / workspace.security.manage); enforcement arrives with the provisioning wave."
     }
   ],
-  "operations_total": 13,
+  "operations_total": 16,
   "requires": [
     {
       "module": "stapel-core",
@@ -40,7 +40,7 @@
     {
       "module": "stapel-auth",
       "optional": true,
-      "reason": "emits the user.registered event that triggers personal-workspace creation and issues the authenticated sessions the workspace endpoints require; decoupled via the comm bus"
+      "reason": "emits the user.registered event that triggers personal-workspace creation and issues the authenticated sessions the workspace endpoints require; answers auth.issue_login_grant for the invitation claim step (without it the claim endpoint degrades to an honest 503, never allow); decoupled via the comm bus"
     },
     {
       "module": "stapel-notifications",

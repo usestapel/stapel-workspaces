@@ -2,6 +2,61 @@
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-24
+
+Wave 2 of the workspaces org-program (spec §B1-B3): the workspaces side of
+the invite flow. Pairs with stapel-auth 0.11 (`auth.issue_login_grant` /
+`POST /grant/exchange/`); the frontend flow machine lives at the canonical
+`/invite/{token}` route.
+
+### Added
+- **Invitation state machine**: `WorkspaceInvitation.declined_at`
+  (migration `0003`, expand-only) — decline is the invitee's terminal "no",
+  distinct from the workspace's `revoked_at`; derived
+  `WorkspaceInvitation.status` property (`InvitationStatus`:
+  `pending | accepted | declined | revoked | expired`, stored terminal
+  timestamps beat the TTL). Accept/decline/claim share one 400 mapping with
+  the same precedence.
+- **`GET invitations/<token>`** — AllowAny public preview for the
+  `/invite/{token}` page: `{workspace_name, role, email_masked
+  (m***@d***.com-style), status, email_registered, expires_at}`.
+  `email_registered` (case-insensitive account lookup) steers the frontend
+  to login vs claim. Throttled (`ScopedRateThrottle`, scope
+  `workspace-invitation`, rate from
+  `STAPEL_WORKSPACES["INVITATION_THROTTLE"]`, default `30/min`, `None`
+  disables) as an enumeration backstop.
+- **`POST invitations/<token>/decline`** — authenticated + email-match
+  (personal in both directions, like accept); sets `declined_at`
+  (row-locked); a later accept answers 400 `error.400.invitation_declined`.
+- **`POST invitations/<token>/claim`** — AllowAny, for
+  `email_registered == false` only: valid pending invite →
+  `auth.issue_login_grant` `{email, verified_email: true, create_if_missing:
+  true, language?}` (Accept-Language hint) → `{grant_token}`. Registered
+  email → 409 `error.409.email_already_registered`; auth Function not wired
+  → honest 503 `error.503.auth_unavailable` (an invite flow without auth is
+  meaningless — this seam never degrades to allow, unlike billing's). The
+  invitation is NOT consumed — accept stays a separate deliberate step.
+- **Token hygiene**: the invite-flow endpoints carry the bearer token in
+  the URL path, so `TokenPathNoLogMixin` suppresses Django's 4xx/5xx
+  `request.path` log line (documented `_has_been_logged` contract) — the
+  token never reaches the logs from module or framework code (gated by
+  test).
+- **Settings**: `STAPEL_WORKSPACES["INVITATION_THROTTLE"]` (default
+  `"30/min"`).
+- **Errors** (+ru, i18n gates green): `error.400.invitation_declined`
+  (contact_support), `error.409.email_already_registered` (reauthenticate),
+  `error.503.auth_unavailable` (wait_and_retry).
+- Public API exports: `decline_invitation`, `issue_invitation_login_grant`
+  (services), `ISSUE_LOGIN_GRANT` Function name constant on the module.
+
+### Changed
+- **Invite email links the canonical frontend route**
+  `{FRONTEND_URL}/invite/{token}` (was `/invitations/{token}/accept`) —
+  the pair's `InviteAcceptFlow` mount point (spec §B1).
+- `accept_invitation` / accept view honour `declined_at` (row-lock filter +
+  400 mapping); contract triad regenerated (3 new operations, 2 schemas,
+  3 error keys).
+
 ## [0.6.0] — 2026-07-24
 
 Wave 1a of the workspaces org-program (spec §A mandate model + §D2

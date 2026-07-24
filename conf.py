@@ -17,6 +17,9 @@ Everything a host project previously had to fork is an override here::
         "CAPABILITY_LEVELS": {"records.purge": "high"},
         # invitation link lifetime
         "INVITATION_TTL_DAYS": 7,
+        # DRF throttle rate for the AllowAny invitation endpoints
+        # (None disables throttling)
+        "INVITATION_THROTTLE": "30/min",
         # credits debited per provisioned org user (0 = free)
         "PROVISION_USER_CREDITS": 0,
     }
@@ -38,6 +41,12 @@ DEFAULTS = {
     "CAPABILITY_LEVELS": {},
     # Invitation link lifetime in days.
     "INVITATION_TTL_DAYS": 7,
+    # DRF throttle rate (ScopedRateThrottle syntax, e.g. "30/min") for the
+    # AllowAny invitation endpoints — GET invitations/<token> preview and
+    # POST invitations/<token>/claim. The token is a bearer secret, but a
+    # public endpoint still needs an enumeration backstop (spec §B2).
+    # None disables throttling.
+    "INVITATION_THROTTLE": "30/min",
     # Credits debited per provisioned org user (0 = free).
     "PROVISION_USER_CREDITS": 0,
 }

@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`55` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`58` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -23,6 +23,7 @@
 | `error.400.invalid_ad_id` | 400 | — | `fix_input` | Недопустимый идентификатор объявления |
 | `error.400.invalid_role` | 400 | — | `fix_input` | Недопустимая роль |
 | `error.400.invitation_already_used` | 400 | — | `fix_input` | Приглашение уже было использовано |
+| `error.400.invitation_declined` | 400 | — | `contact_support` | Приглашение было отклонено |
 | `error.400.invitation_expired` | 400 | — | `contact_support` | Срок действия приглашения истёк |
 | `error.400.invitation_revoked` | 400 | — | `contact_support` | Приглашение было отозвано |
 | `error.400.validation_error` | 400 | — | `fix_input` | Ошибка валидации |
@@ -50,6 +51,7 @@
 | `error.406.not_acceptable` | 406 | — | `retry` | Недопустимый формат ответа |
 | `error.408.request_timeout` | 408 | — | `retry` | Время ожидания запроса истекло |
 | `error.409.conflict` | 409 | — | `fix_input` | Ресурс уже существует |
+| `error.409.email_already_registered` | 409 | — | `reauthenticate` | Аккаунт с этим email уже существует — войдите в него |
 | `error.410.gone` | 410 | — | `retry` | Ресурс был безвозвратно удалён |
 | `error.413.payload_too_large` | 413 | — | `retry` | Тело запроса слишком большое |
 | `error.415.unsupported_media_type` | 415 | — | `retry` | Неподдерживаемый тип данных |
@@ -59,3 +61,4 @@
 | `error.429.rate_limit` | 429 | `retry_after_minutes` | `wait_and_retry` | Слишком много попыток. Повторите попытку через {retry_after_minutes} мин. |
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Слишком много запросов. Пожалуйста, повторите попытку позже. |
 | `error.500.internal` | 500 | — | `contact_support` | Что-то пошло не так |
+| `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | Сервис аутентификации недоступен; повторите попытку позже |

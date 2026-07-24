@@ -1,4 +1,8 @@
 {
+  "error.400.invitation_declined": {
+    "hash": "1a2de800d95a713d",
+    "text": "Приглашение было отклонено"
+  },
   "error.402.entitlement_required": {
     "hash": "5f8d76bc6f74a76d",
     "text": "Тариф владельца рабочего пространства не включает эту возможность"
@@ -18,5 +22,13 @@
   "error.403.verification_enrollment_required": {
     "hash": "726adb4e63e9ae80",
     "text": "Требуется регистрация фактора подтверждения."
+  },
+  "error.409.email_already_registered": {
+    "hash": "715ff9f7621c1ce5",
+    "text": "Аккаунт с этим email уже существует — войдите в него"
+  },
+  "error.503.auth_unavailable": {
+    "hash": "c01407bc09695de1",
+    "text": "Сервис аутентификации недоступен; повторите попытку позже"
   }
 }

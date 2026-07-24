@@ -1,6 +1,6 @@
 # Errors — English
 
-`55` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`58` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -23,6 +23,7 @@
 | `error.400.invalid_ad_id` | 400 | — | `fix_input` | Invalid advertisement ID |
 | `error.400.invalid_role` | 400 | — | `fix_input` | Invalid role |
 | `error.400.invitation_already_used` | 400 | — | `fix_input` | Invitation has already been used |
+| `error.400.invitation_declined` | 400 | — | `contact_support` | Invitation has been declined |
 | `error.400.invitation_expired` | 400 | — | `contact_support` | Invitation has expired |
 | `error.400.invitation_revoked` | 400 | — | `contact_support` | Invitation has been revoked |
 | `error.400.validation_error` | 400 | — | `fix_input` | Validation error |
@@ -50,6 +51,7 @@
 | `error.406.not_acceptable` | 406 | — | `retry` | Not acceptable |
 | `error.408.request_timeout` | 408 | — | `retry` | Request timeout |
 | `error.409.conflict` | 409 | — | `fix_input` | Resource already exists |
+| `error.409.email_already_registered` | 409 | — | `reauthenticate` | An account with this email already exists — log in instead |
 | `error.410.gone` | 410 | — | `retry` | Resource has been permanently removed |
 | `error.413.payload_too_large` | 413 | — | `retry` | Request body is too large |
 | `error.415.unsupported_media_type` | 415 | — | `retry` | Unsupported media type |
@@ -59,3 +61,4 @@
 | `error.429.rate_limit` | 429 | `retry_after_minutes` | `wait_and_retry` | Too many attempts. Try again in {retry_after_minutes} minutes. |
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Too many requests. Please try again later. |
 | `error.500.internal` | 500 | — | `contact_support` | Something went wrong |
+| `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | The authentication service is unavailable; try again later |

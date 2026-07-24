@@ -271,9 +271,10 @@ class TestInvitationNotification:
         assert kwargs["user_id"] == str(other_user.pk)
         assert kwargs["variables"]["workspace_name"] == "Acme"
         assert kwargs["variables"]["inviter_name"]
+        # Canonical frontend invite route (org-program spec §B1, Wave 2).
         assert (
             kwargs["variables"]["accept_url"]
-            == f"https://app.example.com/invitations/{inv.token}/accept"
+            == f"https://app.example.com/invite/{inv.token}"
         )
 
     def test_unregistered_invitee_targeted_by_email(self, user, monkeypatch):

@@ -159,6 +159,13 @@
     "en": "Invitation has already been used"
   },
   {
+    "code": "error.400.invitation_declined",
+    "status": 400,
+    "params": [],
+    "remediation": "contact_support",
+    "en": "Invitation has been declined"
+  },
+  {
     "code": "error.400.invitation_expired",
     "status": 400,
     "params": [],
@@ -352,6 +359,13 @@
     "en": "Resource already exists"
   },
   {
+    "code": "error.409.email_already_registered",
+    "status": 409,
+    "params": [],
+    "remediation": "reauthenticate",
+    "en": "An account with this email already exists — log in instead"
+  },
+  {
     "code": "error.410.gone",
     "status": 410,
     "params": [],
@@ -415,5 +429,12 @@
     "params": [],
     "remediation": "contact_support",
     "en": "Something went wrong"
+  },
+  {
+    "code": "error.503.auth_unavailable",
+    "status": 503,
+    "params": [],
+    "remediation": "wait_and_retry",
+    "en": "The authentication service is unavailable; try again later"
   }
 ]
