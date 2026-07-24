@@ -4,6 +4,7 @@ from rest_framework import serializers
 from stapel_core.django.api.errors import StapelValidationError
 from stapel_core.django.api.serializers import StapelDataclassSerializer
 
+from .capabilities import effective_roles
 from .dto import (
     InvitationAcceptRequest,
     InvitationResponse,
@@ -11,6 +12,8 @@ from .dto import (
     MemberInviteResponse,
     MemberResponse,
     MemberUpdateRequest,
+    RoleListResponse,
+    RoleResponse,
     WorkspaceCreateRequest,
     WorkspaceListResponse,
     WorkspaceResponse,
@@ -55,7 +58,10 @@ class MemberInviteRequestSerializer(StapelDataclassSerializer):
         dataclass = MemberInviteRequest
 
     def validate_role(self, value):
-        if value not in {Role.ADMIN, Role.MEMBER, Role.VIEWER}:
+        # Validated against the EFFECTIVE registry (builtin + settings
+        # overlay) — custom product roles are invitable; granting `owner`
+        # via invitation stays forbidden (hardcoded owner protection).
+        if value == Role.OWNER or value not in effective_roles():
             raise StapelValidationError(ERR_400_INVALID_ROLE)
         return value
 
@@ -85,9 +91,22 @@ class MemberUpdateRequestSerializer(StapelDataclassSerializer):
         dataclass = MemberUpdateRequest
 
     def validate_role(self, value):
-        if value not in Role.values:
+        # Effective registry, not the hardcoded four: custom product roles
+        # are assignable. Granting `owner` remains possible here — the view
+        # gates it on the requester being an owner.
+        if value not in effective_roles():
             raise StapelValidationError(ERR_400_INVALID_ROLE)
         return value
+
+
+class RoleResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = RoleResponse
+
+
+class RoleListResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = RoleListResponse
 
 
 class InternalPersonalWorkspaceResponseSerializer(serializers.Serializer):

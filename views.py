@@ -1,11 +1,13 @@
 """DRF views for the workspaces service."""
 
+from django.db import transaction
 from django.db.models import CharField, F, Q, Value
 from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import permissions, status
 from rest_framework.views import APIView
+from stapel_core.comm import emit
 from stapel_core.django.api.errors import StapelErrorResponse, StapelResponse
 from stapel_core.django.api.pagination import AnchorPagination
 from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
@@ -13,11 +15,19 @@ from stapel_core.django.openapi.schemas import StapelErrorSerializer
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 
-from . import services
+from . import entitlements, services
+from .capabilities import (
+    BUILTIN_ROLES,
+    capabilities_for,
+    effective_roles,
+    role_has_capability,
+)
 from .dto import (
     InvitationResponse,
     MemberInviteResponse,
     MemberResponse,
+    RoleListResponse,
+    RoleResponse,
     WorkspaceListResponse,
     WorkspaceResponse,
 )
@@ -26,14 +36,21 @@ from .errors import (
     ERR_400_INVITATION_EXPIRED,
     ERR_400_INVITATION_REVOKED,
     ERR_400_SLUG_TAKEN,
+    ERR_402_ENTITLEMENT_REQUIRED,
+    ERR_402_MEMBER_LIMIT_REACHED,
     ERR_403_FORBIDDEN_WORKSPACE,
     ERR_403_LAST_OWNER,
+    ERR_403_MISSING_CAPABILITY,
     ERR_404_INVITATION_NOT_FOUND,
     ERR_404_MEMBER_NOT_FOUND,
     ERR_404_WORKSPACE_NOT_FOUND,
 )
-from .models import Role, Workspace, WorkspaceInvitation, WorkspaceMember
-from .permissions import require_role, role_at_least
+from .events import (
+    EVENT_WORKSPACE_MEMBER_REMOVED,
+    EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
+)
+from .models import Role, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceType
+from .permissions import get_membership, require_role, role_at_least
 from .serializers import (
     InternalPersonalWorkspaceResponseSerializer,
     InvitationAcceptRequestSerializer,
@@ -41,6 +58,7 @@ from .serializers import (
     MemberInviteResponseSerializer,
     MemberResponseSerializer,
     MemberUpdateRequestSerializer,
+    RoleListResponseSerializer,
     WorkspaceCreateRequestSerializer,
     WorkspaceListResponseSerializer,
     WorkspaceResponseSerializer,
@@ -68,6 +86,22 @@ class SerializerSeamsMixin:
         return self.response_serializer_class
 
 
+def _capability_check(membership, capability: str):
+    """403 mapping for the capability layer (org-program spec §A2).
+
+    Not a member at all → the historical ``forbidden_workspace`` boundary;
+    a member whose role lacks the capability → ``missing_capability`` with
+    the capability string as a param.
+    """
+    if membership is None:
+        return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+    if not role_has_capability(membership.role, capability):
+        return StapelErrorResponse(
+            403, ERR_403_MISSING_CAPABILITY, params={"capability": capability}
+        )
+    return None
+
+
 def _workspace_to_dto(
     ws: Workspace, my_role: str | None = None, member_count: int | None = None
 ) -> WorkspaceResponse:
@@ -86,6 +120,7 @@ def _workspace_to_dto(
         my_role=my_role,
         created_at=ws.created_at.isoformat(),
         updated_at=ws.updated_at.isoformat(),
+        my_capabilities=capabilities_for(my_role) if my_role else [],
     )
 
 
@@ -181,6 +216,16 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
         slug = getattr(data, "slug", None)
         if slug and Workspace.objects.filter(slug=slug).exists():
             return StapelErrorResponse(400, ERR_400_SLUG_TAKEN)
+        # Entitlement seam (spec §D2): creating an ORGANIZATION (type=work)
+        # is plan-gated on the creator — the would-be owner and billing
+        # anchor. Personal workspaces are never gated. Without billing
+        # installed the check degrades to allow.
+        if (data.type or WorkspaceType.WORK) == WorkspaceType.WORK:
+            verdict = entitlements.check_entitlement(
+                request.user.pk, entitlements.ENT_ORG
+            )
+            if not verdict.allowed:
+                return StapelErrorResponse(402, ERR_402_ENTITLEMENT_REQUIRED)
         ws = services.create_workspace(
             user=request.user,
             name=data.name,
@@ -201,13 +246,14 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
     request_serializer_class = WorkspaceUpdateRequestSerializer
     response_serializer_class = WorkspaceResponseSerializer
 
-    def _resolve(self, request, workspace_id):
+    def _resolve(self, request, workspace_id, capability: str = "workspace.view"):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
         if not ws:
             return None, None, StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
-        membership = require_role(ws.id, request.user.id, Role.VIEWER)
-        if not membership:
-            return None, None, StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        membership = get_membership(ws.id, request.user.id)
+        err = _capability_check(membership, capability)
+        if err:
+            return None, None, err
         return ws, membership, None
 
     @extend_schema(responses={200: WorkspaceResponseSerializer})
@@ -228,11 +274,9 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         responses={200: WorkspaceResponseSerializer},
     )
     def patch(self, request, workspace_id):  # noqa: R007
-        ws, membership, err = self._resolve(request, workspace_id)
+        ws, membership, err = self._resolve(request, workspace_id, "workspace.update")
         if err:
             return err
-        if not role_at_least(membership.role, Role.ADMIN):
-            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         ser = self.get_request_serializer_class()(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
@@ -316,8 +360,11 @@ class MemberListView(SerializerSeamsMixin, APIView):
         #   * search — case-insensitive substring on email OR display name
         #              (full name / username); lets a people-picker filter
         #              server-side instead of pulling every member (BACKLOG G12).
-        if not require_role(workspace_id, request.user.id, Role.VIEWER):
-            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        err = _capability_check(
+            get_membership(workspace_id, request.user.id), "members.view"
+        )
+        if err:
+            return err
         members = (
             WorkspaceMember.objects.filter(workspace_id=workspace_id)
             .select_related("user")
@@ -350,11 +397,30 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
         if not ws:
             return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
-        if not require_role(ws.id, request.user.id, Role.ADMIN):
-            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        err = _capability_check(
+            get_membership(ws.id, request.user.id), "members.invite"
+        )
+        if err:
+            return err
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
+        # Entitlement seam (spec §D2): capability first ("may YOU", 403),
+        # then the org's plan ceiling ("may the ORG", 402). Seats = accepted
+        # + pending live invitations + the invitations about to be created.
+        verdict = entitlements.check_org_entitlement(
+            ws,
+            entitlements.ENT_MEMBERS_MAX,
+            quantity=entitlements.member_seats_quantity(
+                ws, additional=len(data.emails)
+            ),
+        )
+        if not verdict.allowed:
+            return StapelErrorResponse(
+                402,
+                ERR_402_MEMBER_LIMIT_REACHED,
+                params={"limit": verdict.limit if verdict.limit is not None else 0},
+            )
         invitations = [
             services.create_invitation(
                 workspace=ws, email=e, role=data.role, invited_by=request.user
@@ -377,9 +443,12 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
     request_serializer_class = MemberUpdateRequestSerializer
     response_serializer_class = MemberResponseSerializer
 
-    def _resolve(self, request, workspace_id, user_id):
-        if not require_role(workspace_id, request.user.id, Role.ADMIN):
-            return None, StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+    def _resolve(self, request, workspace_id, user_id, capability):
+        err = _capability_check(
+            get_membership(workspace_id, request.user.id), capability
+        )
+        if err:
+            return None, err
         member = WorkspaceMember.objects.filter(
             workspace_id=workspace_id, user_id=user_id
         ).first()
@@ -392,14 +461,17 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         responses={200: MemberResponseSerializer},
     )
     def patch(self, request, workspace_id, user_id):  # noqa: R007
-        member, err = self._resolve(request, workspace_id, user_id)
+        member, err = self._resolve(
+            request, workspace_id, user_id, "members.role.change"
+        )
         if err:
             return err
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         new_role = ser.validated_data.role
         # Only owners may grant the OWNER role or change an owner's role —
-        # otherwise any admin can promote themselves to owner.
+        # otherwise any admin can promote themselves to owner. Hardcoded on
+        # the `owner` role, NOT on a capability (spec §A1 invariant).
         if (new_role == Role.OWNER or member.role == Role.OWNER) and not require_role(
             workspace_id, request.user.id, Role.OWNER
         ):
@@ -414,8 +486,24 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
             )
             if not others:
                 return StapelErrorResponse(403, ERR_403_LAST_OWNER)
+        old_role = member.role
         member.role = new_role
-        member.save(update_fields=["role"])
+        with transaction.atomic():
+            member.save(update_fields=["role"])
+            # Transactional outbox: leaves iff this transaction commits.
+            # Cross-service consumers (e.g. a rooms service re-evaluating a
+            # participant's rights) get the new role's capability grants
+            # inline (spec §A4).
+            emit(
+                EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
+                {
+                    "workspace_id": str(member.workspace_id),
+                    "user_id": str(member.user_id),
+                    "old_role": str(old_role),
+                    "new_role": str(member.role),
+                    "capabilities": capabilities_for(member.role),
+                },
+            )
         # Other services cache membership lookups — drop the stale role.
         invalidate_membership_cache(workspace_id, user_id)
         workspace_member_changed.send(
@@ -431,7 +519,7 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
 
     @extend_schema(responses={204: None})
     def delete(self, request, workspace_id, user_id):  # noqa: R007
-        member, err = self._resolve(request, workspace_id, user_id)
+        member, err = self._resolve(request, workspace_id, user_id, "members.remove")
         if err:
             return err
         # Only owners may remove an owner.
@@ -452,7 +540,20 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         workspace = member.workspace
         removed_user = member.user
         removed_role = member.role
-        member.delete()
+        with transaction.atomic():
+            member.delete()
+            # Transactional outbox: leaves iff this transaction commits.
+            # The cross-service kick signal (spec §A4) — e.g. a rooms
+            # service disconnects the user from an ongoing call.
+            emit(
+                EVENT_WORKSPACE_MEMBER_REMOVED,
+                {
+                    "workspace_id": str(workspace.id),
+                    "user_id": str(removed_user.pk),
+                    "role": str(removed_role),
+                    "removed_by": str(request.user.pk),
+                },
+            )
         # Other services cache membership lookups — drop the stale entry.
         invalidate_membership_cache(workspace_id, user_id)
         workspace_member_changed.send(
@@ -463,6 +564,35 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
             action="removed",
         )
         return StapelResponse(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Workspaces"])
+class RoleListView(SerializerSeamsMixin, APIView):
+    """The effective role registry — metadata for frontends (spec §A2).
+
+    Lets a RoleSelect stop hardcoding the builtin four: builtin roles plus
+    the deployment's ``STAPEL_WORKSPACES["ROLES"]`` overlay, capability
+    strings verbatim (wildcards included), ordered by descending rank.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    response_serializer_class = RoleListResponseSerializer
+
+    @extend_schema(responses={200: RoleListResponseSerializer})
+    def get(self, request):  # noqa: R007
+        roles = [
+            RoleResponse(
+                role=name,
+                rank=entry.get("rank"),
+                capabilities=list(entry.get("capabilities", [])),
+                builtin=name in BUILTIN_ROLES,
+            )
+            for name, entry in effective_roles().items()
+        ]
+        roles.sort(key=lambda r: (-r.rank, r.role))
+        return StapelResponse(
+            self.get_response_serializer_class()(RoleListResponse(roles=roles))
+        )
 
 
 @extend_schema(tags=["Members"])
@@ -496,6 +626,18 @@ class InvitationAcceptView(SerializerSeamsMixin, APIView):
             return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
         try:
             member = services.accept_invitation(invitation=inv, user=request.user)
+        except entitlements.EntitlementDenied as denied:
+            # Entitlement seam (spec §D2): the plan ceiling is re-checked on
+            # accept — the org's plan may have changed since the invite.
+            return StapelErrorResponse(
+                402,
+                ERR_402_MEMBER_LIMIT_REACHED,
+                params={
+                    "limit": denied.result.limit
+                    if denied.result.limit is not None
+                    else 0
+                },
+            )
         except ValueError:
             return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
         return StapelResponse(

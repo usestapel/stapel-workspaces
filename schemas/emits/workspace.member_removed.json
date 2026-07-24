@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.member_removed",
+  "description": "A member was removed (kicked) from a workspace. Business services subscribe to revoke live access (e.g. a rooms service disconnecting the user from an ongoing call).",
+  "type": "object",
+  "required": ["workspace_id", "user_id", "role", "removed_by"],
+  "properties": {
+    "workspace_id": { "type": "string", "format": "uuid" },
+    "user_id":      { "type": "string", "format": "uuid" },
+    "role":         { "type": "string" },
+    "removed_by":   { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

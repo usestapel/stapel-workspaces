@@ -8,14 +8,30 @@ Service functions (``stapel_workspaces.services``):
 - ``create_invitation`` — invite an email address to a workspace.
 - ``accept_invitation`` — resolve an invitation into a membership.
 
-comm Function provider (``stapel_workspaces.functions``):
+comm Function providers (``stapel_workspaces.functions``):
 - ``CHECK_MEMBERSHIP`` — name of the ``workspaces.check_membership``
   Function (call it via ``stapel_core.comm.call``).
 - ``check_membership`` — the provider itself.
+- ``CHECK_CAPABILITY`` / ``check_capability`` — the
+  ``workspaces.check_capability`` Function (mandate model, 0.6).
+
+Mandate model (``stapel_workspaces.capabilities`` / ``.permissions``):
+- ``effective_roles`` — builtin roles + ``STAPEL_WORKSPACES["ROLES"]``
+  overlay (last-wins merge-registry).
+- ``capabilities_for`` / ``role_has_capability`` — role → capability lookup
+  (wildcards ``"*"`` / ``"prefix.*"`` supported).
+- ``has_capability`` / ``require_capability`` — in-service checks against a
+  user's accepted membership.
+
+Entitlement seam (``stapel_workspaces.entitlements``):
+- ``check_org_entitlement`` — ask billing whether the org's plan allows a
+  key; degrades to allow when billing is not installed.
 
 Events (``stapel_workspaces.events``):
 - ``EVENT_WORKSPACE_PERSONAL_CREATED`` — comm action name emitted when a
   personal workspace is bootstrapped.
+- ``EVENT_WORKSPACE_MEMBER_REMOVED`` / ``EVENT_WORKSPACE_MEMBER_ROLE_CHANGED``
+  — member lifecycle emits for business services (kick, role change).
 
 GDPR:
 - ``WorkspacesGDPRProvider`` — export/delete provider for workspace data.
@@ -33,7 +49,18 @@ _EXPORTS = {
     "accept_invitation": ".services",
     "CHECK_MEMBERSHIP": ".functions",
     "check_membership": ".functions",
+    "CHECK_CAPABILITY": ".functions",
+    "check_capability": ".functions",
+    "effective_roles": ".capabilities",
+    "capabilities_for": ".capabilities",
+    "role_has_capability": ".capabilities",
+    "has_capability": ".permissions",
+    "require_capability": ".permissions",
+    "check_org_entitlement": ".entitlements",
+    "EntitlementResult": ".entitlements",
     "EVENT_WORKSPACE_PERSONAL_CREATED": ".events",
+    "EVENT_WORKSPACE_MEMBER_REMOVED": ".events",
+    "EVENT_WORKSPACE_MEMBER_ROLE_CHANGED": ".events",
     "WorkspacesGDPRProvider": ".gdpr",
 }
 

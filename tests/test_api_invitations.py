@@ -218,3 +218,27 @@ class TestAcceptInvitationService:
         accept_invitation(invitation=inv, user=other_user)
         with pytest.raises(ValueError):
             accept_invitation(invitation=inv, user=other_user)
+
+
+@pytest.mark.django_db
+class TestInvitationTTLSetting:
+    def test_default_ttl_seven_days(self, user):
+        from stapel_workspaces.services import create_invitation, create_workspace
+
+        ws = create_workspace(user=user, name="Acme")
+        inv = create_invitation(
+            workspace=ws, email="a@example.com", role="member", invited_by=user
+        )
+        delta = inv.expires_at - timezone.now()
+        assert 6 <= delta.days <= 7
+
+    def test_ttl_override_via_settings(self, user, settings):
+        from stapel_workspaces.services import create_invitation, create_workspace
+
+        settings.STAPEL_WORKSPACES = {"INVITATION_TTL_DAYS": 30}
+        ws = create_workspace(user=user, name="Acme")
+        inv = create_invitation(
+            workspace=ws, email="a@example.com", role="member", invited_by=user
+        )
+        delta = inv.expires_at - timezone.now()
+        assert 29 <= delta.days <= 30

@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from stapel_workspaces.errors import (
     ERR_400_SLUG_TAKEN,
-    ERR_403_FORBIDDEN_WORKSPACE,
+    ERR_403_MISSING_CAPABILITY,
     ERR_404_WORKSPACE_NOT_FOUND,
 )
 from stapel_workspaces.models import Role, Workspace, WorkspaceMember
@@ -133,12 +133,17 @@ class TestWorkspaceDetail:
         assert ws.slug == "fresh"
 
     def test_patch_by_plain_member_403(self, api_client, user, other_user):
+        # 0.6 mandate model: a MEMBER lacks the workspace.update capability —
+        # the 403 names the missing capability (they ARE a member, so the
+        # not-a-member forbidden_workspace boundary no longer applies).
         ws = _create_ws(other_user)
         _add_member(ws, user, Role.MEMBER)
         api_client.force_authenticate(user=user)
         resp = api_client.patch(f"{BASE}/{ws.id}", {"name": "Nope"}, format="json")
         assert resp.status_code == 403
-        assert resp.json()["localizable_error"] == ERR_403_FORBIDDEN_WORKSPACE
+        body = resp.json()
+        assert body["localizable_error"] == ERR_403_MISSING_CAPABILITY
+        assert body["params"] == {"capability": "workspace.update"}
         ws.refresh_from_db()
         assert ws.name != "Nope"
 

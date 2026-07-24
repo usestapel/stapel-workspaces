@@ -17,7 +17,18 @@ class TestPublicAPI:
                 "accept_invitation",
                 "CHECK_MEMBERSHIP",
                 "check_membership",
+                "CHECK_CAPABILITY",
+                "check_capability",
+                "effective_roles",
+                "capabilities_for",
+                "role_has_capability",
+                "has_capability",
+                "require_capability",
+                "check_org_entitlement",
+                "EntitlementResult",
                 "EVENT_WORKSPACE_PERSONAL_CREATED",
+                "EVENT_WORKSPACE_MEMBER_REMOVED",
+                "EVENT_WORKSPACE_MEMBER_ROLE_CHANGED",
                 "WorkspacesGDPRProvider",
             ]
         )
@@ -35,6 +46,21 @@ class TestPublicAPI:
         assert stapel_workspaces.check_membership is functions.check_membership
         assert (
             stapel_workspaces.CHECK_MEMBERSHIP == "workspaces.check_membership"
+        )
+        assert stapel_workspaces.check_capability is functions.check_capability
+        assert (
+            stapel_workspaces.CHECK_CAPABILITY == "workspaces.check_capability"
+        )
+        from stapel_workspaces import capabilities, entitlements, permissions
+
+        assert stapel_workspaces.effective_roles is capabilities.effective_roles
+        assert stapel_workspaces.has_capability is permissions.has_capability
+        assert (
+            stapel_workspaces.require_capability is permissions.require_capability
+        )
+        assert (
+            stapel_workspaces.check_org_entitlement
+            is entitlements.check_org_entitlement
         )
         assert (
             stapel_workspaces.WorkspacesGDPRProvider

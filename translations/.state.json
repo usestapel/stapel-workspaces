@@ -104,6 +104,14 @@
       "hash": "0fcfb12dfad07ba0",
       "origin": "seed:stapel-builtin"
     },
+    "error.402.entitlement_required": {
+      "hash": "5f8d76bc6f74a76d",
+      "origin": "llm"
+    },
+    "error.402.member_limit_reached": {
+      "hash": "d8f3cea769f2f7e3",
+      "origin": "llm"
+    },
     "error.402.payment_required": {
       "hash": "9b7e0bd8dc8b6974",
       "origin": "seed:stapel-builtin"
@@ -119,6 +127,10 @@
     "error.403.last_owner_cannot_be_removed": {
       "hash": "4208090014898764",
       "origin": "seed:stapel-builtin"
+    },
+    "error.403.missing_capability": {
+      "hash": "7defc2d25ee8cef6",
+      "origin": "llm"
     },
     "error.403.network_blocked": {
       "hash": "73418e2ec86c7544",

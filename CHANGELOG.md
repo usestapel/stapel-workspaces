@@ -2,6 +2,88 @@
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-24
+
+Wave 1a of the workspaces org-program (spec §A mandate model + §D2
+entitlement seam). Pre-1.0 minor = breaking allowed; the backward
+compatibility of the builtin four roles (viewer < member < admin < owner,
+same capabilities as the old role thresholds) is the release gate and is
+covered by tests.
+
+### Added
+- **Settings namespace** `STAPEL_WORKSPACES` (`conf.py`): `ROLES` (role
+  registry overlay), `CAPABILITY_LEVELS` (step-up level overlay),
+  `INVITATION_TTL_DAYS` (default 7 — the previously hard-coded invite
+  expiry), `PROVISION_USER_CREDITS` (used from W3).
+- **Mandate model** (`capabilities.py`): `BUILTIN_ROLES` (owner `*` rank
+  400 / admin 300 / member 200 / viewer 100 per spec §A1),
+  `effective_roles()` (last-wins merge of the `ROLES` overlay; `owner`
+  system-protected), wildcard capability matcher (`*`, `prefix.*`),
+  `capabilities_for()` / `role_has_capability()` / `role_rank()`,
+  `BUILTIN_CAPABILITY_LEVELS` + `capability_level()`. System checks
+  (`checks.py`, E001-E008) validate the overlays at startup.
+- **Permission layer** (`permissions.py`): `has_capability()` /
+  `require_capability()` (accepted memberships only; suspension arrives in
+  W3). `role_at_least()` moved from list-index to registry ranks —
+  identical answers for the builtin four (gate), custom roles participate
+  via `rank`. `ROLE_HIERARCHY` kept as export.
+- **comm**: new Function `workspaces.check_capability`
+  `{workspace_id, user_id, capability}` → `{allowed, role}` (+ schema);
+  `workspaces.check_membership` response now carries `capabilities: [str]`
+  (additive; raw grant strings, wildcards included) — pairs with the
+  stapel-core 0.14 consumer helper `require_capability()`.
+- **HTTP API**: `GET /workspaces/api/v1/roles` (authenticated) → the
+  effective registry `[{role, rank, capabilities, builtin}]`, rank-desc;
+  `WorkspaceResponse.my_capabilities` (additive) on list/detail.
+- **Member lifecycle emits** (spec §A4, transactional outbox, schemas in
+  `schemas/emits/`): `workspace.member_removed` `{workspace_id, user_id,
+  role, removed_by}` and `workspace.member_role_changed` `{workspace_id,
+  user_id, old_role, new_role, capabilities}` from member DELETE/PATCH.
+- **Entitlement seam** (`entitlements.py`, spec §D2):
+  `check_org_entitlement()` / `check_entitlement()` call
+  `billing.check_entitlement` (owner-anchored) and degrade to ALLOW on
+  `FunctionNotRegistered` / `FunctionRouteNotConfigured` (billing not
+  installed — OSS default); a failing installed billing propagates.
+  Enforcement: work-workspace creation → `workspaces.org` (402
+  `error.402.entitlement_required`); invite + accept →
+  `workspaces.members.max` with seats = accepted + live pending invites
+  (+ batch size on invite; re-checked on accept) → 402
+  `error.402.member_limit_reached {limit}`.
+- **Errors** (+ru, i18n gates green): `error.403.missing_capability
+  {capability}` (member whose role lacks the capability; not-a-member
+  keeps `error.403.forbidden_workspace`), `error.402.entitlement_required`,
+  `error.402.member_limit_reached {limit}`.
+- Public API exports: capability/entitlement helpers, `CHECK_CAPABILITY`,
+  new event names.
+
+### Changed
+- **Views enforce capabilities instead of role thresholds** (same outcomes
+  for the builtin four): workspace GET → `workspace.view`, PATCH →
+  `workspace.update`, member list → `members.view`, invite →
+  `members.invite`, role change → `members.role.change`, removal →
+  `members.remove`. Owner-only invariants stay hardcoded on the `owner`
+  role: workspace delete, granting/changing owner, last-owner protection.
+- **Migration 0002** (expand-only): `WorkspaceMember.role` /
+  `WorkspaceInvitation.role` `CharField(16)` → `CharField(32)`. Model
+  `choices` stay on the builtin four (stapel-recordings `SourceType`
+  precedent); serializers validate against `effective_roles()` — custom
+  registry roles are invitable/assignable, granting `owner` via invitation
+  remains forbidden.
+- Invitation expiry reads `STAPEL_WORKSPACES["INVITATION_TTL_DAYS"]`.
+- `schemas/emits/workspace.member_joined.json`: `role` enum of the builtin
+  four widened to plain string (registry roles join via invitations).
+- `stapel-core` floor `>=0.10` → `>=0.14` (comm exceptions contract +
+  consumer-side `require_capability` counterpart).
+
+### Notes
+- Breaking surface (pre-1.0 minor): member-but-no-capability 403 payloads
+  now carry `error.403.missing_capability` (was
+  `error.403.forbidden_workspace`); `check_membership` gained a response
+  field (additive).
+- The monolith aggregate (`stapel-example-monolith`) needs its usual
+  post-release `codegen` regen — the byte-identity test compares against
+  the released 0.5.4 slice until then.
+
 ## [0.5.3] — 2026-07-17
 
 Fix-up #2: 0.5.2's regen still baked the old version into

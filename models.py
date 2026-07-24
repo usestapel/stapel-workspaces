@@ -20,6 +20,16 @@ class WorkspaceType(models.TextChoices):
 
 
 class Role(models.TextChoices):
+    """The BUILTIN four roles.
+
+    The effective role set is extensible via ``STAPEL_WORKSPACES["ROLES"]``
+    (see ``capabilities.effective_roles``); ``choices`` on the role columns
+    stay declared for the builtin values (admin/display defaults — the
+    stapel-recordings ``SourceType`` precedent for extensible enums) while
+    serializers validate against the effective registry, so custom product
+    roles are storable.
+    """
+
     OWNER = "owner", "Owner"
     ADMIN = "admin", "Admin"
     MEMBER = "member", "Member"
@@ -68,7 +78,7 @@ class WorkspaceMember(models.Model):
         on_delete=models.CASCADE,
         related_name="workspace_memberships",
     )
-    role = models.CharField(max_length=16, choices=Role.choices, default=Role.MEMBER)
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.MEMBER)
     invited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -105,7 +115,7 @@ class WorkspaceInvitation(models.Model):
         Workspace, on_delete=models.CASCADE, related_name="invitations"
     )
     email = models.EmailField()
-    role = models.CharField(max_length=16, choices=Role.choices, default=Role.MEMBER)
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.MEMBER)
     invited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )

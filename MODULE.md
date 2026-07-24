@@ -16,17 +16,19 @@ registries). Everything below is verifiable against the code in this repo.
 
 | Area | Contents |
 |---|---|
-| Models (`models.py`) | `Workspace` (UUID pk, `name`, unique `slug`, `type` personal\|work, `owner` FK `PROTECT`, JSON `settings`, `storage_used_bytes` / `storage_limit_bytes` default 5 GiB, soft-delete via `deleted_at`; `db_table workspaces_workspace`), `WorkspaceMember` (unique `(workspace, user)`, `role`, `invited_by`, `invited_at` / `accepted_at` / `last_accessed_at`; `db_table workspaces_member`), `WorkspaceInvitation` (email invite, unique single-use `token`, `expires_at`, `accepted_at` / `revoked_at`; `db_table workspaces_invitation`). Enums: `WorkspaceType` (`personal`/`work`), `Role` (`owner`/`admin`/`member`/`viewer`) |
-| Services (`services.py`) | `create_workspace()` (atomic; seeds OWNER membership, emits `workspace.created`, sends `workspace_member_changed`), `ensure_personal_workspace()` (get-or-create on first login; emits `workspace.personal.created` + `workspace.member_joined`), `create_invitation()` (7-day token; best-effort `request_notification("workspace.invitation", ...)` via `stapel_core.notifications`), `accept_invitation()` (row-locked single-use token → membership; emits `workspace.member_joined`, invalidates the cross-service membership cache, sends signal) |
-| Permissions (`permissions.py`) | `ROLE_HIERARCHY = [VIEWER, MEMBER, ADMIN, OWNER]`, `role_at_least()`, `get_membership()` (accepted memberships only), `require_role()` |
-| HTTP API (`urls.py`, `views.py`) | Workspace list/create, detail (GET/PATCH/DELETE soft-delete), member list, invite, member role change / removal (last-owner protected), invitation accept, plus internal service-to-service endpoints (`IsServiceRequest \| IsStaffUser`): membership lookup and personal-workspace get-or-create |
-| comm Function (`functions.py`) | `workspaces.check_membership` (constant `CHECK_MEMBERSHIP`), registered idempotently in `AppConfig.ready()` with `CHECK_MEMBERSHIP_SCHEMA` |
-| Events (`events.py`, `schemas/`) | `EVENT_WORKSPACE_PERSONAL_CREATED = "workspace.personal.created"`, `WorkspacePersonalCreatedPayload` dataclass, `EVENT_REGISTRY`; JSON Schemas in `schemas/emits/`, `schemas/consumes/`, `schemas/functions/` |
+| Models (`models.py`) | `Workspace` (UUID pk, `name`, unique `slug`, `type` personal\|work, `owner` FK `PROTECT`, JSON `settings`, `storage_used_bytes` / `storage_limit_bytes` default 5 GiB, soft-delete via `deleted_at`; `db_table workspaces_workspace`), `WorkspaceMember` (unique `(workspace, user)`, `role`, `invited_by`, `invited_at` / `accepted_at` / `last_accessed_at`; `db_table workspaces_member`), `WorkspaceInvitation` (email invite, unique single-use `token`, `expires_at`, `accepted_at` / `revoked_at`; `db_table workspaces_invitation`). Enums: `WorkspaceType` (`personal`/`work`), `Role` (the BUILTIN four `owner`/`admin`/`member`/`viewer`; the effective role set is extensible via `STAPEL_WORKSPACES["ROLES"]`, role columns are `CharField(32)`) |
+| Services (`services.py`) | `create_workspace()` (atomic; seeds OWNER membership, emits `workspace.created`, sends `workspace_member_changed`), `ensure_personal_workspace()` (get-or-create on first login; emits `workspace.personal.created` + `workspace.member_joined`), `create_invitation()` (token with `INVITATION_TTL_DAYS` lifetime, default 7 days; best-effort `request_notification("workspace.invitation", ...)` via `stapel_core.notifications`), `accept_invitation()` (row-locked single-use token → membership; re-checks the `workspaces.members.max` entitlement, emits `workspace.member_joined`, invalidates the cross-service membership cache, sends signal) |
+| Permissions (`permissions.py`) | `role_at_least()` (rank-based, backward-compatible for the builtin four; `ROLE_HIERARCHY` kept as export), `get_membership()` (accepted memberships only), `require_role()`, `has_capability()` / `require_capability()` (mandate model) |
+| Capabilities (`capabilities.py`, `conf.py`, `checks.py`) | Settings-registry mandate model: `BUILTIN_ROLES` (owner `*` 400 / admin 300 / member 200 / viewer 100), `effective_roles()` (last-wins `STAPEL_WORKSPACES["ROLES"]` overlay; `owner` system-protected), wildcard matcher (`*`, `prefix.*`), `capabilities_for()` / `role_has_capability()`, `BUILTIN_CAPABILITY_LEVELS` + `capability_level()` (step-up levels, enforced from W3); system checks E001-E008 validate the overlays |
+| Entitlements (`entitlements.py`) | Billing seam: `check_org_entitlement()` / `check_entitlement()` → `billing.check_entitlement` comm Function with degrade-ALLOW when billing is absent (`FunctionNotRegistered` / `FunctionRouteNotConfigured`); enforcement on work-workspace creation (`workspaces.org`) and invite/accept (`workspaces.members.max`, seats = accepted + live pending invites) |
+| HTTP API (`urls.py`, `views.py`) | Workspace list/create, detail (GET/PATCH/DELETE soft-delete), effective role registry (`GET roles`), member list, invite, member role change / removal (last-owner protected; emits `workspace.member_role_changed` / `workspace.member_removed`), invitation accept, plus internal service-to-service endpoints (`IsServiceRequest \| IsStaffUser`): membership lookup and personal-workspace get-or-create |
+| comm Functions (`functions.py`) | `workspaces.check_membership` (constant `CHECK_MEMBERSHIP`; response carries `capabilities` since 0.6) and `workspaces.check_capability` (constant `CHECK_CAPABILITY`), registered idempotently in `AppConfig.ready()` with their schemas |
+| Events (`events.py`, `schemas/`) | `EVENT_WORKSPACE_PERSONAL_CREATED = "workspace.personal.created"`, `EVENT_WORKSPACE_MEMBER_REMOVED` / `EVENT_WORKSPACE_MEMBER_ROLE_CHANGED` (member lifecycle, spec §A4), payload dataclasses, `EVENT_REGISTRY`; JSON Schemas in `schemas/emits/`, `schemas/consumes/`, `schemas/functions/` |
 | Bus consumer (`management/commands/consume_auth_events.py`) | Listens on `user.registered` (consumer group `workspaces-auth-events`) → `ensure_personal_workspace()` → publishes `workspace.personal.created` |
 | GDPR (`gdpr.py`, `apps.py`) | `WorkspacesGDPRProvider` (section `"workspaces"`), registered with `stapel_core.gdpr.gdpr_registry` in `AppConfig.ready()`; export (memberships, owned workspaces, sent invites), delete (memberships removed, pending sent invites deleted, owned workspaces **soft**-deleted), anonymize (`invited_by` cleared on accepted invites) |
-| Errors (`errors.py`) | `WORKSPACES_ERRORS` keys (`error.404.workspace_not_found`, `error.403.forbidden_workspace`, `error.403.last_owner_cannot_be_removed`, `error.400.invitation_expired`, ...) registered via `register_service_errors`; `WorkspacesErrorKeysView` |
+| Errors (`errors.py`) | `WORKSPACES_ERRORS` keys (`error.404.workspace_not_found`, `error.403.forbidden_workspace`, `error.403.last_owner_cannot_be_removed`, `error.400.invitation_expired`, `error.403.missing_capability`, `error.402.entitlement_required`, `error.402.member_limit_reached`, ...) registered via `register_service_errors`; `WorkspacesErrorKeysView` |
 | Admin (`admin.py`) | `Workspace` / `WorkspaceMember` plain `ModelAdmin`s (business, undecorated); `WorkspaceInvitation` is `@access.secret` and subclasses `StapelModelAdmin` — see "Admin categories" below |
-| Public API (`__init__.py`, PEP 562 lazy) | `__all__ = ["create_workspace", "ensure_personal_workspace", "create_invitation", "accept_invitation", "CHECK_MEMBERSHIP", "check_membership", "EVENT_WORKSPACE_PERSONAL_CREATED", "WorkspacesGDPRProvider"]` |
+| Public API (`__init__.py`, PEP 562 lazy) | services + comm names + mandate-model helpers (`effective_roles`, `capabilities_for`, `role_has_capability`, `has_capability`, `require_capability`), entitlement seam (`check_org_entitlement`, `EntitlementResult`), event names, `WorkspacesGDPRProvider` — see `__init__.py` `_EXPORTS` |
 
 Consumer-side helpers live in **stapel-core**, not here: `stapel_core.django.workspaces`
 (`get_membership`, `require_role`, `invalidate_membership_cache`,
@@ -38,20 +40,23 @@ they never import `stapel_workspaces`.
 
 ### Settings
 
-This module has **no `AppSettings` namespace** (no `conf.py`; there is no
-`STAPEL_WORKSPACES` setting — unlike e.g. `stapel-billing`). What is configurable today:
+`conf.py` exposes the `STAPEL_WORKSPACES` namespace (`workspaces_settings`,
+`stapel_core.conf.AppSettings`; resolution dict → env → default):
 
 | Key | Kind | Default | What it customizes |
 |---|---|---|---|
+| `STAPEL_WORKSPACES["ROLES"]` | merge-registry (last-wins per role key) | `{}` | Product roles overlaid over `capabilities.BUILTIN_ROLES`; an entry replaces the builtin entry whole (`{"rank": int, "capabilities": [str]}`); `owner` is system-protected (checks E002) |
+| `STAPEL_WORKSPACES["CAPABILITY_LEVELS"]` | merge-registry | `{}` | Step-up levels (`"standard"`/`"high"`) overlaid over `BUILTIN_CAPABILITY_LEVELS` (enforcement lands with W3 provisioning) |
+| `STAPEL_WORKSPACES["INVITATION_TTL_DAYS"]` | tuning | `7` | Invitation link lifetime (`services.create_invitation`) |
+| `STAPEL_WORKSPACES["PROVISION_USER_CREDITS"]` | tuning | `0` | Credits debited per provisioned org user (used from W3; `0` = free) |
 | `FRONTEND_URL` | flat Django setting | `""` | Base URL for the invitation accept link (`{FRONTEND_URL}/invitations/{token}/accept`) in the invite notification (`services._send_invitation_notification`) |
 | `STAPEL_COMM` / `STAPEL_BUS_BACKEND` | core namespaces (`stapel_core.comm.config`, `stapel_core.bus`) | — | Transport for all emits/consumes/function calls (in-process in a monolith, bus in microservices) — deployment config, not code |
 | `WORKSPACES_SERVICE_URL`, `SERVICE_API_KEY` | env vars (consumer side, in `stapel_core.django.workspaces`) | `http://stapel-workspaces:8000`, `""` | Where other services reach the internal membership API, and the `X-API-KEY` they present |
 
 **Not configurable today** (hard-coded; making any of them a setting is an upstream
-contribution): invitation expiry (7 days, `services.create_invitation`), default storage
-quota (5 GiB, `Workspace.storage_limit_bytes`), slug auto-generation
-(`services._make_unique_slug`), the role set and hierarchy (see below), the 30 s
-consumer-side membership cache TTL (`stapel_core.django.workspaces.CACHE_TTL_SECONDS`).
+contribution): default storage quota (5 GiB, `Workspace.storage_limit_bytes`), slug
+auto-generation (`services._make_unique_slug`), the 30 s consumer-side membership
+cache TTL (`stapel_core.django.workspaces.CACHE_TTL_SECONDS`).
 
 ### Swappable models
 
@@ -77,18 +82,26 @@ New columns, indexes, or constraints on these tables = upstream contribution
 
 ### Roles / permissions customization
 
-The role set is a **fixed contract**, deliberately mirrored in three places that must
-stay in sync: `models.Role` (TextChoices), `permissions.ROLE_HIERARCHY`, and
-`stapel_core.django.workspaces.ROLE_HIERARCHY` (plus the `role` enum in
-`schemas/emits/workspace.member_joined.json`). It is not settings-configurable —
-adding/renaming roles or reordering the hierarchy is an upstream contribution.
+Since 0.6 the role set is a **settings-registry** (org-program spec §A1):
+`capabilities.BUILTIN_ROLES` ships the four builtin roles (owner rank 400 `*`,
+admin 300, member 200, viewer 100) and a host project adds or overrides roles via
+`STAPEL_WORKSPACES["ROLES"]` (last-wins per key, entry replaces whole; capability
+strings are namespaced `"<domain>.<action>"`, wildcards `"*"` / `"prefix.*"`).
+`owner` cannot be overridden or removed (system check E002 + runtime backstop);
+per-workspace custom roles are deliberately NOT supported (roles are product-level;
+the `effective_roles()` seam allows a future per-workspace overlay without API
+breakage). `models.Role` (TextChoices) stays as the builtin enum; serializers
+validate against the effective registry (the stapel-recordings `SourceType`
+precedent). The `GET /workspaces/api/v1/roles` endpoint and `my_capabilities` on
+workspace responses surface the registry to frontends.
 
 What **is** app-layer:
 
-- Mapping roles to app-specific capabilities in your own code via
-  `stapel_workspaces.permissions.role_at_least` / `require_role` (in-service) or
-  `stapel_core.django.workspaces.require_role` / `comm.call("workspaces.check_membership")`
-  (from any other service, no import of this app).
+- Capability checks in your own code via `stapel_workspaces.permissions.has_capability`
+  / `require_capability` (in-service), `stapel_core.django.workspaces.require_capability`
+  or `comm.call("workspaces.check_capability")` (from any other service, no import of
+  this app); role-threshold checks (`role_at_least` / `require_role`) remain for
+  rank-ordered decisions.
 - Enforced invariants you can rely on (and must not re-implement loosely): only owners
   may grant/revoke the OWNER role; the last owner cannot be demoted or removed
   (`error.403.last_owner_cannot_be_removed`); only *accepted* memberships count for

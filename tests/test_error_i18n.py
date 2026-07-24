@@ -64,6 +64,13 @@ _MACHINE_RU = {
         "Запросы из этой сети не разрешены.",
     "error.403.verification_enrollment_required":
         "Требуется регистрация фактора подтверждения.",
+    # 0.6 mandate model + entitlement seam (org-program spec §A/§D2).
+    "error.403.missing_capability":
+        "Ваша роль не включает право {capability} в этом рабочем пространстве",
+    "error.402.entitlement_required":
+        "Тариф владельца рабочего пространства не включает эту возможность",
+    "error.402.member_limit_reached":
+        "Достигнут лимит участников рабочего пространства ({limit})",
 }
 
 

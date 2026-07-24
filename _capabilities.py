@@ -12,17 +12,18 @@ def main(argv=None):
     from stapel_workspaces._codegen import _configure
 
     _configure()
+    from stapel_workspaces.conf import DEFAULTS
     from stapel_workspaces.urls import GATE_REGISTRY
 
-    # This module has NO settings namespace (no conf.py, capability-config.md
-    # §2: "модули без ручек получают валидный манифест с axes: []") — defaults
-    # is empty and is_axis matches nothing; provides/requires/extension_points
-    # still come from the curated docs/capabilities.meta.json.
+    # ROLES / CAPABILITY_LEVELS are merge-registry extension points (curated
+    # in docs/capabilities.meta.json — same treatment as notifications'
+    # TYPES); INVITATION_TTL_DAYS / PROVISION_USER_CREDITS are tuning. No
+    # CTO-facing axes — is_axis matches nothing.
     return run_capabilities_cli(
         argv,
         repo=Path(__file__).resolve().parent,
         canonical_prefix="/workspaces/api/v1",
-        defaults={},
+        defaults=DEFAULTS,
         registry=GATE_REGISTRY,
         is_axis=lambda k: False,
         axis_group=_no_group,

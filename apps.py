@@ -12,6 +12,10 @@ class WorkspacesConfig(AppConfig):
         from .gdpr import WorkspacesGDPRProvider
         gdpr_registry.register(WorkspacesGDPRProvider())
 
+        # System checks: the STAPEL_WORKSPACES role/capability registries
+        # drive authorization — a malformed overlay must block deploys.
+        from . import checks  # noqa: F401
+
         # Action subscriptions (in-process in a monolith, bus consumer in
         # microservices — same code, transport chosen by STAPEL_COMM).
         from . import actions  # noqa: F401

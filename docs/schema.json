@@ -78,7 +78,11 @@
                       "owner_id": "0192a...",
                       "my_role": "owner",
                       "created_at": "2026-05-20T10:00:00Z",
-                      "updated_at": "2026-05-20T10:00:00Z"
+                      "updated_at": "2026-05-20T10:00:00Z",
+                      "my_capabilities": [
+                        "workspace.view",
+                        "members.view"
+                      ]
                     }
                   }
                 }
@@ -129,7 +133,11 @@
                       "owner_id": "0192a...",
                       "my_role": "owner",
                       "created_at": "2026-05-20T10:00:00Z",
-                      "updated_at": "2026-05-20T10:00:00Z"
+                      "updated_at": "2026-05-20T10:00:00Z",
+                      "my_capabilities": [
+                        "workspace.view",
+                        "members.view"
+                      ]
                     }
                   }
                 }
@@ -197,7 +205,11 @@
                       "owner_id": "0192a...",
                       "my_role": "owner",
                       "created_at": "2026-05-20T10:00:00Z",
-                      "updated_at": "2026-05-20T10:00:00Z"
+                      "updated_at": "2026-05-20T10:00:00Z",
+                      "my_capabilities": [
+                        "workspace.view",
+                        "members.view"
+                      ]
                     }
                   }
                 }
@@ -643,6 +655,32 @@
           }
         }
       }
+    },
+    "/workspaces/api/v1/roles": {
+      "get": {
+        "operationId": "workspaces_api_v1_roles_retrieve",
+        "description": "The effective role registry — metadata for frontends (spec §A2).\n\nLets a RoleSelect stop hardcoding the builtin four: builtin roles plus\nthe deployment's ``STAPEL_WORKSPACES[\"ROLES\"]`` overlay, capability\nstrings verbatim (wildcards included), ordered by descending rank.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleListResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
     }
   },
   "components": {
@@ -877,6 +915,56 @@
           }
         }
       },
+      "RoleListResponse": {
+        "type": "object",
+        "description": "RoleListResponse(roles: List[stapel_workspaces.dto.RoleResponse] = <factory>)",
+        "properties": {
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleResponse"
+            }
+          }
+        }
+      },
+      "RoleResponse": {
+        "type": "object",
+        "description": "One role of the effective registry (builtin + STAPEL_WORKSPACES overlay).",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Role key",
+            "example": "admin"
+          },
+          "rank": {
+            "type": "integer",
+            "description": "Ordering weight; higher = more powerful",
+            "example": 300
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Granted capability strings, verbatim (wildcards like * included)",
+            "example": [
+              "workspace.view",
+              "members.invite"
+            ]
+          },
+          "builtin": {
+            "type": "boolean",
+            "description": "Whether the role key is one of the builtin four",
+            "example": true
+          }
+        },
+        "required": [
+          "builtin",
+          "capabilities",
+          "rank",
+          "role"
+        ]
+      },
       "StapelError": {
         "type": "object",
         "description": "Structured error returned by all Stapel API endpoints.",
@@ -1008,6 +1096,17 @@
             "type": "string",
             "description": "ISO 8601 last update time",
             "example": "2026-05-20T10:00:00Z"
+          },
+          "my_capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Granted capability strings of the requesting user's role, verbatim from the registry (wildcards like * included)",
+            "example": [
+              "workspace.view",
+              "members.view"
+            ]
           }
         },
         "required": [

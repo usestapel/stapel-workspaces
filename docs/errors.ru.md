@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`52` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`55` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -30,10 +30,13 @@
 | `error.400.verification_invalid_factor` | 400 | — | `verify` | Этот способ подтверждения недоступен |
 | `error.400.workspace_slug_taken` | 400 | — | `fix_input` | Slug рабочего пространства уже занят |
 | `error.401.unauthorized` | 401 | — | `reauthenticate` | Требуется аутентификация |
+| `error.402.entitlement_required` | 402 | — | `fix_input` | Тариф владельца рабочего пространства не включает эту возможность |
+| `error.402.member_limit_reached` | 402 | `limit` | `fix_input` | Достигнут лимит участников рабочего пространства ({limit}) |
 | `error.402.payment_required` | 402 | — | `retry` | Требуется оплата |
 | `error.403.forbidden` | 403 | — | `retry` | У вас нет прав для выполнения этого действия |
 | `error.403.forbidden_workspace` | 403 | — | `contact_support` | У вас нет доступа к этому рабочему пространству |
 | `error.403.last_owner_cannot_be_removed` | 403 | — | `fix_input` | Нельзя удалить последнего владельца; сначала передайте права владения |
+| `error.403.missing_capability` | 403 | `capability` | `contact_support` | Ваша роль не включает право {capability} в этом рабочем пространстве |
 | `error.403.network_blocked` | 403 | — | `contact_support` | Запросы из этой сети не разрешены. |
 | `error.403.verification_enrollment_required` | 403 | — | `verify` | Требуется регистрация фактора подтверждения. |
 | `error.403.verification_required` | 403 | — | `verify` | Требуется дополнительная проверка |

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.member_role_changed",
+  "description": "A member's role changed. capabilities carries the NEW role's granted capability strings verbatim (registry values, wildcards like \"*\" included) so subscribers can react without a follow-up lookup.",
+  "type": "object",
+  "required": ["workspace_id", "user_id", "old_role", "new_role", "capabilities"],
+  "properties": {
+    "workspace_id": { "type": "string", "format": "uuid" },
+    "user_id":      { "type": "string", "format": "uuid" },
+    "old_role":     { "type": "string" },
+    "new_role":     { "type": "string" },
+    "capabilities": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

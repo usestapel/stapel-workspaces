@@ -13,6 +13,9 @@ ERR_400_INVITATION_EXPIRED = "error.400.invitation_expired"
 ERR_400_INVITATION_ALREADY_USED = "error.400.invitation_already_used"
 ERR_400_INVITATION_REVOKED = "error.400.invitation_revoked"
 ERR_400_INVALID_ROLE = "error.400.invalid_role"
+ERR_403_MISSING_CAPABILITY = "error.403.missing_capability"
+ERR_402_ENTITLEMENT_REQUIRED = "error.402.entitlement_required"
+ERR_402_MEMBER_LIMIT_REACHED = "error.402.member_limit_reached"
 
 WORKSPACES_ERRORS = {
     ERR_404_WORKSPACE_NOT_FOUND: "Workspace not found",
@@ -26,6 +29,9 @@ WORKSPACES_ERRORS = {
     ERR_400_INVITATION_ALREADY_USED: "Invitation has already been used",
     ERR_400_INVITATION_REVOKED: "Invitation has been revoked",
     ERR_400_INVALID_ROLE: "Invalid role",
+    ERR_403_MISSING_CAPABILITY: "Your role does not include the {capability} capability in this workspace",
+    ERR_402_ENTITLEMENT_REQUIRED: "The workspace owner's plan does not include this feature",
+    ERR_402_MEMBER_LIMIT_REACHED: "The workspace member limit ({limit}) has been reached",
 }
 
 # Machine-readable recovery hints (remediation) — the canonical "what to do"
@@ -79,6 +85,14 @@ WORKSPACES_ERRORS = {
 #     heuristic.
 #   * 400 invalid_role → fix_input. Genuine bad-input (unknown role value from
 #     the request body). Matches the heuristic.
+#   * 403 missing_capability → contact_support. Same boundary as
+#     forbidden_workspace, one level deeper: the user IS a member but their
+#     role lacks the capability. No request field grants it; a workspace
+#     admin/owner must change their role — escalate to another party.
+#   * 402 entitlement_required / member_limit_reached → fix_input. Self-serve
+#     plan ceilings: the workspace owner upgrades the plan (or prunes
+#     members/invites). Precedent: billing's insufficient_credits →
+#     fix_input; no operator involvement, retrying loops.
 WORKSPACES_REMEDIATION = {
     ERR_404_WORKSPACE_NOT_FOUND: "fix_input",
     ERR_404_MEMBER_NOT_FOUND: "fix_input",
@@ -91,6 +105,9 @@ WORKSPACES_REMEDIATION = {
     ERR_400_INVITATION_ALREADY_USED: "fix_input",
     ERR_400_INVITATION_REVOKED: "contact_support",
     ERR_400_INVALID_ROLE: "fix_input",
+    ERR_403_MISSING_CAPABILITY: "contact_support",
+    ERR_402_ENTITLEMENT_REQUIRED: "fix_input",
+    ERR_402_MEMBER_LIMIT_REACHED: "fix_input",
 }
 
 register_service_errors(WORKSPACES_ERRORS, remediation=WORKSPACES_REMEDIATION)

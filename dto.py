@@ -22,6 +22,7 @@ class WorkspaceResponse:
         my_role: Role of the requesting user. Example: owner
         created_at: ISO 8601 creation time. Example: 2026-05-20T10:00:00Z
         updated_at: ISO 8601 last update time. Example: 2026-05-20T10:00:00Z
+        my_capabilities: Granted capability strings of the requesting user's role, verbatim from the registry (wildcards like * included). Example: ["workspace.view", "members.view"]
     """
 
     id: UUID
@@ -36,6 +37,7 @@ class WorkspaceResponse:
     my_role: Optional[str]
     created_at: str
     updated_at: str
+    my_capabilities: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -134,3 +136,25 @@ class InvitationAcceptRequest:
 @dataclass
 class MemberUpdateRequest:  # noqa: R004
     role: str
+
+
+@dataclass
+class RoleResponse:
+    """One role of the effective registry (builtin + STAPEL_WORKSPACES overlay).
+
+    Attributes:
+        role: Role key. Example: admin
+        rank: Ordering weight; higher = more powerful. Example: 300
+        capabilities: Granted capability strings, verbatim (wildcards like * included). Example: ["workspace.view", "members.invite"]
+        builtin: Whether the role key is one of the builtin four. Example: true
+    """
+
+    role: str
+    rank: int
+    capabilities: List[str]
+    builtin: bool
+
+
+@dataclass
+class RoleListResponse:  # noqa: R004
+    roles: List[RoleResponse] = field(default_factory=list)

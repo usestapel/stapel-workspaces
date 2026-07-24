@@ -11,12 +11,14 @@ from .views import (
     MemberDetailView,
     MemberInviteView,
     MemberListView,
+    RoleListView,
     WorkspaceDetailView,
     WorkspaceListCreateView,
 )
 
 urlpatterns = [
     path("", WorkspaceListCreateView.as_view(), name="workspace-list"),
+    path("roles", RoleListView.as_view(), name="workspace-roles"),
     path("<uuid:workspace_id>", WorkspaceDetailView.as_view(), name="workspace-detail"),
     path(
         "<uuid:workspace_id>/members",
@@ -64,11 +66,11 @@ class GateEntry(NamedTuple):
     patterns: tuple
 
 
-#: Gate registry (capability-config.md §2 p.2): workspaces has no settings
-#: namespace at all (no conf.py) and therefore no config gates — the whole
-#: URL surface is a single always-on block. Declared as a registry entry
-#: (rather than left implicit) so the capabilities.json emitter has a
-#: uniform mechanism across every module.
+#: Gate registry (capability-config.md §2 p.2): workspaces has a settings
+#: namespace (conf.py — role/capability registries and tuning knobs) but no
+#: boolean feature gates — the whole URL surface is a single always-on
+#: block. Declared as a registry entry (rather than left implicit) so the
+#: capabilities.json emitter has a uniform mechanism across every module.
 GATE_REGISTRY: dict = {
     'workspaces.api': GateEntry('workspaces.api', (), tuple(urlpatterns)),
 }

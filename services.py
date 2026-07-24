@@ -13,6 +13,13 @@ from stapel_core.comm import emit
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 
+from .conf import workspaces_settings
+from .entitlements import (
+    ENT_MEMBERS_MAX,
+    EntitlementDenied,
+    check_org_entitlement,
+    member_seats_quantity,
+)
 from .events import EVENT_WORKSPACE_PERSONAL_CREATED
 from .models import Role, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceType
 
@@ -80,7 +87,8 @@ def create_invitation(*, workspace: Workspace, email: str, role: str, invited_by
         role=role,
         invited_by=invited_by,
         token=token_urlsafe(32),
-        expires_at=timezone.now() + timedelta(days=7),
+        expires_at=timezone.now()
+        + timedelta(days=workspaces_settings.INVITATION_TTL_DAYS),
     )
     _send_invitation_notification(invitation)
     return invitation
@@ -145,6 +153,22 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
     )
     if locked is None:
         raise ValueError("invitation already used")
+    # Entitlement seam (spec §D2): the seat ceiling is re-checked on accept —
+    # the org's plan may have changed since the invite went out. The invite
+    # itself is still pending here, i.e. already counted in the seat total
+    # (additional=0). Re-accepting an existing membership adds no seat and
+    # is never blocked. Degrades to allow without billing installed.
+    already_member = WorkspaceMember.objects.filter(
+        workspace_id=locked.workspace_id, user=user
+    ).exists()
+    if not already_member:
+        verdict = check_org_entitlement(
+            locked.workspace,
+            ENT_MEMBERS_MAX,
+            quantity=member_seats_quantity(locked.workspace),
+        )
+        if not verdict.allowed:
+            raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
     locked.accepted_at = timezone.now()
     locked.save(update_fields=["accepted_at"])
     member, _ = WorkspaceMember.objects.get_or_create(

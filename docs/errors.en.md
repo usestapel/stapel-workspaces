@@ -1,6 +1,6 @@
 # Errors — English
 
-`52` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`55` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -30,10 +30,13 @@
 | `error.400.verification_invalid_factor` | 400 | — | `verify` | This verification factor is not available |
 | `error.400.workspace_slug_taken` | 400 | — | `fix_input` | Workspace slug is already taken |
 | `error.401.unauthorized` | 401 | — | `reauthenticate` | Authentication required |
+| `error.402.entitlement_required` | 402 | — | `fix_input` | The workspace owner's plan does not include this feature |
+| `error.402.member_limit_reached` | 402 | `limit` | `fix_input` | The workspace member limit ({limit}) has been reached |
 | `error.402.payment_required` | 402 | — | `retry` | Payment required |
 | `error.403.forbidden` | 403 | — | `retry` | You do not have permission to perform this action |
 | `error.403.forbidden_workspace` | 403 | — | `contact_support` | You do not have access to this workspace |
 | `error.403.last_owner_cannot_be_removed` | 403 | — | `fix_input` | The last owner cannot be removed; transfer ownership first |
+| `error.403.missing_capability` | 403 | `capability` | `contact_support` | Your role does not include the {capability} capability in this workspace |
 | `error.403.network_blocked` | 403 | — | `contact_support` | Requests from this network are not allowed |
 | `error.403.verification_enrollment_required` | 403 | — | `verify` | Verification factor enrollment required |
 | `error.403.verification_required` | 403 | — | `verify` | Additional verification required |

@@ -208,6 +208,22 @@
     "en": "Authentication required"
   },
   {
+    "code": "error.402.entitlement_required",
+    "status": 402,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "The workspace owner's plan does not include this feature"
+  },
+  {
+    "code": "error.402.member_limit_reached",
+    "status": 402,
+    "params": [
+      "limit"
+    ],
+    "remediation": "fix_input",
+    "en": "The workspace member limit ({limit}) has been reached"
+  },
+  {
     "code": "error.402.payment_required",
     "status": 402,
     "params": [],
@@ -234,6 +250,15 @@
     "params": [],
     "remediation": "fix_input",
     "en": "The last owner cannot be removed; transfer ownership first"
+  },
+  {
+    "code": "error.403.missing_capability",
+    "status": 403,
+    "params": [
+      "capability"
+    ],
+    "remediation": "contact_support",
+    "en": "Your role does not include the {capability} capability in this workspace"
   },
   {
     "code": "error.403.network_blocked",

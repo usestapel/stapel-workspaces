@@ -1,4 +1,16 @@
 {
+  "error.402.entitlement_required": {
+    "hash": "5f8d76bc6f74a76d",
+    "text": "Тариф владельца рабочего пространства не включает эту возможность"
+  },
+  "error.402.member_limit_reached": {
+    "hash": "d8f3cea769f2f7e3",
+    "text": "Достигнут лимит участников рабочего пространства ({limit})"
+  },
+  "error.403.missing_capability": {
+    "hash": "7defc2d25ee8cef6",
+    "text": "Ваша роль не включает право {capability} в этом рабочем пространстве"
+  },
   "error.403.network_blocked": {
     "hash": "73418e2ec86c7544",
     "text": "Запросы из этой сети не разрешены."

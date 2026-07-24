@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "workspaces.check_membership",
-  "description": "Payload for the workspaces.check_membership comm Function. Returns {\"is_member\": bool, \"role\": str|null}.",
+  "description": "Payload for the workspaces.check_membership comm Function. Returns {\"is_member\": bool, \"role\": str|null, \"capabilities\": [str]} — capabilities (additive, 0.6) are the member role's granted strings verbatim, wildcards included.",
   "type": "object",
   "required": ["workspace_id", "user_id"],
   "properties": {

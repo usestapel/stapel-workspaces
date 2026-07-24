@@ -61,7 +61,7 @@ class TestCheckMembershipFunction:
             "workspaces.check_membership",
             {"workspace_id": str(ws.id), "user_id": str(user.pk)},
         )
-        assert result == {"is_member": True, "role": "owner"}
+        assert result == {"is_member": True, "role": "owner", "capabilities": ["*"]}
 
     def test_non_member_returns_false_and_null_role(self, user, other_user):
         from stapel_workspaces.services import create_workspace
@@ -71,7 +71,7 @@ class TestCheckMembershipFunction:
             "workspaces.check_membership",
             {"workspace_id": str(ws.id), "user_id": str(other_user.pk)},
         )
-        assert result == {"is_member": False, "role": None}
+        assert result == {"is_member": False, "role": None, "capabilities": []}
 
     def test_pending_membership_does_not_count(self, user, other_user):
         from stapel_workspaces.services import create_workspace
@@ -84,7 +84,7 @@ class TestCheckMembershipFunction:
             "workspaces.check_membership",
             {"workspace_id": str(ws.id), "user_id": str(other_user.pk)},
         )
-        assert result == {"is_member": False, "role": None}
+        assert result == {"is_member": False, "role": None, "capabilities": []}
 
 
 @pytest.mark.django_db
@@ -304,3 +304,167 @@ class TestInvitationNotification:
             workspace=ws, email="x@example.com", role=Role.MEMBER, invited_by=user
         )
         assert inv.pk is not None
+
+
+@pytest.mark.django_db
+class TestCheckCapabilityFunction:
+    def _ws(self, owner):
+        from stapel_workspaces.services import create_workspace
+
+        return create_workspace(user=owner, name="Acme")
+
+    def test_owner_allowed_via_wildcard(self, user):
+        ws = self._ws(user)
+        result = call(
+            "workspaces.check_capability",
+            {
+                "workspace_id": str(ws.id),
+                "user_id": str(user.pk),
+                "capability": "meetings.kick",
+            },
+        )
+        assert result == {"allowed": True, "role": "owner"}
+
+    def test_member_without_capability_denied_but_role_reported(
+        self, user, other_user
+    ):
+        ws = self._ws(user)
+        WorkspaceMember.objects.create(
+            workspace=ws, user=other_user, role=Role.MEMBER,
+            accepted_at=timezone.now(),
+        )
+        result = call(
+            "workspaces.check_capability",
+            {
+                "workspace_id": str(ws.id),
+                "user_id": str(other_user.pk),
+                "capability": "members.invite",
+            },
+        )
+        assert result == {"allowed": False, "role": "member"}
+
+    def test_non_member_denied_null_role(self, user, other_user):
+        ws = self._ws(user)
+        result = call(
+            "workspaces.check_capability",
+            {
+                "workspace_id": str(ws.id),
+                "user_id": str(other_user.pk),
+                "capability": "workspace.view",
+            },
+        )
+        assert result == {"allowed": False, "role": None}
+
+    def test_custom_registry_role_resolved(self, user, other_user, settings):
+        settings.STAPEL_WORKSPACES = {
+            "ROLES": {
+                "secretary": {
+                    "rank": 250,
+                    "capabilities": ["workspace.view", "meetings.spotlight"],
+                },
+            },
+        }
+        ws = self._ws(user)
+        WorkspaceMember.objects.create(
+            workspace=ws, user=other_user, role="secretary",
+            accepted_at=timezone.now(),
+        )
+        result = call(
+            "workspaces.check_capability",
+            {
+                "workspace_id": str(ws.id),
+                "user_id": str(other_user.pk),
+                "capability": "meetings.spotlight",
+            },
+        )
+        assert result == {"allowed": True, "role": "secretary"}
+
+    def test_check_membership_carries_role_capabilities(self, user, other_user):
+        ws = self._ws(user)
+        WorkspaceMember.objects.create(
+            workspace=ws, user=other_user, role=Role.VIEWER,
+            accepted_at=timezone.now(),
+        )
+        result = call(
+            "workspaces.check_membership",
+            {"workspace_id": str(ws.id), "user_id": str(other_user.pk)},
+        )
+        assert result == {
+            "is_member": True,
+            "role": "viewer",
+            "capabilities": ["workspace.view", "members.view"],
+        }
+
+
+@pytest.mark.django_db
+class TestMemberLifecycleEmits:
+    """Outbox emits on kick / role change (org-program spec §A4)."""
+
+    def _workspace_with_member(self, owner, member_user, role=Role.MEMBER):
+        from stapel_workspaces.services import create_workspace
+
+        ws = create_workspace(user=owner, name="Acme")
+        WorkspaceMember.objects.create(
+            workspace=ws, user=member_user, role=role, accepted_at=timezone.now()
+        )
+        return ws
+
+    def test_role_change_emits_member_role_changed(
+        self, authed_client, user, other_user, capture
+    ):
+        ws = self._workspace_with_member(user, other_user)
+        events = capture("workspace.member_role_changed")
+        resp = authed_client.patch(
+            f"/workspaces/api/workspaces/{ws.id}/members/{other_user.pk}",
+            {"role": "admin"},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        assert len(events) == 1
+        payload = events[0].payload
+        assert payload == {
+            "workspace_id": str(ws.id),
+            "user_id": str(other_user.pk),
+            "old_role": "member",
+            "new_role": "admin",
+            "capabilities": [
+                "workspace.view", "workspace.update",
+                "members.view", "members.invite", "members.remove",
+                "members.role.change", "members.provision",
+                "workspace.security.manage",
+            ],
+        }
+        _validate(payload, "workspace.member_role_changed")
+
+    def test_remove_emits_member_removed(
+        self, authed_client, user, other_user, capture
+    ):
+        ws = self._workspace_with_member(user, other_user)
+        events = capture("workspace.member_removed")
+        resp = authed_client.delete(
+            f"/workspaces/api/workspaces/{ws.id}/members/{other_user.pk}"
+        )
+        assert resp.status_code == 204, resp.content
+        assert len(events) == 1
+        payload = events[0].payload
+        assert payload == {
+            "workspace_id": str(ws.id),
+            "user_id": str(other_user.pk),
+            "role": "member",
+            "removed_by": str(user.pk),
+        }
+        _validate(payload, "workspace.member_removed")
+
+    def test_failed_role_change_emits_nothing(self, authed_client, user, capture):
+        """Last-owner rejection must not leak an emit."""
+        from stapel_workspaces.services import create_workspace
+
+        ws = create_workspace(user=user, name="Solo")
+        events = capture("workspace.member_role_changed")
+        resp = authed_client.patch(
+            f"/workspaces/api/workspaces/{ws.id}/members/{user.pk}",
+            {"role": "admin"},
+            format="json",
+        )
+        assert resp.status_code == 403
+        assert events == []
