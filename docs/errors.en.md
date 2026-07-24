@@ -1,6 +1,6 @@
 # Errors — English
 
-`58` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`60` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -21,6 +21,7 @@
 | `error.400.field.required` | 400 | `field` | `fix_input` | {field} is required |
 | `error.400.field.unique` | 400 | `field` | `fix_input` | {field} must be unique |
 | `error.400.invalid_ad_id` | 400 | — | `fix_input` | Invalid advertisement ID |
+| `error.400.invalid_provision_username` | 400 | — | `fix_input` | Invalid username for a provisioned account |
 | `error.400.invalid_role` | 400 | — | `fix_input` | Invalid role |
 | `error.400.invitation_already_used` | 400 | — | `fix_input` | Invitation has already been used |
 | `error.400.invitation_declined` | 400 | — | `contact_support` | Invitation has been declined |
@@ -37,6 +38,7 @@
 | `error.403.forbidden` | 403 | — | `retry` | You do not have permission to perform this action |
 | `error.403.forbidden_workspace` | 403 | — | `contact_support` | You do not have access to this workspace |
 | `error.403.last_owner_cannot_be_removed` | 403 | — | `fix_input` | The last owner cannot be removed; transfer ownership first |
+| `error.403.membership_suspended` | 403 | `reason` | `fix_input` | Your membership in this workspace is suspended ({reason}) |
 | `error.403.missing_capability` | 403 | `capability` | `contact_support` | Your role does not include the {capability} capability in this workspace |
 | `error.403.network_blocked` | 403 | — | `contact_support` | Requests from this network are not allowed |
 | `error.403.verification_enrollment_required` | 403 | — | `verify` | Verification factor enrollment required |

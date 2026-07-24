@@ -30,8 +30,10 @@ logger = logging.getLogger(__name__)
 #: Entitlement keys enforced by this module (catalog lives in billing plans).
 ENT_ORG = "workspaces.org"
 ENT_MEMBERS_MAX = "workspaces.members.max"
+ENT_PROVISION_USER = "workspaces.provision_user"
 
 CHECK_ENTITLEMENT = "billing.check_entitlement"
+DEBIT = "billing.debit"
 
 
 @dataclass
@@ -99,6 +101,52 @@ def check_org_entitlement(workspace, key: str, *, quantity: int = 1) -> Entitlem
     not block).
     """
     return check_entitlement(workspace.owner_id, key, quantity=quantity)
+
+
+def debit_provision_credits(
+    workspace, *, provision_id, username: str, credits: int
+) -> None:
+    """Charge the workspace owner for one provisioned org user (spec §D2).
+
+    ``billing.debit`` with a deterministic idempotency key derived from the
+    per-request provision UUID (``ws-provision:<uuid>``): comm delivery is
+    at-least-once, and a transport-level retry of the same provisioning
+    call must not debit twice. The username rides in ``metadata`` (audit),
+    never any credential material.
+
+    Degrades to a no-op when billing is not installed (OSS default, same
+    two wiring errors as :func:`check_entitlement`). A billing that answers
+    ``ok: false`` (e.g. insufficient credits) raises
+    :class:`EntitlementDenied` — the view turns it into the 402 envelope.
+    A billing that is installed but *failing* propagates, as everywhere in
+    this module.
+    """
+    try:
+        result = call(
+            DEBIT,
+            {
+                "user_id": str(workspace.owner_id),
+                "credits": int(credits),
+                "idempotency_key": f"ws-provision:{provision_id}",
+                "metadata": {
+                    "workspace_id": str(workspace.id),
+                    "username": username,
+                    "action": "workspaces.provision_user",
+                },
+                "description": f"Provisioned org user {username}",
+            },
+        )
+    except (FunctionNotRegistered, FunctionRouteNotConfigured):
+        logger.debug(
+            "billing.debit unavailable — provisioning uncharged (OSS default)"
+        )
+        return
+    result = result or {}
+    if not result.get("ok"):
+        raise EntitlementDenied(
+            ENT_PROVISION_USER,
+            EntitlementResult(allowed=False, reason=result.get("reason")),
+        )
 
 
 def member_seats_quantity(workspace, *, additional: int = 0) -> int:

@@ -145,6 +145,13 @@
     "en": "Invalid advertisement ID"
   },
   {
+    "code": "error.400.invalid_provision_username",
+    "status": 400,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "Invalid username for a provisioned account"
+  },
+  {
     "code": "error.400.invalid_role",
     "status": 400,
     "params": [],
@@ -257,6 +264,15 @@
     "params": [],
     "remediation": "fix_input",
     "en": "The last owner cannot be removed; transfer ownership first"
+  },
+  {
+    "code": "error.403.membership_suspended",
+    "status": 403,
+    "params": [
+      "reason"
+    ],
+    "remediation": "fix_input",
+    "en": "Your membership in this workspace is suspended ({reason})"
   },
   {
     "code": "error.403.missing_capability",

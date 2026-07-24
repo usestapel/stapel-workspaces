@@ -1,11 +1,14 @@
 """Serializers for workspaces API."""
 
+import re
+
 from rest_framework import serializers
 from stapel_core.django.api.errors import StapelValidationError
 from stapel_core.django.api.serializers import StapelDataclassSerializer
 
 from .capabilities import effective_roles
 from .dto import (
+    PROVISIONED_USER_POLICIES,
     InvitationAcceptRequest,
     InvitationClaimResponse,
     InvitationPreviewResponse,
@@ -14,6 +17,8 @@ from .dto import (
     MemberInviteResponse,
     MemberResponse,
     MemberUpdateRequest,
+    ProvisionMemberRequest,
+    ProvisionMemberResponse,
     RoleListResponse,
     RoleResponse,
     WorkspaceCreateRequest,
@@ -21,8 +26,15 @@ from .dto import (
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from .errors import ERR_400_INVALID_ROLE
+from .errors import ERR_400_INVALID_PROVISION_USERNAME, ERR_400_INVALID_ROLE
 from .models import Role, WorkspaceType
+
+#: Local (slash-free) username canon — mirrors stapel-auth's
+#: ``_LOCAL_USERNAME_RE`` (utils.py): the stock Django username alphabet.
+#: Auth re-validates authoritatively in ``auth.provision_user``; this local
+#: check exists to fail fast (before billing debits) with a workspaces-keyed
+#: 400 instead of a cross-service roundtrip.
+_LOCAL_USERNAME_RE = re.compile(r"^[\w.@+-]+\Z")
 
 
 class WorkspaceResponseSerializer(StapelDataclassSerializer):
@@ -48,6 +60,34 @@ class WorkspaceCreateRequestSerializer(StapelDataclassSerializer):
 class WorkspaceUpdateRequestSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = WorkspaceUpdateRequest
+
+    def validate_settings(self, value):
+        # The `security` block is typed (dto.WorkspaceSecuritySettings,
+        # spec §C3): the two known keys are validated here, extra keys pass
+        # through verbatim (client extension via the serializer seam).
+        if value is None:
+            return value
+        security = value.get("security")
+        if security is None:
+            return value
+        if not isinstance(security, dict):
+            raise StapelValidationError(
+                "error.400.field.invalid", params={"field": "settings.security"}
+            )
+        if "require_mfa" in security and not isinstance(
+            security["require_mfa"], bool
+        ):
+            raise StapelValidationError(
+                "error.400.field.invalid",
+                params={"field": "settings.security.require_mfa"},
+            )
+        policy = security.get("provisioned_user_policy")
+        if policy is not None and policy not in PROVISIONED_USER_POLICIES:
+            raise StapelValidationError(
+                "error.400.field.invalid_choice",
+                params={"field": "settings.security.provisioned_user_policy"},
+            )
+        return value
 
 
 class MemberResponseSerializer(StapelDataclassSerializer):
@@ -109,6 +149,34 @@ class MemberUpdateRequestSerializer(StapelDataclassSerializer):
         if value not in effective_roles():
             raise StapelValidationError(ERR_400_INVALID_ROLE)
         return value
+
+
+class ProvisionMemberRequestSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = ProvisionMemberRequest
+
+    def validate_username_local(self, value):
+        # Fail fast on a malformed local part (workspaces-keyed 400) before
+        # any billing debit or auth roundtrip. In particular '/' must not
+        # smuggle extra namespace levels into the full
+        # "{workspace_slug}/{local}" login. Auth re-validates
+        # authoritatively (error.400.username_namespace_invalid).
+        value = (value or "").strip()
+        if not _LOCAL_USERNAME_RE.match(value) or "/" in value:
+            raise StapelValidationError(ERR_400_INVALID_PROVISION_USERNAME)
+        return value
+
+    def validate_role(self, value):
+        # Effective registry (builtin + settings overlay); provisioning an
+        # owner is forbidden, same hardcoded owner protection as invites.
+        if value == Role.OWNER or value not in effective_roles():
+            raise StapelValidationError(ERR_400_INVALID_ROLE)
+        return value
+
+
+class ProvisionMemberResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = ProvisionMemberResponse
 
 
 class RoleResponseSerializer(StapelDataclassSerializer):

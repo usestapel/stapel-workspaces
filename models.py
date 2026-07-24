@@ -14,6 +14,12 @@ from django.db import models
 from stapel_core.access.declaration import access
 
 
+#: Canonical suspension reason: the workspace requires strong MFA and the
+#: member has none (org-program spec §C3). The only reason the MFA-event
+#: consumer lifts automatically.
+SUSPENSION_NO_MFA = "no_mfa"
+
+
 class WorkspaceType(models.TextChoices):
     PERSONAL = "personal", "Personal"
     WORK = "work", "Work"
@@ -89,6 +95,16 @@ class WorkspaceMember(models.Model):
     invited_at = models.DateTimeField(auto_now_add=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
     last_accessed_at = models.DateTimeField(null=True, blank=True)
+    #: Org-created (synthetic) member — joined via POST members/provision
+    #: rather than an invitation (org-program spec §C1). Audit/metering flag.
+    provisioned = models.BooleanField(default=False)
+    #: Suspension is NOT removal (org-program spec §C3): the row (and the
+    #: role) stays, but the membership stops counting for every access
+    #: check while suspended_at is set. ``suspension_reason`` is an open
+    #: vocabulary; the canonical value today is ``no_mfa`` (require_mfa
+    #: policy enforcement) — see :data:`SUSPENSION_NO_MFA`.
+    suspended_at = models.DateTimeField(null=True, blank=True)
+    suspension_reason = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
         db_table = "workspaces_member"

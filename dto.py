@@ -80,6 +80,9 @@ class MemberResponse:
         invited_at: ISO 8601 invite timestamp.
         accepted_at: ISO 8601 acceptance timestamp; null while pending.
         last_accessed_at: ISO 8601 last access; null if never accessed.
+        provisioned: Whether this is an org-created (synthetic) member joined via members/provision. Example: false
+        suspended_at: ISO 8601 suspension timestamp; null while active. Suspension is not removal — the role stays but access is closed. Example: null
+        suspension_reason: Why the membership is suspended (canonical value no_mfa); null while active.
     """
 
     id: UUID
@@ -90,6 +93,9 @@ class MemberResponse:
     invited_at: str
     accepted_at: Optional[str]
     last_accessed_at: Optional[str]
+    provisioned: bool = False
+    suspended_at: Optional[str] = None
+    suspension_reason: Optional[str] = None
 
 
 @dataclass
@@ -168,6 +174,84 @@ class InvitationAcceptRequest:
 @dataclass
 class MemberUpdateRequest:  # noqa: R004
     role: str
+
+
+#: Allowed values of WorkspaceSecuritySettings.provisioned_user_policy —
+#: mirrors auth.provision_user's first_login_policy enum (spec §C2).
+PROVISIONED_USER_POLICIES = ("password_change", "mfa_enroll")
+
+
+@dataclass
+class WorkspaceSecuritySettings:
+    """Typed shape of ``Workspace.settings["security"]`` (org-program spec §C3).
+
+    Stored inside the free-form settings JSON (no schema migration); this
+    dataclass is the canon of the known keys — extra keys in the block are
+    preserved verbatim for client extension (the serializer seam validates
+    only these two).
+
+    Attributes:
+        require_mfa: Whether membership requires a strong second factor. Turning it on sweeps current members via auth.mfa_status and suspends those without one (reason no_mfa); members losing their last strong factor later are suspended by the user.mfa_disabled consumer. Example: false
+        provisioned_user_policy: First-login policy for org-created accounts — password_change (forced password change) or mfa_enroll (mandatory 2FA enrollment). Passed to auth.provision_user as first_login_policy. Example: password_change
+    """
+
+    require_mfa: bool = False
+    provisioned_user_policy: str = "password_change"
+
+    @classmethod
+    def from_settings(cls, settings: Optional[dict]) -> "WorkspaceSecuritySettings":
+        """Parse the ``security`` block of a workspace settings dict.
+
+        Absent/malformed values fall back to the safe defaults — the same
+        "absence means defaults" contract as auth.verification.policy.
+        """
+        block = (settings or {}).get("security") or {}
+        if not isinstance(block, dict):
+            block = {}
+        require_mfa = block.get("require_mfa", False)
+        policy = block.get("provisioned_user_policy", "password_change")
+        return cls(
+            require_mfa=bool(require_mfa) if isinstance(require_mfa, bool) else False,
+            provisioned_user_policy=(
+                policy if policy in PROVISIONED_USER_POLICIES else "password_change"
+            ),
+        )
+
+
+@dataclass
+class ProvisionMemberRequest:
+    """Provision an org-created (synthetic) member (org-program spec §C1).
+
+    Attributes:
+        username_local: Local part of the login; the full username becomes "{workspace_slug}/{username_local}". Stock username alphabet, no slash. Example: jdoe
+        password: Initial password chosen by the admin. Omitted: the server generates a crypto-strong one, returned once as generated_password. Example: null
+        role: Role to grant (effective registry; owner is not provisionable). Example: member
+        display_name: Display-name hint forwarded to auth/profiles. Example: Jane Doe
+        email: Optional email anchor (stored UNVERIFIED by auth). When present, the provisioned-account email with the credentials is sent there. Normally omitted — synthetic accounts have no email. Example: null
+    """
+
+    username_local: str
+    role: str = "member"
+    password: Optional[str] = None
+    display_name: Optional[str] = None
+    email: Optional[str] = None
+
+
+@dataclass
+class ProvisionMemberResponse:
+    """Result of provisioning an org member.
+
+    Attributes:
+        user_id: UUID of the created account.
+        username: Full namespaced login. Example: acme-eng/jdoe
+        role: Granted role. Example: member
+        generated_password: Server-generated initial password — returned exactly ONCE, only when the request omitted password. Store it or hand it to the user now; it cannot be re-fetched. A credential: never log it.
+    """
+
+    user_id: UUID
+    username: str
+    role: str
+    generated_password: Optional[str] = None
 
 
 @dataclass

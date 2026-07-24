@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "user.mfa_enabled",
+  "description": "The user gained their first STRONG second factor (account-level transition; strength canon: totp/passkey/otp_phone are strong, a bare email code is not). Consumers (workspaces require_mfa suspension) may act on it directly.",
+  "type": "object",
+  "required": ["user_id", "factor"],
+  "properties": {
+    "user_id": { "type": "string", "format": "uuid" },
+    "factor":  { "type": "string" }
+  },
+  "additionalProperties": false
+}

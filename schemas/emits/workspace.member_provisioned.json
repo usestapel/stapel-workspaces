@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.member_provisioned",
+  "description": "An org-created (synthetic) account joined a workspace via POST members/provision (org-program spec C1). The audit/metering signal for the paid provisioning action — a billing client may meter on it. Never carries credential material.",
+  "type": "object",
+  "required": ["workspace_id", "user_id", "role", "provisioned_by"],
+  "properties": {
+    "workspace_id":   { "type": "string", "format": "uuid" },
+    "user_id":        { "type": "string", "format": "uuid" },
+    "role":           { "type": "string" },
+    "provisioned_by": { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

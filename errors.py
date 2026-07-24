@@ -19,6 +19,8 @@ ERR_402_ENTITLEMENT_REQUIRED = "error.402.entitlement_required"
 ERR_402_MEMBER_LIMIT_REACHED = "error.402.member_limit_reached"
 ERR_409_EMAIL_ALREADY_REGISTERED = "error.409.email_already_registered"
 ERR_503_AUTH_UNAVAILABLE = "error.503.auth_unavailable"
+ERR_403_MEMBERSHIP_SUSPENDED = "error.403.membership_suspended"
+ERR_400_INVALID_PROVISION_USERNAME = "error.400.invalid_provision_username"
 
 WORKSPACES_ERRORS = {
     ERR_404_WORKSPACE_NOT_FOUND: "Workspace not found",
@@ -38,6 +40,8 @@ WORKSPACES_ERRORS = {
     ERR_402_MEMBER_LIMIT_REACHED: "The workspace member limit ({limit}) has been reached",
     ERR_409_EMAIL_ALREADY_REGISTERED: "An account with this email already exists — log in instead",
     ERR_503_AUTH_UNAVAILABLE: "The authentication service is unavailable; try again later",
+    ERR_403_MEMBERSHIP_SUSPENDED: "Your membership in this workspace is suspended ({reason})",
+    ERR_400_INVALID_PROVISION_USERNAME: "Invalid username for a provisioned account",
 }
 
 # Machine-readable recovery hints (remediation) — the canonical "what to do"
@@ -110,6 +114,17 @@ WORKSPACES_ERRORS = {
 #   * 503 auth_unavailable → wait_and_retry. Transient wiring/deploy gap
 #     (auth's login-grant Function not reachable); the request itself is
 #     fine and succeeds once auth is back.
+#   * 403 membership_suspended → fix_input. Same shape as last_owner: a
+#     self-serve precondition, not an authorization wall. The canonical
+#     reason (no_mfa) states its own fix — enable a strong second factor —
+#     and access restores AUTOMATICALLY (the mfa_enabled consumer lifts the
+#     suspension; the mfa_suspension email says "no need to contact
+#     anyone"). Retrying loops; contact_support is wrong for the canonical
+#     reason (no operator involved). Future non-self-serve reasons can
+#     revisit per-reason.
+#   * 400 invalid_provision_username → fix_input. Genuine bad-input: the
+#     local username part fails the stock username canon (or smuggles a
+#     '/'); the admin picks a different local name. Matches the heuristic.
 WORKSPACES_REMEDIATION = {
     ERR_404_WORKSPACE_NOT_FOUND: "fix_input",
     ERR_404_MEMBER_NOT_FOUND: "fix_input",
@@ -128,6 +143,8 @@ WORKSPACES_REMEDIATION = {
     ERR_400_INVITATION_DECLINED: "contact_support",
     ERR_409_EMAIL_ALREADY_REGISTERED: "reauthenticate",
     ERR_503_AUTH_UNAVAILABLE: "wait_and_retry",
+    ERR_403_MEMBERSHIP_SUSPENDED: "fix_input",
+    ERR_400_INVALID_PROVISION_USERNAME: "fix_input",
 }
 
 register_service_errors(WORKSPACES_ERRORS, remediation=WORKSPACES_REMEDIATION)

@@ -78,6 +78,11 @@ _MACHINE_RU = {
         "Аккаунт с этим email уже существует — войдите в него",
     "error.503.auth_unavailable":
         "Сервис аутентификации недоступен; повторите попытку позже",
+    # 0.8 security harden (org-program spec §C1/§C3, Wave 3).
+    "error.403.membership_suspended":
+        "Ваше членство в этом рабочем пространстве приостановлено ({reason})",
+    "error.400.invalid_provision_username":
+        "Недопустимое имя пользователя для создаваемого аккаунта",
 }
 
 

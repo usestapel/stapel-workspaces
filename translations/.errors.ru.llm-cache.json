@@ -1,4 +1,8 @@
 {
+  "error.400.invalid_provision_username": {
+    "hash": "b0f3a5f80d96781b",
+    "text": "Недопустимое имя пользователя для создаваемого аккаунта"
+  },
   "error.400.invitation_declined": {
     "hash": "1a2de800d95a713d",
     "text": "Приглашение было отклонено"
@@ -10,6 +14,10 @@
   "error.402.member_limit_reached": {
     "hash": "d8f3cea769f2f7e3",
     "text": "Достигнут лимит участников рабочего пространства ({limit})"
+  },
+  "error.403.membership_suspended": {
+    "hash": "8acf07d3e28f79fa",
+    "text": "Ваше членство в этом рабочем пространстве приостановлено ({reason})"
   },
   "error.403.missing_capability": {
     "hash": "7defc2d25ee8cef6",

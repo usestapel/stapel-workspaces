@@ -1,6 +1,7 @@
-"""Service-layer helpers for workspaces (creation, invites)."""
+"""Service-layer helpers for workspaces (creation, invites, provision, suspension)."""
 
 import logging
+import uuid
 from datetime import timedelta
 from secrets import token_urlsafe
 
@@ -10,18 +11,37 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from stapel_core.comm import call, emit
+from stapel_core.comm.exceptions import (
+    FunctionCallError,
+    FunctionNotRegistered,
+    FunctionRouteNotConfigured,
+)
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 
 from .conf import workspaces_settings
+from .dto import WorkspaceSecuritySettings
 from .entitlements import (
     ENT_MEMBERS_MAX,
     EntitlementDenied,
     check_org_entitlement,
+    debit_provision_credits,
     member_seats_quantity,
 )
-from .events import EVENT_WORKSPACE_PERSONAL_CREATED
-from .models import Role, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceType
+from .events import (
+    EVENT_WORKSPACE_MEMBER_PROVISIONED,
+    EVENT_WORKSPACE_MEMBER_SUSPENDED,
+    EVENT_WORKSPACE_MEMBER_UNSUSPENDED,
+    EVENT_WORKSPACE_PERSONAL_CREATED,
+)
+from .models import (
+    SUSPENSION_NO_MFA,
+    Role,
+    Workspace,
+    WorkspaceInvitation,
+    WorkspaceMember,
+    WorkspaceType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +114,12 @@ def create_invitation(*, workspace: Workspace, email: str, role: str, invited_by
     return invitation
 
 
+def _frontend_url(path: str) -> str:
+    """Absolute frontend URL for *path* (FRONTEND_URL flat-setting canon)."""
+    frontend_url = (getattr(settings, "FRONTEND_URL", "") or "").rstrip("/")
+    return f"{frontend_url}{path}" if frontend_url else path
+
+
 def _send_invitation_notification(invitation: WorkspaceInvitation) -> None:
     """Ask stapel-notifications to deliver the invite email.
 
@@ -109,9 +135,7 @@ def _send_invitation_notification(invitation: WorkspaceInvitation) -> None:
         # Canonical frontend invite route (org-program spec §B1): the pair's
         # InviteAcceptFlow lives at /invite/{token}. FRONTEND_URL is the
         # established flat-setting canon for the frontend base URL here.
-        path = f"/invite/{invitation.token}"
-        frontend_url = (getattr(settings, "FRONTEND_URL", "") or "").rstrip("/")
-        accept_url = f"{frontend_url}{path}" if frontend_url else path
+        accept_url = _frontend_url(f"/invite/{invitation.token}")
 
         inviter = invitation.invited_by
         inviter_name = ""
@@ -255,3 +279,407 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
         action="added",
     )
     return member
+
+
+# ---------------------------------------------------------------------------
+# Security hardening (org-program spec §C1-C3, Wave 3)
+# ---------------------------------------------------------------------------
+
+#: comm Functions owned by stapel-auth (>= 0.12).
+PROVISION_USER = "auth.provision_user"
+MFA_STATUS = "auth.mfa_status"
+
+
+class ProvisionError(Exception):
+    """auth.provision_user answered with a structured failure.
+
+    ``error_key`` is auth's canonical error key, passed through verbatim to
+    the HTTP caller (``error.409.username_taken`` /
+    ``error.400.username_namespace_invalid`` / ``error.400.bad_request``) —
+    the view derives the HTTP status from the key itself.
+    """
+
+    def __init__(self, error_key: str):
+        self.error_key = error_key
+        super().__init__(error_key)
+
+
+def security_settings_for(workspace: Workspace) -> WorkspaceSecuritySettings:
+    """Typed view of ``Workspace.settings["security"]`` (safe defaults)."""
+    return WorkspaceSecuritySettings.from_settings(workspace.settings)
+
+
+def provision_member(
+    *,
+    workspace: Workspace,
+    username_local: str,
+    role: str,
+    provisioned_by,
+    password: str | None = None,
+    display_name: str | None = None,
+    email: str | None = None,
+):
+    """Create an org-provisioned (synthetic) member (org-program spec §C1).
+
+    Flow: billing debit (when ``PROVISION_USER_CREDITS`` > 0; deterministic
+    idempotency key per provision attempt) → ``auth.provision_user`` (the
+    account materializes in auth with the workspace's first-login policy) →
+    ``WorkspaceMember(accepted_at=now, provisioned=True)`` + the
+    ``workspace.member_provisioned`` emit → credentials delivery (below).
+
+    The debit deliberately precedes the auth call (spec §C1/§D2 order); a
+    provision that then fails at auth (e.g. lost the username race) leaves
+    the charge standing — it is visible in billing under
+    ``metadata.action = workspaces.provision_user`` with the provision UUID
+    in the idempotency key for manual adjustment. The common input errors
+    (malformed local part, bad role) are rejected by the serializer BEFORE
+    any charge.
+
+    Credentials delivery (the email nuance, spec §C1): a synthetic account
+    normally has NO email — there is nowhere to send the
+    ``workspace.provisioned_account`` letter, so it is skipped and a
+    server-generated password is returned to the provisioning admin in the
+    API response, exactly once (``generated_password``). When the optional
+    ``email`` IS passed, the letter is sent there too (username +
+    ``initial_password`` when generated + login URL). The generated
+    password is always present in the return value when the server
+    generated one — the admin/org owns the password until first login
+    (forced change / MFA enroll). It never rides any event payload and is
+    never logged.
+
+    Returns ``(member, username, generated_password | None)``.
+    Raises :class:`ProvisionError` on a structured auth failure and lets
+    comm wiring errors (auth not installed/routed) propagate — the view
+    maps them to 503, this seam never degrades to allow.
+    """
+    from django.contrib.auth import get_user_model
+
+    username = f"{workspace.slug}/{username_local}"
+    provision_id = uuid.uuid4()
+
+    credits = int(workspaces_settings.PROVISION_USER_CREDITS or 0)
+    if credits > 0:
+        debit_provision_credits(
+            workspace,
+            provision_id=provision_id,
+            username=username,
+            credits=credits,
+        )
+
+    payload: dict = {
+        "username": username,
+        "first_login_policy": security_settings_for(
+            workspace
+        ).provisioned_user_policy,
+    }
+    if password:
+        payload["password"] = password
+    if display_name:
+        payload["display_name"] = display_name
+    if email:
+        payload["email"] = email
+    result = call(PROVISION_USER, payload) or {}
+    if result.get("error"):
+        raise ProvisionError(result["error"])
+
+    user_id = result["user_id"]
+    generated_password = result.get("generated_password")
+
+    with transaction.atomic():
+        member = WorkspaceMember.objects.create(
+            workspace=workspace,
+            user_id=user_id,
+            role=role,
+            invited_by=provisioned_by,
+            accepted_at=timezone.now(),
+            provisioned=True,
+        )
+        # Transactional outbox: leaves iff this transaction commits. The
+        # audit/metering signal for the provisioning action — no
+        # credential material ever rides it.
+        emit(
+            EVENT_WORKSPACE_MEMBER_PROVISIONED,
+            {
+                "workspace_id": str(workspace.id),
+                "user_id": str(user_id),
+                "role": str(role),
+                "provisioned_by": str(provisioned_by.pk),
+            },
+        )
+    # A negative membership lookup may be cached cross-service; drop it.
+    invalidate_membership_cache(workspace.id, user_id)
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is not None:
+        workspace_member_changed.send(
+            sender=WorkspaceMember,
+            workspace=workspace,
+            user=user,
+            role=role,
+            action="added",
+        )
+    if email:
+        _send_provisioned_account_notification(
+            workspace=workspace,
+            username=username,
+            email=email,
+            initial_password=generated_password,
+        )
+    return member, username, generated_password
+
+
+def _send_provisioned_account_notification(
+    *, workspace: Workspace, username: str, email: str, initial_password: str | None
+) -> None:
+    """Deliver the workspace.provisioned_account credentials letter.
+
+    Only called when the provisioning request carried an email anchor (the
+    account is targeted by that address directly — the user has no contact
+    records anywhere yet). ``initial_password`` is embedded only when the
+    server generated it (the otp_code secret-in-email precedent); an
+    admin-chosen password is communicated out-of-band by the admin.
+    Best-effort, like every notification here: a delivery hiccup must not
+    roll back a provisioned account.
+    """
+    try:
+        from stapel_core.notifications import request_notification
+
+        variables = {
+            "workspace_name": workspace.name,
+            "username": username,
+            "login_url": _frontend_url("/login"),
+        }
+        if initial_password:
+            variables["initial_password"] = initial_password
+        request_notification(
+            "workspace.provisioned_account",
+            variables=variables,
+            source_service="workspaces",
+            email=email,
+        )
+    except Exception:
+        logger.exception(
+            "failed to request provisioned-account notification for %s in %s",
+            username.partition("/")[0],
+            workspace.pk,
+        )
+
+
+def suspend_member(
+    member: WorkspaceMember, *, reason: str, notify: bool = True
+) -> bool:
+    """Suspend a membership (org-program spec §C3). Idempotent.
+
+    Not removal: the row and the role stay, but the membership stops
+    counting for every access check (permissions/functions/internal API all
+    filter on ``suspended_at IS NULL``). Emits
+    ``workspace.member_suspended``, drops the cross-service membership
+    cache entry and (for the canonical ``no_mfa`` reason, unless ``notify``
+    is off) sends the ``workspace.mfa_suspension`` letter.
+
+    Returns True when the member was suspended by this call, False for an
+    already-suspended member (at-least-once event delivery safe).
+    """
+    if member.suspended_at is not None:
+        return False
+    member.suspended_at = timezone.now()
+    member.suspension_reason = reason
+    with transaction.atomic():
+        member.save(update_fields=["suspended_at", "suspension_reason"])
+        # Transactional outbox: leaves iff this transaction commits. The
+        # cross-service "revoke live access" signal, like member_removed.
+        emit(
+            EVENT_WORKSPACE_MEMBER_SUSPENDED,
+            {
+                "workspace_id": str(member.workspace_id),
+                "user_id": str(member.user_id),
+                "role": str(member.role),
+                "reason": reason,
+            },
+        )
+    # Other services cache membership lookups — drop the now-stale entry.
+    invalidate_membership_cache(member.workspace_id, member.user_id)
+    workspace_member_changed.send(
+        sender=WorkspaceMember,
+        workspace=member.workspace,
+        user=member.user,
+        role=member.role,
+        action="suspended",
+    )
+    if notify and reason == SUSPENSION_NO_MFA:
+        _send_mfa_notification(
+            member,
+            "workspace.mfa_suspension",
+            {
+                "workspace_name": member.workspace.name,
+                "security_url": _frontend_url("/settings/security"),
+            },
+        )
+    return True
+
+
+def unsuspend_member(member: WorkspaceMember, *, notify: bool = True) -> bool:
+    """Lift a membership suspension (org-program spec §C3). Idempotent.
+
+    Emits ``workspace.member_unsuspended`` (with the lifted reason), drops
+    the membership cache entry and (for the ``no_mfa`` reason, unless
+    ``notify`` is off — the policy-off sweep suppresses it: its wording is
+    "you enabled 2FA", wrong for that path) sends the
+    ``workspace.mfa_restored`` letter.
+    """
+    if member.suspended_at is None:
+        return False
+    lifted_reason = member.suspension_reason
+    member.suspended_at = None
+    member.suspension_reason = ""
+    with transaction.atomic():
+        member.save(update_fields=["suspended_at", "suspension_reason"])
+        emit(
+            EVENT_WORKSPACE_MEMBER_UNSUSPENDED,
+            {
+                "workspace_id": str(member.workspace_id),
+                "user_id": str(member.user_id),
+                "role": str(member.role),
+                "reason": lifted_reason,
+            },
+        )
+    invalidate_membership_cache(member.workspace_id, member.user_id)
+    workspace_member_changed.send(
+        sender=WorkspaceMember,
+        workspace=member.workspace,
+        user=member.user,
+        role=member.role,
+        action="unsuspended",
+    )
+    if notify and lifted_reason == SUSPENSION_NO_MFA:
+        _send_mfa_notification(
+            member,
+            "workspace.mfa_restored",
+            {
+                "workspace_name": member.workspace.name,
+                "workspace_url": _frontend_url(
+                    f"/workspaces/{member.workspace.slug}"
+                ),
+            },
+        )
+    return True
+
+
+def _send_mfa_notification(
+    member: WorkspaceMember, notification_type: str, variables: dict
+) -> None:
+    """Best-effort mfa_suspension / mfa_restored letter to the member."""
+    try:
+        from stapel_core.notifications import request_notification
+
+        request_notification(
+            notification_type,
+            user_id=str(member.user_id),
+            variables=variables,
+            source_service="workspaces",
+        )
+    except Exception:
+        logger.exception(
+            "failed to request %s notification for member %s",
+            notification_type,
+            member.pk,
+        )
+
+
+def enforce_require_mfa(workspace: Workspace) -> bool:
+    """Sync sweep when the require_mfa policy flips on (spec §C3).
+
+    Asks ``auth.mfa_status`` for every active (accepted, non-suspended)
+    member and suspends those without a strong second factor (reason
+    ``no_mfa``, emit + letter). Fail-open by suspension: when auth is
+    unavailable (not wired, or a call fails) members are NOT touched — the
+    sweep stops and returns False; fail-closed would lock out the whole
+    org on an auth hiccup. The ``user.mfa_disabled`` consumer catches up
+    once auth events flow again.
+    """
+    members = (
+        WorkspaceMember.objects.filter(
+            workspace=workspace,
+            accepted_at__isnull=False,
+            suspended_at__isnull=True,
+        )
+        .select_related("workspace", "user")
+        .order_by("invited_at")
+    )
+    for member in members:
+        try:
+            status = call(MFA_STATUS, {"user_id": str(member.user_id)}) or {}
+        except (
+            FunctionNotRegistered,
+            FunctionRouteNotConfigured,
+            FunctionCallError,
+        ) as exc:
+            logger.warning(
+                "auth.mfa_status unavailable (%s) — require_mfa sweep for "
+                "workspace %s aborted, remaining members untouched (fail-open)",
+                exc,
+                workspace.pk,
+            )
+            return False
+        if not status.get("has_strong_mfa"):
+            suspend_member(member, reason=SUSPENSION_NO_MFA)
+    return True
+
+
+def lift_no_mfa_suspensions(workspace: Workspace) -> int:
+    """Lift every ``no_mfa`` suspension when require_mfa flips off.
+
+    A policy the org no longer enforces must not keep members locked out
+    (their only other exit is enabling MFA). Emits per member; the
+    mfa_restored letter is suppressed (its wording is about the USER
+    enabling 2FA, not the org dropping the policy).
+    """
+    lifted = 0
+    members = WorkspaceMember.objects.filter(
+        workspace=workspace,
+        suspended_at__isnull=False,
+        suspension_reason=SUSPENSION_NO_MFA,
+    ).select_related("workspace", "user")
+    for member in members:
+        if unsuspend_member(member, notify=False):
+            lifted += 1
+    return lifted
+
+
+def suspend_memberships_without_mfa(user_id) -> int:
+    """``user.mfa_disabled`` consumer body: the user lost their last strong
+    factor — suspend their memberships in every require_mfa workspace.
+
+    Idempotent (at-least-once delivery): already-suspended memberships are
+    filtered out, a redelivery is a no-op.
+    """
+    suspended = 0
+    members = WorkspaceMember.objects.filter(
+        user_id=user_id,
+        accepted_at__isnull=False,
+        suspended_at__isnull=True,
+    ).select_related("workspace", "user")
+    for member in members:
+        workspace = member.workspace
+        if workspace.deleted_at:
+            continue
+        if security_settings_for(workspace).require_mfa:
+            if suspend_member(member, reason=SUSPENSION_NO_MFA):
+                suspended += 1
+    return suspended
+
+
+def lift_no_mfa_suspensions_for_user(user_id) -> int:
+    """``user.mfa_enabled`` consumer body: the user gained a strong factor —
+    lift their ``no_mfa`` suspensions (ONLY that reason; suspensions for
+    other/future reasons are none of MFA's business). Idempotent.
+    """
+    lifted = 0
+    members = WorkspaceMember.objects.filter(
+        user_id=user_id,
+        suspended_at__isnull=False,
+        suspension_reason=SUSPENSION_NO_MFA,
+    ).select_related("workspace", "user")
+    for member in members:
+        if unsuspend_member(member):
+            lifted += 1
+    return lifted

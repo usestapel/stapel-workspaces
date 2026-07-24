@@ -10,6 +10,12 @@ Service functions (``stapel_workspaces.services``):
 - ``decline_invitation`` — the invitee's terminal "no" (≠ revoke).
 - ``issue_invitation_login_grant`` — mint an ``auth.issue_login_grant``
   token for a not-yet-registered invitee (claim step, 0.7).
+- ``provision_member`` — create an org-provisioned (synthetic) member via
+  ``auth.provision_user`` (security harden, 0.8).
+- ``suspend_member`` / ``unsuspend_member`` — suspension-not-removal of a
+  membership (spec §C3, 0.8).
+- ``security_settings_for`` — typed ``WorkspaceSecuritySettings`` view of
+  ``Workspace.settings["security"]``.
 
 comm Function providers (``stapel_workspaces.functions``):
 - ``CHECK_MEMBERSHIP`` — name of the ``workspaces.check_membership``
@@ -35,6 +41,8 @@ Events (``stapel_workspaces.events``):
   personal workspace is bootstrapped.
 - ``EVENT_WORKSPACE_MEMBER_REMOVED`` / ``EVENT_WORKSPACE_MEMBER_ROLE_CHANGED``
   — member lifecycle emits for business services (kick, role change).
+- ``EVENT_WORKSPACE_MEMBER_PROVISIONED`` / ``EVENT_WORKSPACE_MEMBER_SUSPENDED``
+  / ``EVENT_WORKSPACE_MEMBER_UNSUSPENDED`` — security-harden emits (0.8).
 
 GDPR:
 - ``WorkspacesGDPRProvider`` — export/delete provider for workspace data.
@@ -52,6 +60,10 @@ _EXPORTS = {
     "accept_invitation": ".services",
     "decline_invitation": ".services",
     "issue_invitation_login_grant": ".services",
+    "provision_member": ".services",
+    "suspend_member": ".services",
+    "unsuspend_member": ".services",
+    "security_settings_for": ".services",
     "CHECK_MEMBERSHIP": ".functions",
     "check_membership": ".functions",
     "CHECK_CAPABILITY": ".functions",
@@ -66,6 +78,9 @@ _EXPORTS = {
     "EVENT_WORKSPACE_PERSONAL_CREATED": ".events",
     "EVENT_WORKSPACE_MEMBER_REMOVED": ".events",
     "EVENT_WORKSPACE_MEMBER_ROLE_CHANGED": ".events",
+    "EVENT_WORKSPACE_MEMBER_PROVISIONED": ".events",
+    "EVENT_WORKSPACE_MEMBER_SUSPENDED": ".events",
+    "EVENT_WORKSPACE_MEMBER_UNSUSPENDED": ".events",
     "WorkspacesGDPRProvider": ".gdpr",
 }
 

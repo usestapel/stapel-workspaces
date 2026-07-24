@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.member_suspended",
+  "description": "A workspace membership was suspended (org-program spec C3): the row stays but stops counting for every access check. Business services subscribe to revoke live access, exactly like member_removed. reason vocabulary is open; the canonical value is no_mfa (require_mfa policy enforcement).",
+  "type": "object",
+  "required": ["workspace_id", "user_id", "role", "reason"],
+  "properties": {
+    "workspace_id": { "type": "string", "format": "uuid" },
+    "user_id":      { "type": "string", "format": "uuid" },
+    "role":         { "type": "string" },
+    "reason":       { "type": "string" }
+  },
+  "additionalProperties": false
+}

@@ -17,6 +17,10 @@ class TestPublicAPI:
                 "accept_invitation",
                 "decline_invitation",
                 "issue_invitation_login_grant",
+                "provision_member",
+                "suspend_member",
+                "unsuspend_member",
+                "security_settings_for",
                 "CHECK_MEMBERSHIP",
                 "check_membership",
                 "CHECK_CAPABILITY",
@@ -31,6 +35,9 @@ class TestPublicAPI:
                 "EVENT_WORKSPACE_PERSONAL_CREATED",
                 "EVENT_WORKSPACE_MEMBER_REMOVED",
                 "EVENT_WORKSPACE_MEMBER_ROLE_CHANGED",
+                "EVENT_WORKSPACE_MEMBER_PROVISIONED",
+                "EVENT_WORKSPACE_MEMBER_SUSPENDED",
+                "EVENT_WORKSPACE_MEMBER_UNSUSPENDED",
                 "WorkspacesGDPRProvider",
             ]
         )

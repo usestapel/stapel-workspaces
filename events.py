@@ -11,6 +11,9 @@ from typing import List
 EVENT_WORKSPACE_PERSONAL_CREATED = "workspace.personal.created"
 EVENT_WORKSPACE_MEMBER_REMOVED = "workspace.member_removed"
 EVENT_WORKSPACE_MEMBER_ROLE_CHANGED = "workspace.member_role_changed"
+EVENT_WORKSPACE_MEMBER_PROVISIONED = "workspace.member_provisioned"
+EVENT_WORKSPACE_MEMBER_SUSPENDED = "workspace.member_suspended"
+EVENT_WORKSPACE_MEMBER_UNSUSPENDED = "workspace.member_unsuspended"
 
 
 @dataclass
@@ -66,8 +69,72 @@ class WorkspaceMemberRoleChangedPayload:
     capabilities: List[str]
 
 
+@dataclass
+class WorkspaceMemberProvisionedPayload:
+    """Payload for the workspace.member_provisioned event.
+
+    Emitted when an org-created (synthetic) account joins via
+    POST members/provision (org-program spec §C1) — the audit/metering
+    signal for the paid provisioning action. Never carries credential
+    material (no password, generated or otherwise).
+
+    Fields:
+        workspace_id: UUID of the workspace.
+        user_id: UUID of the provisioned user (created by auth.provision_user).
+        role: Role granted to the new member.
+        provisioned_by: UUID of the admin who performed the provisioning.
+    """
+
+    workspace_id: str
+    user_id: str
+    role: str
+    provisioned_by: str
+
+
+@dataclass
+class WorkspaceMemberSuspendedPayload:
+    """Payload for the workspace.member_suspended event.
+
+    Suspension is not removal (org-program spec §C3): the membership row
+    stays, but stops counting for every access check. Business services
+    subscribe to revoke live access, exactly like member_removed.
+
+    Fields:
+        workspace_id: UUID of the workspace.
+        user_id: UUID of the suspended member.
+        role: Role the member holds (unchanged by suspension).
+        reason: Suspension reason; canonical value "no_mfa" (require_mfa
+            policy), vocabulary open for future reasons.
+    """
+
+    workspace_id: str
+    user_id: str
+    role: str
+    reason: str
+
+
+@dataclass
+class WorkspaceMemberUnsuspendedPayload:
+    """Payload for the workspace.member_unsuspended event.
+
+    Fields:
+        workspace_id: UUID of the workspace.
+        user_id: UUID of the member whose suspension was lifted.
+        role: Role the member holds.
+        reason: The reason that was lifted (e.g. "no_mfa").
+    """
+
+    workspace_id: str
+    user_id: str
+    role: str
+    reason: str
+
+
 EVENT_REGISTRY = {
     EVENT_WORKSPACE_PERSONAL_CREATED: WorkspacePersonalCreatedPayload,
     EVENT_WORKSPACE_MEMBER_REMOVED: WorkspaceMemberRemovedPayload,
     EVENT_WORKSPACE_MEMBER_ROLE_CHANGED: WorkspaceMemberRoleChangedPayload,
+    EVENT_WORKSPACE_MEMBER_PROVISIONED: WorkspaceMemberProvisionedPayload,
+    EVENT_WORKSPACE_MEMBER_SUSPENDED: WorkspaceMemberSuspendedPayload,
+    EVENT_WORKSPACE_MEMBER_UNSUSPENDED: WorkspaceMemberUnsuspendedPayload,
 }

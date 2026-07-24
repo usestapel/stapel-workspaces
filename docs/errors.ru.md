@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`58` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`60` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -21,6 +21,7 @@
 | `error.400.field.required` | 400 | `field` | `fix_input` | Поле «{field}» обязательно |
 | `error.400.field.unique` | 400 | `field` | `fix_input` | Значение поля «{field}» должно быть уникальным |
 | `error.400.invalid_ad_id` | 400 | — | `fix_input` | Недопустимый идентификатор объявления |
+| `error.400.invalid_provision_username` | 400 | — | `fix_input` | Недопустимое имя пользователя для создаваемого аккаунта |
 | `error.400.invalid_role` | 400 | — | `fix_input` | Недопустимая роль |
 | `error.400.invitation_already_used` | 400 | — | `fix_input` | Приглашение уже было использовано |
 | `error.400.invitation_declined` | 400 | — | `contact_support` | Приглашение было отклонено |
@@ -37,6 +38,7 @@
 | `error.403.forbidden` | 403 | — | `retry` | У вас нет прав для выполнения этого действия |
 | `error.403.forbidden_workspace` | 403 | — | `contact_support` | У вас нет доступа к этому рабочему пространству |
 | `error.403.last_owner_cannot_be_removed` | 403 | — | `fix_input` | Нельзя удалить последнего владельца; сначала передайте права владения |
+| `error.403.membership_suspended` | 403 | `reason` | `fix_input` | Ваше членство в этом рабочем пространстве приостановлено ({reason}) |
 | `error.403.missing_capability` | 403 | `capability` | `contact_support` | Ваша роль не включает право {capability} в этом рабочем пространстве |
 | `error.403.network_blocked` | 403 | — | `contact_support` | Запросы из этой сети не разрешены. |
 | `error.403.verification_enrollment_required` | 403 | — | `verify` | Требуется регистрация фактора подтверждения. |

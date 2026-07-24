@@ -8,8 +8,12 @@ Two layers (org-program spec §A2):
   backward-compatibility gate of the 0.6 mandate model.
 * **Capabilities** — ``has_capability`` / ``require_capability`` answer
   "may this user do <domain>.<action> in this workspace" against the same
-  registry (wildcards included). Suspension-awareness lands in W3; until
-  then "active membership" means accepted.
+  registry (wildcards included). "Active membership" means accepted AND
+  not suspended (org-program spec §C3): suspension is not removal — the
+  row stays, but it stops counting for every access check until lifted.
+  Callers that must SEE a suspended row (the view layer, to answer
+  ``error.403.membership_suspended`` instead of a bare not-a-member 403)
+  pass ``include_suspended=True`` explicitly.
 """
 
 from .capabilities import role_has_capability, role_rank
@@ -35,11 +39,22 @@ def role_at_least(role: str, minimum: str) -> bool:
     return rank >= minimum_rank
 
 
-def get_membership(workspace_id, user_id) -> WorkspaceMember | None:
-    """Active membership of the user in the workspace (accepted only)."""
-    return WorkspaceMember.objects.filter(
+def get_membership(
+    workspace_id, user_id, *, include_suspended: bool = False
+) -> WorkspaceMember | None:
+    """Active membership of the user in the workspace.
+
+    Active = accepted AND not suspended (spec §C3). ``include_suspended``
+    widens the lookup to suspended rows — for surfaces that must
+    distinguish "suspended member" from "not a member" (the view layer's
+    ``membership_suspended`` 403); authorization decisions never pass it.
+    """
+    qs = WorkspaceMember.objects.filter(
         workspace_id=workspace_id, user_id=user_id, accepted_at__isnull=False
-    ).first()
+    )
+    if not include_suspended:
+        qs = qs.filter(suspended_at__isnull=True)
+    return qs.first()
 
 
 def require_role(workspace_id, user_id, minimum: str) -> WorkspaceMember | None:
@@ -58,9 +73,9 @@ def has_capability(workspace_id, user_id, capability: str) -> bool:
 def require_capability(workspace_id, user_id, capability: str) -> WorkspaceMember | None:
     """Return membership if the user holds *capability*, else None.
 
-    Only accepted memberships count (suspension filtering arrives with the
-    W3 suspension fields). Deny-by-default: no membership, unknown role, or
-    a role without the capability all return None.
+    Only accepted, non-suspended memberships count (spec §C3). Deny-by-
+    default: no membership, a suspended membership, an unknown role, or a
+    role without the capability all return None.
     """
     membership = get_membership(workspace_id, user_id)
     if membership and role_has_capability(membership.role, capability):

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.member_unsuspended",
+  "description": "A workspace membership suspension was lifted (org-program spec C3) — e.g. the member enabled a strong second factor while suspended for no_mfa, or the workspace turned the require_mfa policy off. reason is the reason that was lifted.",
+  "type": "object",
+  "required": ["workspace_id", "user_id", "role", "reason"],
+  "properties": {
+    "workspace_id": { "type": "string", "format": "uuid" },
+    "user_id":      { "type": "string", "format": "uuid" },
+    "role":         { "type": "string" },
+    "reason":       { "type": "string" }
+  },
+  "additionalProperties": false
+}

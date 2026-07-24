@@ -15,8 +15,11 @@ class WorkspaceAdmin(admin.ModelAdmin):
 
 @admin.register(WorkspaceMember)
 class WorkspaceMemberAdmin(admin.ModelAdmin):
-    list_display = ["workspace", "user", "role", "invited_at", "accepted_at"]
-    list_filter = ["role"]
+    list_display = [
+        "workspace", "user", "role", "invited_at", "accepted_at",
+        "provisioned", "suspended_at", "suspension_reason",
+    ]
+    list_filter = ["role", "provisioned", "suspension_reason"]
     search_fields = ["workspace__name", "user__email"]
     readonly_fields = ["id", "invited_at"]
 

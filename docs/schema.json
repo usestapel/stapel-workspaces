@@ -501,6 +501,71 @@
         }
       }
     },
+    "/workspaces/api/v1/{workspace_id}/members/provision": {
+      "post": {
+        "operationId": "workspaces_api_v1_members_provision_create",
+        "description": "Provision an org-created (synthetic) member (org-program spec §C1).\n\nThe org mints its own login/password account: full username is\n``{workspace_slug}/{username_local}`` (namespaced — the slug is\nglobally unique, so orgs cannot collide), the account is created by\n``auth.provision_user`` with the workspace's first-login policy\n(``settings.security.provisioned_user_policy``: forced password change\nor mandatory MFA enrollment) and joins immediately\n(``accepted_at=now``, ``provisioned=True``).\n\nGate stack, in order: HIGH step-up (``@requires_verification``, scope\n``sensitive`` — the same store as admin step-up) → capability\n``members.provision`` (403) → entitlement ``workspaces.provision_user``\n(402; degrades to allow without billing) → optional per-user debit\n(``STAPEL_WORKSPACES[\"PROVISION_USER_CREDITS\"]`` > 0).\n\nCredentials: a synthetic account normally has no email — when the\nrequest omits ``email``, the server-generated password comes back in\nthe response (``generated_password``) exactly once and no letter is\nsent. With ``email``, the ``workspace.provisioned_account`` letter\ncarries the credentials as well. Auth's structured failures pass\nthrough keyed (``error.409.username_taken`` / auth's 400s); auth not\nwired → honest 503, this seam never degrades to allow.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionMemberRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionMemberRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvisionMemberResponse"
+                },
+                "examples": {
+                  "ProvisionMemberResponse": {
+                    "value": {
+                      "username": "acme-eng/jdoe",
+                      "role": "member"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
     "/workspaces/api/v1/internal/{workspace_id}/members/{user_id}": {
       "get": {
         "operationId": "workspaces_api_v1_internal_members_retrieve",
@@ -1005,6 +1070,20 @@
             "type": "string",
             "nullable": true,
             "description": "ISO 8601 last access; null if never accessed"
+          },
+          "provisioned": {
+            "type": "boolean",
+            "description": "Whether this is an org-created (synthetic) member joined via members/provision"
+          },
+          "suspended_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 suspension timestamp; null while active. Suspension is not removal — the role stays but access is closed"
+          },
+          "suspension_reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Why the membership is suspended (canonical value no_mfa); null while active"
           }
         },
         "required": [
@@ -1084,6 +1163,72 @@
             "nullable": true
           }
         }
+      },
+      "ProvisionMemberRequest": {
+        "type": "object",
+        "description": "Provision an org-created (synthetic) member (org-program spec §C1).",
+        "properties": {
+          "username_local": {
+            "type": "string",
+            "description": "Local part of the login; the full username becomes \"{workspace_slug}/{username_local}\". Stock username alphabet, no slash",
+            "example": "jdoe"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role to grant (effective registry; owner is not provisionable)",
+            "example": "member"
+          },
+          "password": {
+            "type": "string",
+            "nullable": true,
+            "description": "Initial password chosen by the admin. Omitted: the server generates a crypto-strong one, returned once as generated_password"
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-name hint forwarded to auth/profiles",
+            "example": "Jane Doe"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional email anchor (stored UNVERIFIED by auth). When present, the provisioned-account email with the credentials is sent there. Normally omitted — synthetic accounts have no email"
+          }
+        },
+        "required": [
+          "username_local"
+        ]
+      },
+      "ProvisionMemberResponse": {
+        "type": "object",
+        "description": "Result of provisioning an org member.",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of the created account"
+          },
+          "username": {
+            "type": "string",
+            "description": "Full namespaced login",
+            "example": "acme-eng/jdoe"
+          },
+          "role": {
+            "type": "string",
+            "description": "Granted role",
+            "example": "member"
+          },
+          "generated_password": {
+            "type": "string",
+            "nullable": true,
+            "description": "Server-generated initial password — returned exactly ONCE, only when the request omitted password. Store it or hand it to the user now; it cannot be re-fetched. A credential: never log it"
+          }
+        },
+        "required": [
+          "role",
+          "user_id",
+          "username"
+        ]
       },
       "RoleListResponse": {
         "type": "object",

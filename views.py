@@ -21,6 +21,7 @@ from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
 from stapel_core.django.openapi.schemas import StapelErrorSerializer
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
+from stapel_core.verification import requires_verification
 
 from . import entitlements, services
 from .capabilities import (
@@ -35,6 +36,7 @@ from .dto import (
     InvitationResponse,
     MemberInviteResponse,
     MemberResponse,
+    ProvisionMemberResponse,
     RoleListResponse,
     RoleResponse,
     WorkspaceListResponse,
@@ -50,6 +52,7 @@ from .errors import (
     ERR_402_MEMBER_LIMIT_REACHED,
     ERR_403_FORBIDDEN_WORKSPACE,
     ERR_403_LAST_OWNER,
+    ERR_403_MEMBERSHIP_SUSPENDED,
     ERR_403_MISSING_CAPABILITY,
     ERR_404_INVITATION_NOT_FOUND,
     ERR_404_MEMBER_NOT_FOUND,
@@ -72,6 +75,8 @@ from .serializers import (
     MemberInviteResponseSerializer,
     MemberResponseSerializer,
     MemberUpdateRequestSerializer,
+    ProvisionMemberRequestSerializer,
+    ProvisionMemberResponseSerializer,
     RoleListResponseSerializer,
     WorkspaceCreateRequestSerializer,
     WorkspaceListResponseSerializer,
@@ -101,14 +106,23 @@ class SerializerSeamsMixin:
 
 
 def _capability_check(membership, capability: str):
-    """403 mapping for the capability layer (org-program spec §A2).
+    """403 mapping for the capability layer (org-program spec §A2/§C3).
 
     Not a member at all → the historical ``forbidden_workspace`` boundary;
-    a member whose role lacks the capability → ``missing_capability`` with
-    the capability string as a param.
+    a SUSPENDED member → ``membership_suspended`` with the reason as a
+    param (callers fetch the membership with ``include_suspended=True`` so
+    the honest state is reportable — a bare not-a-member 403 would hide
+    the self-serve fix from the no_mfa case); a member whose role lacks
+    the capability → ``missing_capability``.
     """
     if membership is None:
         return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+    if membership.suspended_at is not None:
+        return StapelErrorResponse(
+            403,
+            ERR_403_MEMBERSHIP_SUSPENDED,
+            params={"reason": membership.suspension_reason},
+        )
     if not role_has_capability(membership.role, capability):
         return StapelErrorResponse(
             403, ERR_403_MISSING_CAPABILITY, params={"capability": capability}
@@ -148,6 +162,9 @@ def _member_to_dto(m: WorkspaceMember) -> MemberResponse:
         invited_at=m.invited_at.isoformat(),
         accepted_at=m.accepted_at.isoformat() if m.accepted_at else None,
         last_accessed_at=m.last_accessed_at.isoformat() if m.last_accessed_at else None,
+        provisioned=m.provisioned,
+        suspended_at=m.suspended_at.isoformat() if m.suspended_at else None,
+        suspension_reason=m.suspension_reason or None,
     )
 
 
@@ -281,8 +298,15 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
 
     @extend_schema(responses={200: WorkspaceListResponseSerializer})
     def get(self, request):  # noqa: R007
+        # Suspended memberships are excluded: suspension closes access to
+        # the org entirely (spec §C3) — the workspace disappears from the
+        # member's own list until the suspension lifts.
         memberships = (
-            WorkspaceMember.objects.filter(user=request.user, accepted_at__isnull=False)
+            WorkspaceMember.objects.filter(
+                user=request.user,
+                accepted_at__isnull=False,
+                suspended_at__isnull=True,
+            )
             .select_related("workspace")
             .order_by("-last_accessed_at", "-invited_at")
         )
@@ -343,7 +367,7 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
         if not ws:
             return None, None, StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
-        membership = get_membership(ws.id, request.user.id)
+        membership = get_membership(ws.id, request.user.id, include_suspended=True)
         err = _capability_check(membership, capability)
         if err:
             return None, None, err
@@ -373,6 +397,40 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         ser = self.get_request_serializer_class()(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
+        # A settings payload carrying the `security` block is the HIGH
+        # surface of this endpoint (spec §C3): extra capability gate
+        # (workspace.security.manage) + step-up on the delegate method —
+        # ordinary PATCHes (name/slug/other settings) stay step-up-free.
+        if "security" in ((getattr(data, "settings", None)) or {}):
+            err = _capability_check(membership, "workspace.security.manage")
+            if err:
+                return err
+            return self._patch_security(request, ws, membership, data)
+        return self._apply_patch(ws, membership, data)
+
+    @requires_verification(scope="sensitive")
+    def _patch_security(self, request, ws, membership, data):
+        """Step-up-guarded branch: the PATCH touches the security block.
+
+        Flipping ``require_mfa`` ON triggers the synchronous member sweep
+        (``auth.mfa_status`` per member; no strong factor → suspension with
+        reason ``no_mfa``); auth being unavailable aborts the sweep without
+        touching anyone (fail-open by suspension — spec §C3), the policy
+        itself still saves and the mfa-event consumer catches up. Flipping
+        it OFF lifts the ``no_mfa`` suspensions it caused.
+        """
+        was_require_mfa = services.security_settings_for(ws).require_mfa
+        response = self._apply_patch(ws, membership, data)
+        if response.status_code != status.HTTP_200_OK:
+            return response
+        now_require_mfa = services.security_settings_for(ws).require_mfa
+        if now_require_mfa and not was_require_mfa:
+            services.enforce_require_mfa(ws)
+        elif was_require_mfa and not now_require_mfa:
+            services.lift_no_mfa_suspensions(ws)
+        return response
+
+    def _apply_patch(self, ws, membership, data):
         new_slug = getattr(data, "slug", None)
         if new_slug and new_slug != ws.slug:
             if Workspace.objects.filter(slug=new_slug).exclude(id=ws.id).exists():
@@ -454,7 +512,8 @@ class MemberListView(SerializerSeamsMixin, APIView):
         #              (full name / username); lets a people-picker filter
         #              server-side instead of pulling every member (BACKLOG G12).
         err = _capability_check(
-            get_membership(workspace_id, request.user.id), "members.view"
+            get_membership(workspace_id, request.user.id, include_suspended=True),
+            "members.view",
         )
         if err:
             return err
@@ -491,7 +550,8 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
         if not ws:
             return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         err = _capability_check(
-            get_membership(ws.id, request.user.id), "members.invite"
+            get_membership(ws.id, request.user.id, include_suspended=True),
+            "members.invite",
         )
         if err:
             return err
@@ -531,6 +591,105 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
 
 
 @extend_schema(tags=["Members"])
+class MemberProvisionView(SerializerSeamsMixin, APIView):
+    """Provision an org-created (synthetic) member (org-program spec §C1).
+
+    The org mints its own login/password account: full username is
+    ``{workspace_slug}/{username_local}`` (namespaced — the slug is
+    globally unique, so orgs cannot collide), the account is created by
+    ``auth.provision_user`` with the workspace's first-login policy
+    (``settings.security.provisioned_user_policy``: forced password change
+    or mandatory MFA enrollment) and joins immediately
+    (``accepted_at=now``, ``provisioned=True``).
+
+    Gate stack, in order: HIGH step-up (``@requires_verification``, scope
+    ``sensitive`` — the same store as admin step-up) → capability
+    ``members.provision`` (403) → entitlement ``workspaces.provision_user``
+    (402; degrades to allow without billing) → optional per-user debit
+    (``STAPEL_WORKSPACES["PROVISION_USER_CREDITS"]`` > 0).
+
+    Credentials: a synthetic account normally has no email — when the
+    request omits ``email``, the server-generated password comes back in
+    the response (``generated_password``) exactly once and no letter is
+    sent. With ``email``, the ``workspace.provisioned_account`` letter
+    carries the credentials as well. Auth's structured failures pass
+    through keyed (``error.409.username_taken`` / auth's 400s); auth not
+    wired → honest 503, this seam never degrades to allow.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    request_serializer_class = ProvisionMemberRequestSerializer
+    response_serializer_class = ProvisionMemberResponseSerializer
+
+    @extend_schema(
+        request=ProvisionMemberRequestSerializer,
+        responses={201: ProvisionMemberResponseSerializer},
+    )
+    @requires_verification(scope="sensitive")
+    def post(self, request, workspace_id):  # noqa: R007
+        ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
+        if not ws:
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+        err = _capability_check(
+            get_membership(ws.id, request.user.id, include_suspended=True),
+            "members.provision",
+        )
+        if err:
+            return err
+        ser = self.get_request_serializer_class()(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        # Entitlement seam (spec §D2): capability first ("may YOU", 403),
+        # then the org's plan ("may the ORG", 402). Boolean key — plans
+        # either include org-provisioned users or not.
+        verdict = entitlements.check_org_entitlement(
+            ws, entitlements.ENT_PROVISION_USER
+        )
+        if not verdict.allowed:
+            return StapelErrorResponse(402, ERR_402_ENTITLEMENT_REQUIRED)
+        try:
+            member, username, generated_password = services.provision_member(
+                workspace=ws,
+                username_local=data.username_local,
+                role=data.role,
+                provisioned_by=request.user,
+                password=getattr(data, "password", None),
+                display_name=getattr(data, "display_name", None),
+                email=getattr(data, "email", None),
+            )
+        except entitlements.EntitlementDenied:
+            # The per-user debit was refused (e.g. insufficient credits).
+            return StapelErrorResponse(402, ERR_402_ENTITLEMENT_REQUIRED)
+        except services.ProvisionError as failure:
+            # Structured auth failure, passed through keyed — the status
+            # is encoded in the key itself (error.<status>.<name>).
+            return StapelErrorResponse(
+                _status_of_error_key(failure.error_key), failure.error_key
+            )
+        except (FunctionNotRegistered, FunctionRouteNotConfigured):
+            return StapelErrorResponse(503, ERR_503_AUTH_UNAVAILABLE)
+        return StapelResponse(
+            self.get_response_serializer_class()(
+                ProvisionMemberResponse(
+                    user_id=member.user_id,
+                    username=username,
+                    role=member.role,
+                    generated_password=generated_password,
+                )
+            ),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+def _status_of_error_key(error_key: str, default: int = 400) -> int:
+    """HTTP status encoded in a canonical ``error.<status>.<name>`` key."""
+    try:
+        return int(error_key.split(".")[1])
+    except (IndexError, ValueError):
+        return default
+
+
+@extend_schema(tags=["Members"])
 class MemberDetailView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     request_serializer_class = MemberUpdateRequestSerializer
@@ -538,7 +697,8 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
 
     def _resolve(self, request, workspace_id, user_id, capability):
         err = _capability_check(
-            get_membership(workspace_id, request.user.id), capability
+            get_membership(workspace_id, request.user.id, include_suspended=True),
+            capability,
         )
         if err:
             return None, err
@@ -872,9 +1032,15 @@ class InternalMembershipView(SerializerSeamsMixin, APIView):
 
     @extend_schema(responses={200: MemberResponseSerializer})
     def get(self, request, workspace_id, user_id):  # noqa: R007
+        # Only accepted, non-suspended memberships count — a suspended
+        # member must read as not-a-member to authorization consumers
+        # (suspension closes access to the org entirely, spec §C3).
         member = (
             WorkspaceMember.objects.filter(
-                workspace_id=workspace_id, user_id=user_id, accepted_at__isnull=False
+                workspace_id=workspace_id,
+                user_id=user_id,
+                accepted_at__isnull=False,
+                suspended_at__isnull=True,
             )
             .select_related("user")
             .first()

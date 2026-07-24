@@ -14,6 +14,7 @@ from .views import (
     MemberDetailView,
     MemberInviteView,
     MemberListView,
+    MemberProvisionView,
     RoleListView,
     WorkspaceDetailView,
     WorkspaceListCreateView,
@@ -32,6 +33,11 @@ urlpatterns = [
         "<uuid:workspace_id>/members/invite",
         MemberInviteView.as_view(),
         name="workspace-member-invite",
+    ),
+    path(
+        "<uuid:workspace_id>/members/provision",
+        MemberProvisionView.as_view(),
+        name="workspace-member-provision",
     ),
     path(
         "<uuid:workspace_id>/members/<uuid:user_id>",

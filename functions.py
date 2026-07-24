@@ -18,8 +18,9 @@ client code (the transport is deployment configuration, see STAPEL_COMM):
     # -> {"allowed": bool, "role": str | None}
 
 The providers mirror the internal HTTP endpoint
-(:class:`stapel_workspaces.views.InternalMembershipView`): only *accepted*
-memberships count. ``capabilities`` carries the member role's *granted*
+(:class:`stapel_workspaces.views.InternalMembershipView`): only *accepted*,
+*non-suspended* memberships count (suspension closes access to the org
+entirely — org-program spec §C3). ``capabilities`` carries the member role's *granted*
 strings verbatim (wildcards like ``"*"`` / ``"members.*"`` included) — the
 consumer-side matcher (``stapel_core.django.workspaces``) resolves them;
 ``workspaces.check_capability`` is the server-side resolution for a single
@@ -78,6 +79,7 @@ def check_membership(payload: dict) -> dict:
             workspace_id=payload["workspace_id"],
             user_id=payload["user_id"],
             accepted_at__isnull=False,
+            suspended_at__isnull=True,
         )
         .only("role")
         .first()

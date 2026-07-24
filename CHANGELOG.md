@@ -2,6 +2,94 @@
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-24
+
+Wave 3 of the workspaces org-program (spec §C1-C3): the workspaces side of
+the security harden — org-provisioned (synthetic) users and the
+`require_mfa` policy implemented as suspension-not-removal. Pairs with
+stapel-auth 0.12 (`auth.provision_user` / `auth.mfa_status` /
+`user.mfa_enabled|disabled` emits), stapel-billing 0.5 (`billing.debit`),
+stapel-core 0.14 (`requires_verification` step-up) and
+stapel-notifications 0.4 (`workspace.provisioned_account` /
+`workspace.mfa_suspension` / `workspace.mfa_restored` types).
+
+### Added
+- **`POST <workspace_id>/members/provision`** — org-created login/password
+  accounts (spec §C1). Full username is
+  `{workspace_slug}/{username_local}` (slug is globally unique — orgs
+  cannot collide); the account is created by `auth.provision_user` with
+  the workspace's first-login policy
+  (`settings.security.provisioned_user_policy`:
+  `password_change` (default) | `mfa_enroll`) and joins immediately
+  (`WorkspaceMember(accepted_at=now, provisioned=True)`, migration
+  `0004`). Gate stack in order: HIGH step-up
+  (`@requires_verification(scope="sensitive")` — same store as admin
+  step-up) → capability `members.provision` (403) → entitlement
+  `workspaces.provision_user` (402, degrade-allow without billing) →
+  optional `billing.debit` when
+  `STAPEL_WORKSPACES["PROVISION_USER_CREDITS"]` > 0 (deterministic
+  idempotency key `ws-provision:<uuid>` per provision attempt; refused
+  debit → 402). Response `{user_id, username, role, generated_password?}`.
+- **Credentials delivery (the email nuance)**: a synthetic account
+  normally has NO email — with `email` omitted the letter is skipped and
+  the server-generated password is returned in the API response to the
+  admin exactly once. With the optional `email` passed (stored UNVERIFIED
+  by auth), the `workspace.provisioned_account` letter also carries the
+  credentials (`username`, `initial_password` only when generated,
+  `login_url`). The generated password never rides any event payload and
+  is never logged.
+- **Provision errors**: auth's structured failures pass through keyed
+  with the status taken from the key (`error.409.username_taken`,
+  `error.400.username_namespace_invalid`, `error.400.bad_request`); a
+  malformed local part fails fast (before any debit/auth roundtrip) with
+  the new `error.400.invalid_provision_username`; auth not wired → honest
+  503 `error.503.auth_unavailable` (never degrades to allow).
+- **Suspension (spec §C3)**: `WorkspaceMember.suspended_at` +
+  `suspension_reason` (migration `0004`, expand-only; canonical reason
+  `no_mfa`). Suspension is NOT removal — the row and role stay, but every
+  access surface stops counting the membership:
+  `permissions.get_membership`/`has_capability`/`require_capability`,
+  `workspaces.check_membership`/`check_capability` comm Functions, the
+  internal HTTP membership endpoint, and the member's own workspace list.
+  The view layer answers the honest 403
+  `error.403.membership_suspended {reason}` (membership fetched with
+  `include_suspended=True`); the cross-service membership cache is
+  invalidated on suspend/unsuspend. `services.suspend_member` /
+  `unsuspend_member` are idempotent and emit
+  `workspace.member_suspended` / `workspace.member_unsuspended`
+  (+ schemas) inside the transactional outbox.
+- **`WorkspaceSecuritySettings`** — typed dataclass over
+  `Workspace.settings["security"]` (`require_mfa`,
+  `provisioned_user_policy`; extra keys pass through for client
+  extension). A PATCH whose settings payload carries the `security` block
+  additionally gates on capability `workspace.security.manage` + HIGH
+  step-up (delegate-method pattern — ordinary PATCHes stay step-up-free)
+  and validates the two known keys.
+- **require_mfa sweep**: flipping `require_mfa` ON runs a synchronous
+  `auth.mfa_status` pass over active members; no strong factor → suspend
+  (reason `no_mfa`, emit + `workspace.mfa_suspension` letter). Auth
+  unavailable during the pass → members are NOT touched (fail-open by
+  suspension — fail-closed would lock out the whole org); the policy
+  still saves and the event consumer catches up. Flipping it OFF lifts
+  the `no_mfa` suspensions it caused (emit, no letter — the mfa_restored
+  wording is about the user enabling 2FA, wrong for a policy drop).
+- **MFA event consumers** (`actions.py`, idempotent): `user.mfa_disabled`
+  → suspend the user's memberships in every `require_mfa` workspace
+  (reason `no_mfa`, emit + mfa_suspension letter); `user.mfa_enabled` →
+  lift the user's `no_mfa` suspensions ONLY (other reasons are not MFA's
+  to lift; emit + mfa_restored letter). Consumed schemas mirrored in
+  `schemas/consumes/`.
+- **Member surface**: `MemberResponse` gains additive `provisioned`,
+  `suspended_at`, `suspension_reason` (members list shows suspension
+  state); `workspace.member_provisioned` emit
+  `{workspace_id, user_id, role, provisioned_by}` (+ schema); admin list
+  shows/filter the new member state; entitlement seam gains
+  `ENT_PROVISION_USER` + `debit_provision_credits`.
+- Errors + ru: `error.403.membership_suspended` (`{reason}`, remediation
+  `fix_input` — the canonical reason is self-serve and restores
+  automatically), `error.400.invalid_provision_username` (`fix_input`).
+  Contract triad + capabilities.json + error docs regenerated.
+
 ## [0.7.0] — 2026-07-24
 
 Wave 2 of the workspaces org-program (spec §B1-B3): the workspaces side of
