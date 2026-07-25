@@ -30,7 +30,7 @@ from stapel_workspaces.errors import (
 )
 from stapel_workspaces.models import Role, WorkspaceMember
 
-BASE = "/workspaces/api/workspaces"
+BASE = "/workspaces/api/workspaces/v1"
 
 
 def _preview_url(token):

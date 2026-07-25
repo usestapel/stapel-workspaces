@@ -7,7 +7,7 @@ from django.test import override_settings
 
 from stapel_workspaces.models import Role, Workspace, WorkspaceType
 
-BASE = "/workspaces/api/workspaces"
+BASE = "/workspaces/api/workspaces/v1"
 SERVICE_KEY = "test-service-key"
 
 service_settings = override_settings(

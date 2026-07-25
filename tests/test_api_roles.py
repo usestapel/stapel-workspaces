@@ -7,7 +7,7 @@ from django.utils import timezone
 from stapel_workspaces.errors import ERR_400_INVALID_ROLE
 from stapel_workspaces.models import Role, WorkspaceMember
 
-BASE = "/workspaces/api/workspaces"
+BASE = "/workspaces/api/workspaces/v1"
 
 SECRETARY = {
     "rank": 250,
@@ -65,7 +65,7 @@ class TestMyCapabilities:
             workspace=ws, user=user, role=Role.VIEWER, accepted_at=timezone.now()
         )
         api_client.force_authenticate(user=user)
-        resp = api_client.get(BASE)
+        resp = api_client.get(f"{BASE}/")
         assert resp.status_code == 200
         (entry,) = resp.json()["workspaces"]
         assert entry["my_role"] == "viewer"

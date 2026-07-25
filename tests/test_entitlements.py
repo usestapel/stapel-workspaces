@@ -18,7 +18,7 @@ from stapel_workspaces.errors import (
 )
 from stapel_workspaces.models import Role, WorkspaceInvitation, WorkspaceMember
 
-BASE = "/workspaces/api/workspaces"
+BASE = "/workspaces/api/workspaces/v1"
 
 
 def _create_ws(user, name="Acme", **kwargs):
@@ -58,7 +58,7 @@ class TestDegradeAllow:
 
     def test_work_workspace_creation_unrestricted(self, authed_client):
         resp = authed_client.post(
-            BASE, {"name": "Org", "type": "work"}, format="json"
+            f"{BASE}/", {"name": "Org", "type": "work"}, format="json"
         )
         assert resp.status_code == 201, resp.content
 
@@ -77,7 +77,7 @@ class TestOrgEntitlement:
     def test_denied_org_creation_402(self, authed_client, fake_billing):
         fake_billing["response"] = {"allowed": False, "reason": "plan"}
         resp = authed_client.post(
-            BASE, {"name": "Org", "type": "work"}, format="json"
+            f"{BASE}/", {"name": "Org", "type": "work"}, format="json"
         )
         assert resp.status_code == 402
         assert resp.json()["localizable_error"] == ERR_402_ENTITLEMENT_REQUIRED
@@ -86,7 +86,7 @@ class TestOrgEntitlement:
     def test_personal_workspace_never_gated(self, authed_client, fake_billing):
         fake_billing["response"] = {"allowed": False}
         resp = authed_client.post(
-            BASE, {"name": "Me", "type": "personal"}, format="json"
+            f"{BASE}/", {"name": "Me", "type": "personal"}, format="json"
         )
         assert resp.status_code == 201, resp.content
         assert fake_billing["calls"] == []
@@ -95,7 +95,7 @@ class TestOrgEntitlement:
         self, authed_client, user, fake_billing
     ):
         resp = authed_client.post(
-            BASE, {"name": "Org", "type": "work"}, format="json"
+            f"{BASE}/", {"name": "Org", "type": "work"}, format="json"
         )
         assert resp.status_code == 201, resp.content
         call = fake_billing["calls"][-1]

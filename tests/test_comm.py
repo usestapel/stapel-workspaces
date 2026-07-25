@@ -188,7 +188,7 @@ class TestMemberChangeInvalidation:
         cache.set(key, "member", 30)
 
         resp = authed_client.patch(
-            f"/workspaces/api/workspaces/{ws.id}/members/{other_user.pk}",
+            f"/workspaces/api/workspaces/v1/{ws.id}/members/{other_user.pk}",
             {"role": "admin"},
             format="json",
         )
@@ -208,7 +208,7 @@ class TestMemberChangeInvalidation:
         cache.set(key, "member", 30)
 
         resp = authed_client.delete(
-            f"/workspaces/api/workspaces/{ws.id}/members/{other_user.pk}"
+            f"/workspaces/api/workspaces/v1/{ws.id}/members/{other_user.pk}"
         )
         assert resp.status_code == 204, resp.content
         assert cache.get(key) is None
@@ -416,7 +416,7 @@ class TestMemberLifecycleEmits:
         ws = self._workspace_with_member(user, other_user)
         events = capture("workspace.member_role_changed")
         resp = authed_client.patch(
-            f"/workspaces/api/workspaces/{ws.id}/members/{other_user.pk}",
+            f"/workspaces/api/workspaces/v1/{ws.id}/members/{other_user.pk}",
             {"role": "admin"},
             format="json",
         )
@@ -443,7 +443,7 @@ class TestMemberLifecycleEmits:
         ws = self._workspace_with_member(user, other_user)
         events = capture("workspace.member_removed")
         resp = authed_client.delete(
-            f"/workspaces/api/workspaces/{ws.id}/members/{other_user.pk}"
+            f"/workspaces/api/workspaces/v1/{ws.id}/members/{other_user.pk}"
         )
         assert resp.status_code == 204, resp.content
         assert len(events) == 1
@@ -463,7 +463,7 @@ class TestMemberLifecycleEmits:
         ws = create_workspace(user=user, name="Solo")
         events = capture("workspace.member_role_changed")
         resp = authed_client.patch(
-            f"/workspaces/api/workspaces/{ws.id}/members/{user.pk}",
+            f"/workspaces/api/workspaces/v1/{ws.id}/members/{user.pk}",
             {"role": "admin"},
             format="json",
         )

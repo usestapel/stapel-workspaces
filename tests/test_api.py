@@ -9,7 +9,7 @@ from stapel_workspaces.models import Role, Workspace, WorkspaceMember
 class TestWorkspaceCreate:
     def test_create_workspace_seeds_owner_member(self, authed_client, user):
         resp = authed_client.post(
-            "/workspaces/api/workspaces",
+            "/workspaces/api/workspaces/v1/",
             {"name": "Acme Eng", "type": "work"},
             format="json",
         )
@@ -24,13 +24,13 @@ class TestWorkspaceCreate:
 
     def test_create_slug_taken(self, authed_client, user):
         resp1 = authed_client.post(
-            "/workspaces/api/workspaces",
+            "/workspaces/api/workspaces/v1/",
             {"name": "Acme", "slug": "acme"},
             format="json",
         )
         assert resp1.status_code == 201
         resp2 = authed_client.post(
-            "/workspaces/api/workspaces",
+            "/workspaces/api/workspaces/v1/",
             {"name": "Acme 2", "slug": "acme"},
             format="json",
         )
@@ -46,7 +46,7 @@ class TestWorkspaceList:
 
         mine = create_workspace(user=user, name="Mine")
         create_workspace(user=other_user, name="Theirs")
-        resp = authed_client.get("/workspaces/api/workspaces")
+        resp = authed_client.get("/workspaces/api/workspaces/v1/")
         assert resp.status_code == 200
         ids = [w["id"] for w in resp.json()["workspaces"]]
         assert str(mine.id) in ids
@@ -60,14 +60,14 @@ class TestWorkspaceDetail:
 
         ws = create_workspace(user=other_user, name="Theirs")
         api_client.force_authenticate(user=user)
-        resp = api_client.get(f"/workspaces/api/workspaces/{ws.id}")
+        resp = api_client.get(f"/workspaces/api/workspaces/v1/{ws.id}")
         assert resp.status_code == 403
 
     def test_owner_can_delete(self, authed_client, user):
         from stapel_workspaces.services import create_workspace
 
         ws = create_workspace(user=user, name="Doomed")
-        resp = authed_client.delete(f"/workspaces/api/workspaces/{ws.id}")
+        resp = authed_client.delete(f"/workspaces/api/workspaces/v1/{ws.id}")
         assert resp.status_code == 204
         ws.refresh_from_db()
         assert ws.deleted_at is not None
@@ -80,7 +80,7 @@ class TestMembershipInvite:
 
         ws = create_workspace(user=user, name="A")
         resp = authed_client.post(
-            f"/workspaces/api/workspaces/{ws.id}/members/invite",
+            f"/workspaces/api/workspaces/v1/{ws.id}/members/invite",
             {"emails": ["new@example.com"], "role": "member"},
             format="json",
         )
@@ -96,7 +96,7 @@ class TestMembershipInvite:
             workspace=ws, user=user, role=Role.MEMBER, accepted_at=ws.created_at
         )
         resp = authed_client.post(
-            f"/workspaces/api/workspaces/{ws.id}/members/invite",
+            f"/workspaces/api/workspaces/v1/{ws.id}/members/invite",
             {"emails": ["new@example.com"], "role": "member"},
             format="json",
         )
@@ -107,6 +107,6 @@ class TestMembershipInvite:
 
         ws = create_workspace(user=user, name="A")
         resp = authed_client.delete(
-            f"/workspaces/api/workspaces/{ws.id}/members/{user.id}"
+            f"/workspaces/api/workspaces/v1/{ws.id}/members/{user.id}"
         )
         assert resp.status_code == 403

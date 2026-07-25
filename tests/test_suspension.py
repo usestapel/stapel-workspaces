@@ -38,7 +38,7 @@ from stapel_workspaces.permissions import (
     require_capability,
 )
 
-BASE = "/workspaces/api/workspaces"
+BASE = "/workspaces/api/workspaces/v1"
 SCHEMAS_DIR = Path(stapel_workspaces.__file__).resolve().parent / "schemas" / "emits"
 
 
@@ -181,10 +181,10 @@ class TestSuspendedMembershipDoesNotCount:
         ws = _ws(user)
         member = _member(ws, other_user)
         api_client.force_authenticate(user=other_user)
-        assert len(api_client.get(BASE).json()["workspaces"]) == 1
+        assert len(api_client.get(f"{BASE}/").json()["workspaces"]) == 1
 
         services.suspend_member(member, reason=SUSPENSION_NO_MFA)
-        assert api_client.get(BASE).json()["workspaces"] == []
+        assert api_client.get(f"{BASE}/").json()["workspaces"] == []
 
     def test_members_list_shows_suspension_and_provisioned_status(
         self, authed_client, user, other_user

@@ -28,7 +28,7 @@ from stapel_workspaces.errors import (
 )
 from stapel_workspaces.models import Role, WorkspaceMember
 
-BASE = "/workspaces/api/workspaces"
+BASE = "/workspaces/api/workspaces/v1"
 SCHEMAS_DIR = Path(stapel_workspaces.__file__).resolve().parent / "schemas" / "emits"
 
 #: The structured-failure keys auth may answer with (passed through keyed).

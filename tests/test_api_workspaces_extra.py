@@ -12,7 +12,7 @@ from stapel_workspaces.errors import (
 )
 from stapel_workspaces.models import Role, Workspace, WorkspaceMember
 
-BASE = "/workspaces/api/workspaces"
+BASE = "/workspaces/api/workspaces/v1"
 
 
 def _create_ws(user, name="Acme", **kwargs):
@@ -30,10 +30,10 @@ def _add_member(ws, user, role):
 @pytest.mark.django_db
 class TestWorkspaceListCreate:
     def test_list_requires_auth(self, api_client):
-        assert api_client.get(BASE).status_code in (401, 403)
+        assert api_client.get(f"{BASE}/").status_code in (401, 403)
 
     def test_create_requires_auth(self, api_client):
-        resp = api_client.post(BASE, {"name": "X"}, format="json")
+        resp = api_client.post(f"{BASE}/", {"name": "X"}, format="json")
         assert resp.status_code in (401, 403)
 
     def test_list_excludes_soft_deleted(self, authed_client, user):
@@ -42,25 +42,25 @@ class TestWorkspaceListCreate:
         dead.deleted_at = timezone.now()
         dead.save(update_fields=["deleted_at"])
 
-        resp = authed_client.get(BASE)
+        resp = authed_client.get(f"{BASE}/")
         assert resp.status_code == 200
         ids = [w["id"] for w in resp.json()["workspaces"]]
         assert ids == [str(alive.id)]
 
     def test_create_invalid_type_rejected(self, authed_client):
         resp = authed_client.post(
-            BASE, {"name": "X", "type": "galactic"}, format="json"
+            f"{BASE}/", {"name": "X", "type": "galactic"}, format="json"
         )
         assert resp.status_code == 400
         assert Workspace.objects.count() == 0
 
     def test_create_missing_name_rejected(self, authed_client):
-        resp = authed_client.post(BASE, {}, format="json")
+        resp = authed_client.post(f"{BASE}/", {}, format="json")
         assert resp.status_code == 400
 
     def test_create_autogenerates_unique_slug(self, authed_client, user):
         _create_ws(user, name="Acme", slug="acme")
-        resp = authed_client.post(BASE, {"name": "Acme"}, format="json")
+        resp = authed_client.post(f"{BASE}/", {"name": "Acme"}, format="json")
         assert resp.status_code == 201
         assert resp.json()["slug"] == "acme-2"
 
