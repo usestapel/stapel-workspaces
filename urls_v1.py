@@ -4,6 +4,7 @@ from typing import NamedTuple
 
 from django.urls import path
 
+from .errors import WorkspacesErrorKeysView
 from .views import (
     InternalMembershipView,
     InternalPersonalWorkspaceView,
@@ -79,6 +80,8 @@ urlpatterns = [
         InternalPersonalWorkspaceView.as_view(),
         name="workspace-internal-personal",
     ),
+    # Error-key registry for the stapel-translate collector (service/staff only).
+    path("error-keys/", WorkspacesErrorKeysView.as_view(), name="error-keys"),
 ]
 
 

@@ -1,6 +1,19 @@
 # Changelog
 
-## [Unreleased]
+## [0.8.1] — 2026-07-26
+
+### Added — `error-keys/` is finally mounted
+
+`WorkspacesErrorKeysView` has existed since the port but no `urls*.py` ever mounted it — in
+*any* stapel library. stapel-translate's `error_collector` polls
+`/{prefix}/api/v1/error-keys/` on every service, so the whole endpoint class
+answered 404 from Django's URL resolver and the collector harvested nothing
+while reporting a plain `HTTP 404`. It is now mounted in `urls_v1.py` at
+`error-keys/` (v1 canon), service/staff-gated as the base view declares.
+
+Deliberately **not** in the contract triad: `ErrorKeysView` sets
+`schema = None` and `/error-keys` is on the flows allowlist, so `make
+contract` is a no-op diff — this is infrastructure, not product surface.
 
 ## [0.8.0] — 2026-07-24
 

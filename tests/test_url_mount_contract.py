@@ -79,6 +79,10 @@ ROUTES = [
         {"user_id": UID},
         f"{MOUNT}/v1/internal/users/{UID}/personal",
     ),
+    # Error-key registry polled by stapel-translate's error_collector. It was
+    # declared (WorkspacesErrorKeysView) but mounted nowhere until 2026-07-26,
+    # so the collector's whole endpoint class did not exist in any service.
+    ("error-keys", {}, f"{MOUNT}/v1/error-keys/"),
 ]
 
 
