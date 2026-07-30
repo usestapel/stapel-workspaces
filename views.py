@@ -1259,6 +1259,21 @@ class InvitationAcceptView(SerializerSeamsMixin, APIView):
                     else 0
                 },
             )
+        except services.ProvisionError as failure:
+            # The org configured first-login policies (#90) and auth
+            # refused to raise them structurally. The membership rolled
+            # back with the transaction: an org that demands a step before
+            # admission does not get a member who skipped it.
+            return StapelErrorResponse(
+                _status_of_error_key(failure.error_key), failure.error_key
+            )
+        except (FunctionNotRegistered, FunctionRouteNotConfigured):
+            # Same seam, wiring half: auth is not reachable, so the
+            # configured precondition cannot be applied. Honest 503 — this
+            # seam never degrades to allow. Only orgs that configured
+            # policies can reach here; everyone else never calls auth on
+            # this path at all.
+            return StapelErrorResponse(503, ERR_503_AUTH_UNAVAILABLE)
         except ValueError:
             return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
         return StapelResponse(

@@ -205,9 +205,17 @@ class MemberUpdateRequest:  # noqa: R004
     role: str
 
 
-#: Allowed values of WorkspaceSecuritySettings.provisioned_user_policy —
-#: mirrors auth.provision_user's first_login_policy enum (spec §C2).
+#: Allowed values of WorkspaceSecuritySettings.provisioned_user_policies —
+#: mirrors auth's first_login_policies enum (spec §C2, #90). INDEPENDENT
+#: checkboxes, not alternatives: an org may demand both.
 PROVISIONED_USER_POLICIES = ("password_change", "mfa_enroll")
+
+#: What an org gets when it has never touched the setting. Historical, and
+#: deliberately non-empty: an org-provisioned account's password was chosen
+#: by somebody other than its owner, so it must stop working at the first
+#: login. See :attr:`WorkspaceSecuritySettings.policies_configured` for why
+#: this default reaches provisioning but never invitation acceptance.
+DEFAULT_PROVISIONED_USER_POLICIES = ("password_change",)
 
 
 @dataclass
@@ -217,15 +225,19 @@ class WorkspaceSecuritySettings:
     Stored inside the free-form settings JSON (no schema migration); this
     dataclass is the canon of the known keys — extra keys in the block are
     preserved verbatim for client extension (the serializer seam validates
-    only these two).
+    only the known ones).
 
     Attributes:
         require_mfa: Whether membership requires a strong second factor. Turning it on sweeps current members via auth.mfa_status and suspends those without one (reason no_mfa); members losing their last strong factor later are suspended by the user.mfa_disabled consumer. Example: false
-        provisioned_user_policy: First-login policy for org-created accounts — password_change (forced password change) or mfa_enroll (mandatory 2FA enrollment). Passed to auth.provision_user as first_login_policy. Example: password_change
+        provisioned_user_policies: First-login steps the org demands before an account it admits gets a session — INDEPENDENT checkboxes (#90), any subset of password_change / mfa_enroll. Applied to org-created accounts at provisioning and, when the org configured them explicitly, to invited accounts on acceptance. Example: ["password_change", "mfa_enroll"]
+        policies_configured: Whether the org actually set the policies (as opposed to inheriting the default). Not a stored key — derived, and read-only on the wire. Example: false
     """
 
     require_mfa: bool = False
-    provisioned_user_policy: str = "password_change"
+    provisioned_user_policies: List[str] = field(
+        default_factory=lambda: list(DEFAULT_PROVISIONED_USER_POLICIES)
+    )
+    policies_configured: bool = False
 
     @classmethod
     def from_settings(cls, settings: Optional[dict]) -> "WorkspaceSecuritySettings":
@@ -233,18 +245,49 @@ class WorkspaceSecuritySettings:
 
         Absent/malformed values fall back to the safe defaults — the same
         "absence means defaults" contract as auth.verification.policy.
+
+        Two spellings of the policies are read, newest first:
+        ``provisioned_user_policies`` (a list, #90) and the pre-0.13
+        ``provisioned_user_policy`` (a single string), so a workspace row
+        written by an older release keeps its meaning without a data
+        migration. Unknown members are dropped rather than failing the
+        parse: this runs on every provisioning and every accept, and a
+        typo in one JSON blob must not take an org's invitations down.
         """
         block = (settings or {}).get("security") or {}
         if not isinstance(block, dict):
             block = {}
         require_mfa = block.get("require_mfa", False)
-        policy = block.get("provisioned_user_policy", "password_change")
+
+        raw = block.get("provisioned_user_policies")
+        if raw is None:
+            legacy = block.get("provisioned_user_policy")
+            raw = [legacy] if isinstance(legacy, str) else None
+        configured = raw is not None
+        if not isinstance(raw, (list, tuple)):
+            raw = list(DEFAULT_PROVISIONED_USER_POLICIES)
+        wanted = set(raw)
+        policies = [p for p in PROVISIONED_USER_POLICIES if p in wanted]
+
         return cls(
             require_mfa=bool(require_mfa) if isinstance(require_mfa, bool) else False,
-            provisioned_user_policy=(
-                policy if policy in PROVISIONED_USER_POLICIES else "password_change"
-            ),
+            provisioned_user_policies=policies,
+            policies_configured=configured,
         )
+
+    def policies_for_invited_members(self) -> List[str]:
+        """Policies to impose on someone who joins by ACCEPTING an invitation.
+
+        Empty unless the org configured the setting itself. The default
+        (``password_change``) exists for accounts the org *created*, where
+        somebody other than the owner picked the password and it has to
+        stop working; imposing it on a person who joined with their own,
+        pre-existing account would force a password rotation nobody asked
+        for on every new hire of every org that never opened the security
+        screen. A silent default may harden an account the org minted; it
+        may not reach into an account the org merely invited.
+        """
+        return list(self.provisioned_user_policies) if self.policies_configured else []
 
 
 @dataclass

@@ -160,7 +160,11 @@ class TestProvisionHappyPath:
         assert resp.status_code == 201, resp.content
         call = fake_auth_provision["calls"][-1]
         assert call["username"] == f"{ws.slug}/jdoe"
-        assert call["first_login_policy"] == "password_change"  # default
+        # #90: a SET, and the historical default is its only member. The
+        # singular key is gone from this module's payloads — auth still
+        # reads it for callers pinned to stapel-workspaces < 0.13.
+        assert call["first_login_policies"] == ["password_change"]  # default
+        assert "first_login_policy" not in call
         assert "password" not in call
         assert "email" not in call
 
@@ -168,12 +172,13 @@ class TestProvisionHappyPath:
         self, authed_client, user, sensitive_grant, fake_auth_provision
     ):
         ws = _ws(user)
+        # The pre-0.13 single-string spelling: still read, no data migration.
         ws.settings = {"security": {"provisioned_user_policy": "mfa_enroll"}}
         ws.save(update_fields=["settings"])
         resp = _provision(authed_client, ws)
         assert resp.status_code == 201, resp.content
         call = fake_auth_provision["calls"][-1]
-        assert call["first_login_policy"] == "mfa_enroll"
+        assert call["first_login_policies"] == ["mfa_enroll"]
 
     def test_admin_chosen_password_not_echoed(
         self, authed_client, user, sensitive_grant, fake_auth_provision

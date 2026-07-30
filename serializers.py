@@ -81,6 +81,18 @@ class WorkspaceUpdateRequestSerializer(StapelDataclassSerializer):
                 "error.400.field.invalid",
                 params={"field": "settings.security.require_mfa"},
             )
+        # #90: the policies are an independent SET. The pre-0.13 singular
+        # string is still accepted so a client that has not been updated
+        # can keep PATCHing; `from_settings` reads either spelling.
+        policies = security.get("provisioned_user_policies")
+        if policies is not None:
+            if not isinstance(policies, list) or any(
+                p not in PROVISIONED_USER_POLICIES for p in policies
+            ):
+                raise StapelValidationError(
+                    "error.400.field.invalid_choice",
+                    params={"field": "settings.security.provisioned_user_policies"},
+                )
         policy = security.get("provisioned_user_policy")
         if policy is not None and policy not in PROVISIONED_USER_POLICIES:
             raise StapelValidationError(

@@ -10,7 +10,7 @@
     {
       "module": "stapel-auth",
       "optional": true,
-      "reason": "emits the user.registered event that triggers personal-workspace creation and issues the authenticated sessions the workspace endpoints require; answers auth.issue_login_grant for the invitation claim step (without it the claim endpoint degrades to an honest 503, never allow); decoupled via the comm bus"
+      "reason": "emits the user.registered event that triggers personal-workspace creation and issues the authenticated sessions the workspace endpoints require; answers auth.issue_login_grant for the invitation claim step and auth.provision_user / auth.mfa_status for org provisioning and the require_mfa sweep; answers auth.apply_first_login_policies (>= 0.17) when an organization has CONFIGURED first-login policies — that seam alone is fail-closed: an acceptance that cannot raise a demanded policy is refused (503) rather than admitting an unhardened member, while an organization that configured nothing never calls it at all; every other auth seam either degrades to an honest 503 (claim) or is never reached; decoupled via the comm bus"
     },
     {
       "module": "stapel-notifications",

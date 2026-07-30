@@ -350,6 +350,18 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
         user=user,
         defaults={"role": locked.role, "accepted_at": timezone.now()},
     )
+    # The org's first-login demands, applied to the joining account (#90).
+    # Inside the transaction on purpose: if auth cannot be reached, the
+    # whole acceptance rolls back rather than admitting somebody the org
+    # said must clear a step first. The seam is only touched when the org
+    # CONFIGURED policies — an org that never opened the security screen
+    # is not coupled to auth's version by this line at all.
+    apply_first_login_policies(
+        user_id=user.pk,
+        policies=security_settings_for(
+            locked.workspace
+        ).policies_for_invited_members(),
+    )
     # Subscribers must be idempotent (at-least-once delivery), so emitting
     # again for an already-existing membership is safe.
     emit(
@@ -380,14 +392,59 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
 PROVISION_USER = "auth.provision_user"
 MFA_STATUS = "auth.mfa_status"
 
+#: comm Function owned by stapel-auth (>= 0.17): raises first-login
+#: policies on an EXISTING account (#90).
+APPLY_FIRST_LOGIN_POLICIES = "auth.apply_first_login_policies"
+
+
+def apply_first_login_policies(*, user_id, policies) -> list:
+    """Demand the org's first-login steps of an account it just admitted (#90).
+
+    A no-op — and, importantly, NOT a comm call at all — when *policies* is
+    empty. That is the ordinary case: an org that never opened the security
+    screen configures nothing, so this line does not couple its invitation
+    flow to auth's version or availability.
+
+    When the org DID configure policies the call is made and its failures
+    are NOT swallowed. ``FunctionNotRegistered`` /
+    ``FunctionRouteNotConfigured`` propagate to the caller, which maps them
+    to an honest 503 — the org stated a precondition for admission, and a
+    seam that cannot honour it must refuse the admission rather than let
+    somebody in unhardened. The opposite choice (best-effort, log and
+    continue) is the shape every "security control that silently stopped
+    running" incident has.
+
+    Returns the policies auth actually raised (a subset: one already
+    outstanding, or an ``mfa_enroll`` against an account that already
+    carries a strong factor, is not raised again).
+    """
+    if not policies:
+        return []
+    result = call(
+        APPLY_FIRST_LOGIN_POLICIES,
+        {"user_id": str(user_id), "policies": list(policies)},
+    ) or {}
+    if result.get("error"):
+        # auth refused structurally (unknown account, malformed set). The
+        # membership must not stand on a precondition that never landed.
+        raise ProvisionError(result["error"])
+    return result.get("applied") or []
+
 
 class ProvisionError(Exception):
-    """auth.provision_user answered with a structured failure.
+    """An auth comm Function answered with a structured failure.
 
     ``error_key`` is auth's canonical error key, passed through verbatim to
     the HTTP caller (``error.409.username_taken`` /
-    ``error.400.username_namespace_invalid`` / ``error.400.bad_request``) —
-    the view derives the HTTP status from the key itself.
+    ``error.400.username_namespace_invalid`` / ``error.400.bad_request`` /
+    ``error.404.not_found``) — the view derives the HTTP status from the
+    key itself.
+
+    Raised by :func:`provision_member` (``auth.provision_user``) and by
+    :func:`apply_first_login_policies`
+    (``auth.apply_first_login_policies``, #90). The name is historical; the
+    meaning is "auth said no, in its own vocabulary, and the answer is the
+    caller's to render".
     """
 
     def __init__(self, error_key: str):
@@ -458,10 +515,15 @@ def provision_member(
         )
 
     payload: dict = {
+        # A SET of independent demands since auth 0.17 (#90): the old
+        # singular `first_login_policy` made the two mutually exclusive at
+        # the payload, so an org could not require a password rotation AND
+        # a second factor. Nothing downstream ever needed them to be
+        # alternatives.
         "username": username,
-        "first_login_policy": security_settings_for(
+        "first_login_policies": security_settings_for(
             workspace
-        ).provisioned_user_policy,
+        ).provisioned_user_policies,
     }
     if password:
         payload["password"] = password
