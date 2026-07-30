@@ -31,6 +31,7 @@ BUILTIN_ROLES: dict[str, dict] = {
         "workspace.view", "workspace.update",
         "members.view", "members.invite", "members.remove",
         "members.role.change", "members.provision",
+        "members.password.reset",
         "workspace.security.manage",
     ]},
     "member": {"rank": 200, "capabilities": ["workspace.view", "members.view"]},
@@ -42,6 +43,10 @@ BUILTIN_ROLES: dict[str, dict] = {
 #: ``stapel_core.verification`` step-up (scope "sensitive") — wired in W3.
 BUILTIN_CAPABILITY_LEVELS: dict[str, str] = {
     "members.provision": "high",
+    # Resetting somebody else's password hands their account to whoever
+    # ordered it (#110). Same level as minting an account outright: an
+    # ambient session must not be enough, a fresh step-up must be.
+    "members.password.reset": "high",
     "workspace.security.manage": "high",
 }
 

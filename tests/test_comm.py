@@ -432,6 +432,7 @@ class TestMemberLifecycleEmits:
                 "workspace.view", "workspace.update",
                 "members.view", "members.invite", "members.remove",
                 "members.role.change", "members.provision",
+                "members.password.reset",
                 "workspace.security.manage",
             ],
         }

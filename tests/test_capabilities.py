@@ -46,6 +46,7 @@ class TestBuiltinRegistry:
             "workspace.view", "workspace.update",
             "members.view", "members.invite", "members.remove",
             "members.role.change", "members.provision",
+            "members.password.reset",
             "workspace.security.manage",
         ]
 
@@ -117,6 +118,9 @@ class TestCapabilityLevels:
     def test_builtin_high_capabilities(self):
         assert BUILTIN_CAPABILITY_LEVELS == {
             "members.provision": "high",
+            # #110: resetting somebody else's password hands their account
+            # over. Same level as minting an account outright.
+            "members.password.reset": "high",
             "workspace.security.manage": "high",
         }
         assert capability_level("members.provision") == "high"

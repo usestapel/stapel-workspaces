@@ -663,6 +663,82 @@
         }
       }
     },
+    "/workspaces/api/v1/{workspace_id}/members/{user_id}/password/reset": {
+      "post": {
+        "operationId": "workspaces_api_v1_members_password_reset_create",
+        "description": "Reset a member's password on the organization's order (#110).\n\nFive questions this endpoint has to answer out loud, because a\npassword reset is an account takeover performed on purpose and every\none of them is a way to get it wrong.\n\n**Who may do it.** A mandate, not a session: capability\n``members.password.reset`` (builtin ``admin`` and ``owner``), declared\n``high``, so ``@requires_verification(scope=\"sensitive\")`` demands a\nfresh step-up on top — an ambient cookie is not enough to hand\nsomebody else's account over. Only an owner may reset an OWNER's\npassword, the same hardcoded owner protection role changes and\nremovals carry: otherwise an admin resets the owner and inherits the\norganization. And auth refuses a staff/superuser target outright\n(``error.403.privileged_account``) — org admin is a role inside one\nworkspace, deployment staff is a role above every workspace, and the\nfirst must never be a route to the second.\n\n**Whether the user finds out.** Always. A\n``workspace.member_password_reset`` letter names the workspace and the\nadmin who did it — a reset is indistinguishable from a takeover\nunless the account holder is told which one it was. ``notified`` in\nthe response says honestly whether a channel existed; the letter\nnever carries the new password (see\n:func:`~stapel_workspaces.services.reset_member_password`).\n\n**Whether the new password is temporary.** Yes — auth raises the\nworkspace's ``provisioned_user_policies`` (#90), defaulting to\n``password_change``. A password the admin knows must stop working the\nfirst time it is used, and since auth 0.15.0 that demand holds on all\n19 session-issuance paths rather than only the password form. An org\nmay pass an explicit ``[]`` to suppress it, and that lands in auth's\naudit row.\n\n**Whether it is an existence oracle.** No: a target that is not a\nresettable member of THIS workspace — an unknown UUID, a real account\nthat is not a member, a member of a different workspace, or the\ncaller's own id — all get one byte-identical 404. And the capability\ncheck runs before any target lookup, so a caller without the mandate\nlearns nothing at all about anybody. ``tests/\ntest_api_member_password_reset.py`` compares those responses byte for\nbyte.\n\n**Whether it is logged with the actor.** Twice, on purpose:\n``workspace.member_password_reset`` through the transactional outbox\n(the org's activity log) and auth's own ``AuthAuditLog`` row carrying\n``actor_id`` and ``via=admin_reset`` (the deployment's security\njournal). Neither carries credential material.\n\nOwn password: use auth's ``POST /password/change/``. This endpoint is\nfor acting on somebody else, and answers about yourself with the same\n404 as about a stranger.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPasswordResetRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPasswordResetRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPasswordResetRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberPasswordResetResponse"
+                },
+                "examples": {
+                  "MemberPasswordResetResponse": {
+                    "value": {
+                      "sessions_revoked": 2,
+                      "first_login_policies_applied": [
+                        "password_change"
+                      ],
+                      "notified": true
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
     "/workspaces/api/v1/{workspace_id}/members/invite": {
       "post": {
         "operationId": "workspaces_api_v1_members_invite_create",
@@ -1276,6 +1352,73 @@
             }
           }
         }
+      },
+      "MemberPasswordResetRequest": {
+        "type": "object",
+        "description": "Reset a member's password on the organization's order (#110).",
+        "properties": {
+          "password": {
+            "type": "string",
+            "nullable": true,
+            "description": "New password chosen by the admin. Omitted: the server generates a crypto-strong one, returned once as generated_password"
+          },
+          "first_login_policies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "First-login steps to demand of the member afterwards — any subset of password_change / mfa_enroll. Omitted: the workspace's own security policies, falling back to password_change. A password somebody else chose has to stop working at its first use, so an EMPTY list is a deliberate, auditable choice, not a shortcut",
+            "example": [
+              "password_change"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Free-text note recorded on auth's audit row (e.g. the ticket the request came in on)",
+            "example": "SUP-42"
+          }
+        }
+      },
+      "MemberPasswordResetResponse": {
+        "type": "object",
+        "description": "Result of an administrative password reset (#110).",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of the member whose password was reset"
+          },
+          "sessions_revoked": {
+            "type": "integer",
+            "description": "How many live sessions the reset ended. A reset that left them standing would not recover the account",
+            "example": 2
+          },
+          "generated_password": {
+            "type": "string",
+            "nullable": true,
+            "description": "Server-generated password — returned exactly ONCE, only when the request omitted password. Hand it to the member out of band; it cannot be re-fetched. A credential: never log it"
+          },
+          "first_login_policies_applied": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The steps now demanded of the member before their next session",
+            "example": [
+              "password_change"
+            ]
+          },
+          "notified": {
+            "type": "boolean",
+            "description": "Whether the member was told their password was reset. False means the account has no contact channel — the admin is the only one who can tell them",
+            "example": true
+          }
+        },
+        "required": [
+          "user_id"
+        ]
       },
       "MemberResponse": {
         "type": "object",

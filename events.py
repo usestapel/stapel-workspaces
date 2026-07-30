@@ -15,6 +15,7 @@ EVENT_WORKSPACE_MEMBER_PROVISIONED = "workspace.member_provisioned"
 EVENT_WORKSPACE_MEMBER_SUSPENDED = "workspace.member_suspended"
 EVENT_WORKSPACE_MEMBER_UNSUSPENDED = "workspace.member_unsuspended"
 EVENT_WORKSPACE_INVITATION_REVOKED = "workspace.invitation_revoked"
+EVENT_WORKSPACE_MEMBER_PASSWORD_RESET = "workspace.member_password_reset"
 
 
 @dataclass
@@ -159,6 +160,36 @@ class WorkspaceInvitationRevokedPayload:
     revoked_by: str
 
 
+@dataclass
+class WorkspaceMemberPasswordResetPayload:
+    """Payload for the workspace.member_password_reset event (#110).
+
+    An organization administrator reset a member's password. Emitted
+    through the transactional outbox — the org-side audit record of the
+    action, which is what a workspace-scoped activity log reads; auth
+    writes its own ``AuthAuditLog`` row for the same act with the same
+    actor, and the two are meant to agree.
+
+    **No credential material, ever.** Neither the new password nor
+    anything derived from it appears here. The event fans out to every
+    subscriber in the deployment; the generated password goes to exactly
+    one place, the ordering admin's HTTP response, exactly once.
+
+    Fields:
+        workspace_id: UUID of the workspace.
+        user_id: UUID of the member whose password was reset.
+        role: Role the member holds (unchanged by the reset).
+        reset_by: UUID of the admin who ordered it.
+        sessions_revoked: How many live sessions the reset ended.
+    """
+
+    workspace_id: str
+    user_id: str
+    role: str
+    reset_by: str
+    sessions_revoked: int
+
+
 EVENT_REGISTRY = {
     EVENT_WORKSPACE_PERSONAL_CREATED: WorkspacePersonalCreatedPayload,
     EVENT_WORKSPACE_MEMBER_REMOVED: WorkspaceMemberRemovedPayload,
@@ -167,4 +198,5 @@ EVENT_REGISTRY = {
     EVENT_WORKSPACE_MEMBER_SUSPENDED: WorkspaceMemberSuspendedPayload,
     EVENT_WORKSPACE_MEMBER_UNSUSPENDED: WorkspaceMemberUnsuspendedPayload,
     EVENT_WORKSPACE_INVITATION_REVOKED: WorkspaceInvitationRevokedPayload,
+    EVENT_WORKSPACE_MEMBER_PASSWORD_RESET: WorkspaceMemberPasswordResetPayload,
 }

@@ -327,6 +327,40 @@ class ProvisionMemberResponse:
 
 
 @dataclass
+class MemberPasswordResetRequest:
+    """Reset a member's password on the organization's order (#110).
+
+    Attributes:
+        password: New password chosen by the admin. Omitted: the server generates a crypto-strong one, returned once as generated_password. Example: null
+        first_login_policies: First-login steps to demand of the member afterwards — any subset of password_change / mfa_enroll. Omitted: the workspace's own security policies, falling back to password_change. A password somebody else chose has to stop working at its first use, so an EMPTY list is a deliberate, auditable choice, not a shortcut. Example: ["password_change"]
+        reason: Free-text note recorded on auth's audit row (e.g. the ticket the request came in on). Example: SUP-42
+    """
+
+    password: Optional[str] = None
+    first_login_policies: Optional[List[str]] = None
+    reason: Optional[str] = None
+
+
+@dataclass
+class MemberPasswordResetResponse:
+    """Result of an administrative password reset (#110).
+
+    Attributes:
+        user_id: UUID of the member whose password was reset.
+        generated_password: Server-generated password — returned exactly ONCE, only when the request omitted password. Hand it to the member out of band; it cannot be re-fetched. A credential: never log it. Example: null
+        sessions_revoked: How many live sessions the reset ended. A reset that left them standing would not recover the account. Example: 2
+        first_login_policies_applied: The steps now demanded of the member before their next session. Example: ["password_change"]
+        notified: Whether the member was told their password was reset. False means the account has no contact channel — the admin is the only one who can tell them. Example: true
+    """
+
+    user_id: UUID
+    sessions_revoked: int = 0
+    generated_password: Optional[str] = None
+    first_login_policies_applied: List[str] = field(default_factory=list)
+    notified: bool = False
+
+
+@dataclass
 class RoleResponse:
     """One role of the effective registry (builtin + STAPEL_WORKSPACES overlay).
 

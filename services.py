@@ -30,6 +30,7 @@ from .entitlements import (
 )
 from .events import (
     EVENT_WORKSPACE_INVITATION_REVOKED,
+    EVENT_WORKSPACE_MEMBER_PASSWORD_RESET,
     EVENT_WORKSPACE_MEMBER_PROVISIONED,
     EVENT_WORKSPACE_MEMBER_SUSPENDED,
     EVENT_WORKSPACE_MEMBER_UNSUSPENDED,
@@ -615,6 +616,143 @@ def _send_provisioned_account_notification(
             username.partition("/")[0],
             workspace.pk,
         )
+
+
+#: comm Function owned by stapel-auth (>= 0.18): resets an account's
+#: password on an administrator's order (#110).
+ADMIN_RESET_PASSWORD = "auth.admin_reset_password"
+
+
+def reset_member_password(
+    *,
+    workspace: Workspace,
+    member: WorkspaceMember,
+    reset_by,
+    password: str | None = None,
+    first_login_policies: list | None = None,
+    reason: str | None = None,
+):
+    """Reset a member's password on the organization's order (#110).
+
+    The credential work is auth's (``auth.admin_reset_password``): it
+    replaces the password, kills the member's live sessions, raises the
+    first-login demands and writes the actor onto its own audit row. This
+    function owns the ORG half — which policies, which event, and telling
+    the member it happened.
+
+    **Which policies.** Defaults to the workspace's own
+    ``provisioned_user_policies`` (#90), which itself defaults to
+    ``password_change``. An admin-set password is known to somebody other
+    than the account's owner, so it must stop working at its first use;
+    an org that wants to suppress that says so with an explicit empty
+    list, and that shows up in the audit row rather than in nobody's
+    memory.
+
+    **The member is told.** A password reset is exactly the event an
+    account-takeover looks like, so it is never silent: a
+    ``workspace.member_password_reset`` letter goes to the member,
+    naming the workspace and the admin who did it. Best-effort like every
+    notification here — a delivery hiccup must not roll back a completed
+    credential change, and the return value reports honestly whether a
+    channel existed at all.
+
+    The letter deliberately does **not** carry the new password. Unlike a
+    provisioned account (which has no other way in and gets its
+    credentials mailed), a reset target already exists and may well have a
+    self-service recovery path; the admin who ordered the reset holds the
+    password and hands it over out of band. The letter's job is the
+    security signal — "this happened, and here is who did it" — which is
+    worth nothing if the same message also contains the credential.
+
+    Returns ``(generated_password | None, sessions_revoked, policies_applied,
+    notified)``. Raises :class:`ProvisionError` on a structured auth
+    failure (unknown account, privileged target, rejected password) and
+    lets comm wiring errors propagate — the view maps them to 503, this
+    seam never degrades to "reported success".
+    """
+    if first_login_policies is None:
+        first_login_policies = security_settings_for(
+            workspace
+        ).provisioned_user_policies
+    payload: dict = {
+        "user_id": str(member.user_id),
+        "first_login_policies": list(first_login_policies),
+        "actor_id": str(reset_by.pk),
+    }
+    if password:
+        payload["password"] = password
+    if reason:
+        payload["reason"] = reason
+    result = call(ADMIN_RESET_PASSWORD, payload) or {}
+    if result.get("error"):
+        raise ProvisionError(result["error"])
+
+    generated = result.get("generated_password")
+    sessions_revoked = int(result.get("sessions_revoked") or 0)
+    applied = list(result.get("first_login_policies_applied") or [])
+
+    # Transactional outbox: the org-side audit record of the action. Auth
+    # has its own row; this one is what a workspace-scoped activity log
+    # reads. No credential material rides it, ever.
+    with transaction.atomic():
+        emit(
+            EVENT_WORKSPACE_MEMBER_PASSWORD_RESET,
+            {
+                "workspace_id": str(workspace.id),
+                "user_id": str(member.user_id),
+                "role": str(member.role),
+                "reset_by": str(reset_by.pk),
+                "sessions_revoked": sessions_revoked,
+            },
+        )
+    notified = _send_password_reset_notification(
+        workspace=workspace, member=member, reset_by=reset_by
+    )
+    return generated, sessions_revoked, applied, notified
+
+
+def _send_password_reset_notification(
+    *, workspace: Workspace, member: WorkspaceMember, reset_by
+) -> bool:
+    """Tell the member their password was reset, and by whom.
+
+    Targeted by ``user_id`` rather than an address: the notifications
+    service owns contact resolution, and an org-provisioned member may
+    have no email at all. Returns whether a notification was accepted —
+    ``False`` means nobody could be reached and the admin is the only
+    channel left.
+
+    Never carries the new password (see :func:`reset_member_password`).
+    """
+    try:
+        from stapel_core.notifications import request_notification
+
+        actor = reset_by
+        actor_name = (
+            (actor.get_full_name() or "").strip()
+            or actor.username
+            or actor.email
+            or ""
+        )
+        return bool(
+            request_notification(
+                "workspace.member_password_reset",
+                variables={
+                    "workspace_name": workspace.name,
+                    "actor_name": actor_name,
+                    "login_url": _frontend_url("/login"),
+                },
+                source_service="workspaces",
+                user_id=str(member.user_id),
+            )
+        )
+    except Exception:
+        logger.exception(
+            "failed to request password-reset notification for member %s in %s",
+            member.pk,
+            workspace.pk,
+        )
+        return False
 
 
 def suspend_member(

@@ -53,6 +53,13 @@ ROUTES = [
         {"workspace_id": WS, "user_id": UID},
         f"{MOUNT}/v1/{WS}/members/{UID}",
     ),
+    # Administrative password reset (#110) — nested under the member, so
+    # the target is a membership in a workspace-scoped path.
+    (
+        "workspace-member-password-reset",
+        {"workspace_id": WS, "user_id": UID},
+        f"{MOUNT}/v1/{WS}/members/{UID}/password/reset",
+    ),
     # Admin-side invitation surface (#109) — workspace-scoped and
     # capability-gated, unlike the token-addressed public routes below.
     (

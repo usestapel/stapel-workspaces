@@ -71,6 +71,7 @@ from .dto import (
     InvitationPreviewResponse,
     InvitationResponse,
     MemberInviteResponse,
+    MemberPasswordResetResponse,
     MemberResponse,
     ProvisionMemberResponse,
     RoleListResponse,
@@ -117,6 +118,8 @@ from .serializers import (
     InvitationResponseSerializer,
     MemberInviteRequestSerializer,
     MemberInviteResponseSerializer,
+    MemberPasswordResetRequestSerializer,
+    MemberPasswordResetResponseSerializer,
     MemberResponseSerializer,
     MemberUpdateRequestSerializer,
     ProvisionMemberRequestSerializer,
@@ -1176,6 +1179,149 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
             action="removed",
         )
         return StapelResponse(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Members"])
+class MemberPasswordResetView(SerializerSeamsMixin, APIView):
+    """Reset a member's password on the organization's order (#110).
+
+    Five questions this endpoint has to answer out loud, because a
+    password reset is an account takeover performed on purpose and every
+    one of them is a way to get it wrong.
+
+    **Who may do it.** A mandate, not a session: capability
+    ``members.password.reset`` (builtin ``admin`` and ``owner``), declared
+    ``high``, so ``@requires_verification(scope="sensitive")`` demands a
+    fresh step-up on top — an ambient cookie is not enough to hand
+    somebody else's account over. Only an owner may reset an OWNER's
+    password, the same hardcoded owner protection role changes and
+    removals carry: otherwise an admin resets the owner and inherits the
+    organization. And auth refuses a staff/superuser target outright
+    (``error.403.privileged_account``) — org admin is a role inside one
+    workspace, deployment staff is a role above every workspace, and the
+    first must never be a route to the second.
+
+    **Whether the user finds out.** Always. A
+    ``workspace.member_password_reset`` letter names the workspace and the
+    admin who did it — a reset is indistinguishable from a takeover
+    unless the account holder is told which one it was. ``notified`` in
+    the response says honestly whether a channel existed; the letter
+    never carries the new password (see
+    :func:`~stapel_workspaces.services.reset_member_password`).
+
+    **Whether the new password is temporary.** Yes — auth raises the
+    workspace's ``provisioned_user_policies`` (#90), defaulting to
+    ``password_change``. A password the admin knows must stop working the
+    first time it is used, and since auth 0.15.0 that demand holds on all
+    19 session-issuance paths rather than only the password form. An org
+    may pass an explicit ``[]`` to suppress it, and that lands in auth's
+    audit row.
+
+    **Whether it is an existence oracle.** No: a target that is not a
+    resettable member of THIS workspace — an unknown UUID, a real account
+    that is not a member, a member of a different workspace, or the
+    caller's own id — all get one byte-identical 404. And the capability
+    check runs before any target lookup, so a caller without the mandate
+    learns nothing at all about anybody. ``tests/
+    test_api_member_password_reset.py`` compares those responses byte for
+    byte.
+
+    **Whether it is logged with the actor.** Twice, on purpose:
+    ``workspace.member_password_reset`` through the transactional outbox
+    (the org's activity log) and auth's own ``AuthAuditLog`` row carrying
+    ``actor_id`` and ``via=admin_reset`` (the deployment's security
+    journal). Neither carries credential material.
+
+    Own password: use auth's ``POST /password/change/``. This endpoint is
+    for acting on somebody else, and answers about yourself with the same
+    404 as about a stranger.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    # A guest fails it twice over, like provisioning: no step-up factor to
+    # satisfy `sensitive`, and no membership to carry the capability.
+    stapel_anonymous_access = ANONYMOUS_DENIED
+    request_serializer_class = MemberPasswordResetRequestSerializer
+    response_serializer_class = MemberPasswordResetResponseSerializer
+
+    def _resolve_target(self, request, workspace_id, user_id):
+        """The workspace, the target member, or the ONE refusal shape.
+
+        Order is the security property. The capability is checked before
+        any row is read, so a caller without the mandate cannot use this
+        endpoint to ask questions. Everything after that which is not a
+        resettable member of this workspace collapses into a single
+        ``member_not_found``.
+        """
+        ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
+        if not ws:
+            return None, None, StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+        err = _capability_check(
+            get_membership(ws.id, request.user.id, include_suspended=True),
+            "members.password.reset",
+        )
+        if err:
+            return None, None, err
+        member = WorkspaceMember.objects.filter(
+            workspace_id=ws.id, user_id=user_id
+        ).first()
+        # Yourself is not in the set this endpoint acts on, and says so
+        # with the same answer as every other target outside it — there is
+        # nothing to learn from the difference, and one shape is one shape.
+        if member is None or str(member.user_id) == str(request.user.id):
+            return None, None, StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
+        return ws, member, None
+
+    @extend_schema(
+        request=MemberPasswordResetRequestSerializer,
+        responses={200: MemberPasswordResetResponseSerializer},
+    )
+    @requires_verification(scope="sensitive")
+    def post(self, request, workspace_id, user_id):  # noqa: R007
+        ws, member, err = self._resolve_target(request, workspace_id, user_id)
+        if err:
+            return err
+        # Only an owner may reset an owner's password — the same hardcoded
+        # owner protection as role changes and removals. Not folded into
+        # the 404: who owns the workspace is on the roster this caller can
+        # already read, so nothing leaks, and an admin who tried deserves
+        # to know why it was refused.
+        if member.role == Role.OWNER and not require_role(
+            ws.id, request.user.id, Role.OWNER
+        ):
+            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        ser = self.get_request_serializer_class()(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        try:
+            generated, revoked, applied, notified = services.reset_member_password(
+                workspace=ws,
+                member=member,
+                reset_by=request.user,
+                password=getattr(data, "password", None),
+                first_login_policies=getattr(data, "first_login_policies", None),
+                reason=getattr(data, "reason", None),
+            )
+        except services.ProvisionError as failure:
+            # Auth's structured refusal, passed through keyed — the status
+            # is encoded in the key (error.403.privileged_account,
+            # error.404.not_found, error.400.bad_request).
+            return StapelErrorResponse(
+                _status_of_error_key(failure.error_key), failure.error_key
+            )
+        except (FunctionNotRegistered, FunctionRouteNotConfigured):
+            return StapelErrorResponse(503, ERR_503_AUTH_UNAVAILABLE)
+        return StapelResponse(
+            self.get_response_serializer_class()(
+                MemberPasswordResetResponse(
+                    user_id=member.user_id,
+                    generated_password=generated,
+                    sessions_revoked=revoked,
+                    first_login_policies_applied=applied,
+                    notified=notified,
+                )
+            )
+        )
 
 
 @extend_schema(tags=["Workspaces"])

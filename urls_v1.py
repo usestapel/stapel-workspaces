@@ -16,6 +16,7 @@ from .views import (
     InvitationRevokeView,
     MemberDetailView,
     MemberInviteView,
+    MemberPasswordResetView,
     MemberListView,
     MemberProvisionView,
     RoleListView,
@@ -47,6 +48,15 @@ urlpatterns = [
         "<uuid:workspace_id>/members/<uuid:user_id>",
         MemberDetailView.as_view(),
         name="workspace-member-detail",
+    ),
+    # Administrative password reset (#110). Nested under the member so
+    # the target is a member id in a workspace-scoped path, not a bare
+    # user id: the endpoint acts on a MEMBERSHIP, and everything outside
+    # that set answers with one identical 404.
+    path(
+        "<uuid:workspace_id>/members/<uuid:user_id>/password/reset",
+        MemberPasswordResetView.as_view(),
+        name="workspace-member-password-reset",
     ),
     # Admin-side invitation surface (#109): who has not accepted, and the
     # two actions on such a row. Workspace-scoped and capability-gated —
