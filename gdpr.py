@@ -32,10 +32,13 @@ class WorkspacesGDPRProvider(GDPRProvider):
         # Remove memberships
         WorkspaceMember.objects.filter(user_id=user_id).delete()
 
-        # Revoke pending invitations sent by this user
+        # Drop every invitation this user sent that never became a
+        # membership — declined, revoked and expired ones included
+        # (never_accepted(), not pending(): erasure is about PII left
+        # behind, not about what is still live).
         WorkspaceInvitation.objects.filter(
-            invited_by_id=user_id, accepted_at__isnull=True,
-        ).delete()
+            invited_by_id=user_id,
+        ).never_accepted().delete()
 
         # Owned workspaces: soft-delete (mark deleted_at).
         # Hard deletion of workspace content is out of scope here —
@@ -48,10 +51,12 @@ class WorkspacesGDPRProvider(GDPRProvider):
     def anonymize(self, user_id: int) -> None:
         from .models import WorkspaceInvitation
 
-        # Keep accepted invitation records but remove the invited_by link
+        # Keep accepted invitation records but remove the invited_by link.
+        # NB: an INVITATION predicate, not a membership one — same column
+        # name, different model, different question.
         WorkspaceInvitation.objects.filter(
-            invited_by_id=user_id, accepted_at__isnull=False,
-        ).update(invited_by=None)
+            invited_by_id=user_id,
+        ).accepted().update(invited_by=None)
 
         # Membership records that need to stay (e.g. for workspace history)
         # are already removed in delete(); nothing to anonymise here.

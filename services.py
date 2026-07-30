@@ -211,12 +211,8 @@ def decline_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceInv
     """
     locked = (
         WorkspaceInvitation.objects.select_for_update()
-        .filter(
-            pk=invitation.pk,
-            accepted_at__isnull=True,
-            declined_at__isnull=True,
-            revoked_at__isnull=True,
-        )
+        .unresolved()
+        .filter(pk=invitation.pk)
         .first()
     )
     if locked is None:
@@ -229,10 +225,14 @@ def decline_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceInv
 @transaction.atomic
 def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMember:
     # Lock the invitation row: a single-use token must not be consumable
-    # twice by concurrent requests.
+    # twice by concurrent requests. The compare-and-set is the same
+    # unresolved() as decline's — hand-written, it had lost the revoked_at
+    # clause, so a revocation committing between the view's state check and
+    # this lock lost the race and the invite was accepted anyway (0.10.0).
     locked = (
         WorkspaceInvitation.objects.select_for_update()
-        .filter(pk=invitation.pk, accepted_at__isnull=True, declined_at__isnull=True)
+        .unresolved()
+        .filter(pk=invitation.pk)
         .first()
     )
     if locked is None:
@@ -598,11 +598,8 @@ def enforce_require_mfa(workspace: Workspace) -> bool:
     once auth events flow again.
     """
     members = (
-        WorkspaceMember.objects.filter(
-            workspace=workspace,
-            accepted_at__isnull=False,
-            suspended_at__isnull=True,
-        )
+        WorkspaceMember.objects.active()
+        .filter(workspace=workspace)
         .select_related("workspace", "user")
         .order_by("invited_at")
     )
@@ -635,11 +632,11 @@ def lift_no_mfa_suspensions(workspace: Workspace) -> int:
     enabling 2FA, not the org dropping the policy).
     """
     lifted = 0
-    members = WorkspaceMember.objects.filter(
-        workspace=workspace,
-        suspended_at__isnull=False,
-        suspension_reason=SUSPENSION_NO_MFA,
-    ).select_related("workspace", "user")
+    members = (
+        WorkspaceMember.objects.suspended(reason=SUSPENSION_NO_MFA)
+        .filter(workspace=workspace)
+        .select_related("workspace", "user")
+    )
     for member in members:
         if unsuspend_member(member, notify=False):
             lifted += 1
@@ -654,11 +651,11 @@ def suspend_memberships_without_mfa(user_id) -> int:
     filtered out, a redelivery is a no-op.
     """
     suspended = 0
-    members = WorkspaceMember.objects.filter(
-        user_id=user_id,
-        accepted_at__isnull=False,
-        suspended_at__isnull=True,
-    ).select_related("workspace", "user")
+    members = (
+        WorkspaceMember.objects.active()
+        .filter(user_id=user_id)
+        .select_related("workspace", "user")
+    )
     for member in members:
         workspace = member.workspace
         if workspace.deleted_at:
@@ -675,11 +672,11 @@ def lift_no_mfa_suspensions_for_user(user_id) -> int:
     other/future reasons are none of MFA's business). Idempotent.
     """
     lifted = 0
-    members = WorkspaceMember.objects.filter(
-        user_id=user_id,
-        suspended_at__isnull=False,
-        suspension_reason=SUSPENSION_NO_MFA,
-    ).select_related("workspace", "user")
+    members = (
+        WorkspaceMember.objects.suspended(reason=SUSPENSION_NO_MFA)
+        .filter(user_id=user_id)
+        .select_related("workspace", "user")
+    )
     for member in members:
         if unsuspend_member(member):
             lifted += 1
@@ -715,11 +712,11 @@ def suspend_memberships_for_deactivated_user(user_id) -> int:
     Returns the number of memberships suspended by this call.
     """
     suspended = 0
-    members = WorkspaceMember.objects.filter(
-        user_id=user_id,
-        accepted_at__isnull=False,
-        suspended_at__isnull=True,
-    ).select_related("workspace", "user")
+    members = (
+        WorkspaceMember.objects.active()
+        .filter(user_id=user_id)
+        .select_related("workspace", "user")
+    )
     for member in members:
         if member.workspace.deleted_at:
             continue
@@ -746,11 +743,11 @@ def lift_deactivation_suspensions_for_user(user_id) -> int:
     Idempotent — an already-active membership is filtered out.
     """
     lifted = 0
-    members = WorkspaceMember.objects.filter(
-        user_id=user_id,
-        suspended_at__isnull=False,
-        suspension_reason=SUSPENSION_ACCOUNT_DEACTIVATED,
-    ).select_related("workspace", "user")
+    members = (
+        WorkspaceMember.objects.suspended(reason=SUSPENSION_ACCOUNT_DEACTIVATED)
+        .filter(user_id=user_id)
+        .select_related("workspace", "user")
+    )
     for member in members:
         if unsuspend_member(member, notify=False):
             lifted += 1

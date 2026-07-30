@@ -75,11 +75,10 @@ def check_membership(payload: dict) -> dict:
     from .models import WorkspaceMember
 
     member = (
-        WorkspaceMember.objects.filter(
+        WorkspaceMember.objects.active()
+        .filter(
             workspace_id=payload["workspace_id"],
             user_id=payload["user_id"],
-            accepted_at__isnull=False,
-            suspended_at__isnull=True,
         )
         .only("role")
         .first()

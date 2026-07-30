@@ -49,11 +49,8 @@ def get_membership(
     distinguish "suspended member" from "not a member" (the view layer's
     ``membership_suspended`` 403); authorization decisions never pass it.
     """
-    qs = WorkspaceMember.objects.filter(
-        workspace_id=workspace_id, user_id=user_id, accepted_at__isnull=False
-    )
-    if not include_suspended:
-        qs = qs.filter(suspended_at__isnull=True)
+    qs = WorkspaceMember.objects.filter(workspace_id=workspace_id, user_id=user_id)
+    qs = qs.accepted() if include_suspended else qs.active()
     return qs.first()
 
 

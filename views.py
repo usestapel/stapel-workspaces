@@ -134,7 +134,12 @@ def _workspace_to_dto(
     ws: Workspace, my_role: str | None = None, member_count: int | None = None
 ) -> WorkspaceResponse:
     if member_count is None:
-        member_count = ws.members.filter(accepted_at__isnull=False).count()
+        # active(), not accepted(): a suspended membership counts for
+        # nothing anywhere else — access, comm, the seat bill — and this
+        # display counter was the last place still counting it (0.10.0).
+        # An org showing "5 members" while its plan is billed for 4 is
+        # exactly the drift the shared predicate exists to prevent.
+        member_count = ws.members.active().count()
     return WorkspaceResponse(
         id=ws.id,
         name=ws.name,
@@ -302,11 +307,8 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
         # the org entirely (spec §C3) — the workspace disappears from the
         # member's own list until the suspension lifts.
         memberships = (
-            WorkspaceMember.objects.filter(
-                user=request.user,
-                accepted_at__isnull=False,
-                suspended_at__isnull=True,
-            )
+            WorkspaceMember.objects.active()
+            .filter(user=request.user)
             .select_related("workspace")
             .order_by("-last_accessed_at", "-invited_at")
         )
@@ -1036,12 +1038,8 @@ class InternalMembershipView(SerializerSeamsMixin, APIView):
         # member must read as not-a-member to authorization consumers
         # (suspension closes access to the org entirely, spec §C3).
         member = (
-            WorkspaceMember.objects.filter(
-                workspace_id=workspace_id,
-                user_id=user_id,
-                accepted_at__isnull=False,
-                suspended_at__isnull=True,
-            )
+            WorkspaceMember.objects.active()
+            .filter(workspace_id=workspace_id, user_id=user_id)
             .select_related("user")
             .first()
         )

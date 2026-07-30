@@ -17,8 +17,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from django.utils import timezone
-
 from stapel_core.comm import call
 from stapel_core.comm.exceptions import (
     FunctionNotRegistered,
@@ -152,15 +150,17 @@ def debit_provision_credits(
 def member_seats_quantity(workspace, *, additional: int = 0) -> int:
     """Would-be seat total for ``workspaces.members.max``.
 
-    Seats = **active** members + pending (live) invitations + *additional*
-    new invitations. Pending invitations reserve seats so a burst of invites
-    cannot overshoot the plan between send and accept; on accept the
-    invitation is still pending at check time, i.e. already counted —
-    callers pass ``additional=0`` there.
+    Seats = members that hold one
+    (:meth:`~stapel_workspaces.models.MembershipQuerySet.holds_seat`) + live
+    pending invitations
+    (:meth:`~stapel_workspaces.models.InvitationQuerySet.pending`) +
+    *additional* new invitations. Pending invitations reserve seats so a
+    burst of invites cannot overshoot the plan between send and accept; on
+    accept the invitation is still pending at check time, i.e. already
+    counted — callers pass ``additional=0`` there.
 
     Suspended members do NOT hold a seat (#92). A suspension is precisely
-    "this membership stops counting for every check" — every access path
-    already filters on ``suspended_at IS NULL`` — and the owner's own
+    "this membership stops counting for every check" — and the owner's own
     formula excludes them, so counting them here billed the org for people
     the product refuses to let in. It went unnoticed while suspensions were
     a rarity (the ``no_mfa`` policy); account deactivation makes them
@@ -168,13 +168,18 @@ def member_seats_quantity(workspace, *, additional: int = 0) -> int:
     seat, not just the login. The row is still there and the seat is
     reclaimed on ``user.reactivated`` — that is the reversibility the
     suspended state is for.
+
+    Neither half spells its predicate out here any more: both live on the
+    model querysets, which is how the invitation half learned about
+    ``declined_at`` (0.10.0). It had known about revocation and the TTL but
+    not about the invitee's own "no", so a declined invitation kept a paid
+    seat reserved until it expired.
+
+    This function is the module's seat formula, not the owner's billing
+    formula. It counts invitees who have never signed in, on purpose; the
+    owner's "active user" definition does not. If those two are meant to
+    agree, no test in this repository checks it.
     """
-    accepted = workspace.members.filter(
-        accepted_at__isnull=False, suspended_at__isnull=True
-    ).count()
-    pending = workspace.invitations.filter(
-        accepted_at__isnull=True,
-        revoked_at__isnull=True,
-        expires_at__gt=timezone.now(),
-    ).count()
-    return accepted + pending + additional
+    seated = workspace.members.holds_seat().count()
+    pending = workspace.invitations.pending().count()
+    return seated + pending + additional

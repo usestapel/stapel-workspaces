@@ -119,6 +119,90 @@ class MemberState(models.TextChoices):
     DELETED = "deleted", "Deleted"
 
 
+class MembershipQuerySet(models.QuerySet):
+    """The only place the membership lifecycle columns are spelled out.
+
+    The lifecycle is two nullable timestamps (``accepted_at``,
+    ``suspended_at``) that have to be read TOGETHER; before this class the
+    combination was hand-written at nine call sites and only some of them
+    knew about suspension, so every new lifecycle column silently
+    invalidated a subset of the copies. One of those copies was the seat
+    count and it billed organizations for people the product refuses to let
+    in (#92, fixed in 0.9.0).
+
+    ``tests/test_lifecycle_predicates.py`` fails the build if
+    ``accepted_at__isnull`` / ``suspended_at__isnull`` reappear in a
+    ``filter()`` anywhere outside this module.
+
+    **What that rule does not buy.** Nothing here knows whether these
+    formulas are the RIGHT ones. It prevents the *second* drift — copies
+    that stop agreeing with each other — after a human has once translated
+    the specification into columns. The *first*, semantic divergence is
+    caught only by a spec-derived test or an end-to-end scenario, and this
+    module has neither. Concretely, the owner's "active user" formula
+    (registered AND activated this month; never-signed-in excluded) is
+    **not** what :meth:`active` computes — ``last_accessed_at`` is not
+    consulted here at all, and a live invitation reserves a seat although
+    its invitee has never signed in. If the two are supposed to agree, that
+    agreement is currently nobody's test.
+    """
+
+    def active(self):
+        """Memberships that may act: accepted AND not suspended.
+
+        The access predicate — comm Functions, the internal membership
+        endpoint, ``permissions.get_membership``, the member's own
+        workspace list and the suspension sweeps all mean exactly this.
+        Suspension is not removal (org-program spec §C3): the row and the
+        role stay, they simply stop counting until the suspension lifts.
+        """
+        return self.filter(accepted_at__isnull=False, suspended_at__isnull=True)
+
+    def accepted(self):
+        """Memberships that were taken up, **suspended ones included**.
+
+        NOT an authorization predicate — deliberately so. This is the
+        lookup for surfaces that must be able to SEE a suspended row in
+        order to report it honestly (the view layer answering
+        ``error.403.membership_suspended`` instead of a bare
+        not-a-member 403). An authorization decision that reaches for this
+        instead of :meth:`active` is a bug.
+        """
+        return self.filter(accepted_at__isnull=False)
+
+    def suspended(self, reason=None):
+        """Suspended memberships, optionally narrowed to one *reason*.
+
+        Each reason is owned by the consumer that set it: the MFA consumer
+        lifts ``no_mfa`` and nothing else, the deactivation consumer lifts
+        ``account_deactivated`` and nothing else. Passing *reason* is how
+        that ownership is spelled — an unfiltered lift would walk an
+        MFA-less user back into a require_mfa workspace.
+        """
+        qs = self.filter(suspended_at__isnull=False)
+        if reason is not None:
+            qs = qs.filter(suspension_reason=reason)
+        return qs
+
+    def holds_seat(self):
+        """Memberships that occupy a billable seat (``workspaces.members.max``).
+
+        A separate name from :meth:`active` on purpose, and the same rows
+        as :meth:`active` on purpose. "May act" and "costs money" are two
+        different questions that happen to share an answer today; while
+        they shared a hand-copied *spelling* instead, the answers drifted
+        apart and the bill counted suspended members (#92). Whoever makes
+        them differ edits this body and writes the reason here, so the
+        divergence is a decision on the record rather than a discovery on
+        an invoice.
+
+        This is only the membership half of the seat total: live pending
+        invitations reserve seats too — see
+        :func:`stapel_workspaces.entitlements.member_seats_quantity`.
+        """
+        return self.active()
+
+
 class WorkspaceMember(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workspace = models.ForeignKey(
@@ -153,6 +237,11 @@ class WorkspaceMember(models.Model):
     #: why suspension and deletion are kept apart.
     suspended_at = models.DateTimeField(null=True, blank=True)
     suspension_reason = models.CharField(max_length=32, blank=True, default="")
+
+    #: Carries the canonical lifecycle predicates (see
+    #: :class:`MembershipQuerySet`) onto both ``WorkspaceMember.objects``
+    #: and the related manager ``workspace.members``.
+    objects = MembershipQuerySet.as_manager()
 
     @property
     def state(self) -> str:
@@ -196,6 +285,67 @@ class InvitationStatus(models.TextChoices):
     EXPIRED = "expired", "Expired"
 
 
+class InvitationQuerySet(models.QuerySet):
+    """The only place the invitation lifecycle columns are spelled out.
+
+    Same discipline as :class:`MembershipQuerySet`, same reason: the
+    invitation state is *four* columns plus the clock, and the hand-written
+    copies had already stopped agreeing — the seat count knew about
+    ``revoked_at`` and the TTL but not about ``declined_at`` (added with the
+    decline flow in 0.7), so an invitation the invitee had explicitly
+    refused went on reserving a paid seat until it expired. The ban in
+    ``tests/test_lifecycle_predicates.py`` covers these columns too.
+    """
+
+    def pending(self):
+        """Live, actionable invitations — exactly :attr:`InvitationStatus.PENDING`.
+
+        No terminal timestamp set AND the TTL has not run out. This is the
+        "reserves a seat" set: an invitation that can still turn into a
+        membership, and nothing else.
+        """
+        from django.utils import timezone
+
+        return self.filter(
+            accepted_at__isnull=True,
+            declined_at__isnull=True,
+            revoked_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+
+    def unresolved(self):
+        """No terminal timestamp set — deliberately **clock-free**.
+
+        The compare-and-set target for accept/decline: those transitions
+        re-read the row under ``select_for_update`` and must fail if any
+        terminal state got there first. Expiry is left out because the TTL
+        is validated at the view boundary, where it maps to its own error
+        key (``error.400.invitation_expired``) instead of a bare "already
+        used"; a row-lock filter must not silently swallow that
+        distinction.
+        """
+        return self.filter(
+            accepted_at__isnull=True,
+            declined_at__isnull=True,
+            revoked_at__isnull=True,
+        )
+
+    def accepted(self):
+        """Invitations that were taken up (a membership exists for them)."""
+        return self.filter(accepted_at__isnull=False)
+
+    def never_accepted(self):
+        """Invitations that never produced a membership — for ANY reason.
+
+        Wider than the complement of :meth:`pending`: declined, revoked and
+        expired rows are in here too. Used by the GDPR erasure path, where
+        the question is "did this ever become a membership", not "is it
+        still live" — an erasure that spared declined rows would leave PII
+        behind.
+        """
+        return self.filter(accepted_at__isnull=True)
+
+
 @access.secret  # bearer invite token: superuser-only, token masked in admin (AS-3)
 class WorkspaceInvitation(models.Model):
     """Pending invite by email — resolved into WorkspaceMember on acceptance.
@@ -229,6 +379,10 @@ class WorkspaceInvitation(models.Model):
     declined_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    #: Canonical lifecycle predicates (see :class:`InvitationQuerySet`) on
+    #: both ``WorkspaceInvitation.objects`` and ``workspace.invitations``.
+    objects = InvitationQuerySet.as_manager()
 
     class Meta:
         db_table = "workspaces_invitation"
