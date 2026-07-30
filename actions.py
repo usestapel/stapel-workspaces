@@ -12,7 +12,12 @@ logger = logging.getLogger(__name__)
 
 @on_action("user.deleted")
 def handle_user_deleted(event):
-    """Erase this module's PII when an account deletion is executed."""
+    """Erase this module's PII when an account deletion is executed.
+
+    GDPR erasure — irreversible and row-destroying. Deliberately NOT the
+    same path as ``user.deactivated`` below (#92): an administrative
+    deactivation must leave a suspended membership to come back to.
+    """
     from .gdpr import WorkspacesGDPRProvider
 
     user_id = event.payload.get("user_id")
@@ -66,4 +71,55 @@ def handle_user_mfa_enabled(event):
     if lifted:
         logger.info(
             "lifted %d no_mfa suspension(s) for user %s", lifted, user_id
+        )
+
+
+@on_action("user.deactivated")
+def handle_user_deactivated(event):
+    """The ACCOUNT was administratively deactivated in auth (#92).
+
+    Before this handler, deactivation reached exactly one place — auth's own
+    session guard — so a deactivated user kept every membership, kept
+    showing up in member lists, and kept costing the owner a seat.
+
+    Suspend every membership the account holds (reason
+    ``account_deactivated``): reversible, nothing deleted, the seat freed.
+    Reversed by :func:`handle_user_reactivated`. Idempotent — a redelivery
+    finds the memberships already suspended and does nothing, and in
+    particular does not overwrite the first suspension's timestamp.
+    """
+    from .services import suspend_memberships_for_deactivated_user
+
+    user_id = event.payload.get("user_id")
+    if not user_id:
+        logger.error("user.deactivated event without user_id: %s", event.event_id)
+        return
+    suspended = suspend_memberships_for_deactivated_user(user_id)
+    if suspended:
+        logger.info(
+            "suspended %d membership(s) for deactivated user %s",
+            suspended,
+            user_id,
+        )
+
+
+@on_action("user.reactivated")
+def handle_user_reactivated(event):
+    """The account was restored in auth (#92) — undo the deactivation.
+
+    Lifts ONLY the ``account_deactivated`` suspensions; a ``no_mfa``
+    suspension belongs to the MFA consumer and stays. Without this handler
+    the deactivation half would be a one-way door: the user logs back in and
+    sees nothing.
+    """
+    from .services import lift_deactivation_suspensions_for_user
+
+    user_id = event.payload.get("user_id")
+    if not user_id:
+        logger.error("user.reactivated event without user_id: %s", event.event_id)
+        return
+    lifted = lift_deactivation_suspensions_for_user(user_id)
+    if lifted:
+        logger.info(
+            "lifted %d deactivation suspension(s) for user %s", lifted, user_id
         )

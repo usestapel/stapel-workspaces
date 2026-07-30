@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "user.deactivated",
+  "description": "The account was administratively deactivated in auth (is_active True -> False). REVERSIBLE and NOT a GDPR erasure: this module suspends every membership the account holds (reason account_deactivated) and never deletes a row — the irreversible signal is user.deleted, handled separately. Undone by user.reactivated.",
+  "type": "object",
+  "required": ["user_id"],
+  "properties": {
+    "user_id":  { "type": "string", "format": "uuid" },
+    "reason":   { "type": "string", "description": "Open vocabulary; absent when the flag was flipped without one (e.g. the admin checkbox)." },
+    "actor_id": { "type": "string", "format": "uuid", "description": "Staff user who performed it; absent for programmatic/unknown actors." }
+  },
+  "additionalProperties": false
+}

@@ -152,13 +152,26 @@ def debit_provision_credits(
 def member_seats_quantity(workspace, *, additional: int = 0) -> int:
     """Would-be seat total for ``workspaces.members.max``.
 
-    Seats = accepted members + pending (live) invitations + *additional*
+    Seats = **active** members + pending (live) invitations + *additional*
     new invitations. Pending invitations reserve seats so a burst of invites
     cannot overshoot the plan between send and accept; on accept the
     invitation is still pending at check time, i.e. already counted —
     callers pass ``additional=0`` there.
+
+    Suspended members do NOT hold a seat (#92). A suspension is precisely
+    "this membership stops counting for every check" — every access path
+    already filters on ``suspended_at IS NULL`` — and the owner's own
+    formula excludes them, so counting them here billed the org for people
+    the product refuses to let in. It went unnoticed while suspensions were
+    a rarity (the ``no_mfa`` policy); account deactivation makes them
+    routine, and an admin deactivating a departed employee has to free the
+    seat, not just the login. The row is still there and the seat is
+    reclaimed on ``user.reactivated`` — that is the reversibility the
+    suspended state is for.
     """
-    accepted = workspace.members.filter(accepted_at__isnull=False).count()
+    accepted = workspace.members.filter(
+        accepted_at__isnull=False, suspended_at__isnull=True
+    ).count()
     pending = workspace.invitations.filter(
         accepted_at__isnull=True,
         revoked_at__isnull=True,

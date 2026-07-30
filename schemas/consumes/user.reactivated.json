@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "user.reactivated",
+  "description": "The account was restored in auth (is_active False -> True). Lifts this module's account_deactivated suspensions only — a no_mfa suspension belongs to the MFA consumer and stays, so a restored account does not walk back into a require_mfa workspace without a second factor.",
+  "type": "object",
+  "required": ["user_id"],
+  "properties": {
+    "user_id":  { "type": "string", "format": "uuid" },
+    "actor_id": { "type": "string", "format": "uuid", "description": "Staff user who performed it; absent for programmatic/unknown actors." }
+  },
+  "additionalProperties": false
+}

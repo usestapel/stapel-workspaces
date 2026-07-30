@@ -35,6 +35,7 @@ from .events import (
     EVENT_WORKSPACE_PERSONAL_CREATED,
 )
 from .models import (
+    SUSPENSION_ACCOUNT_DEACTIVATED,
     SUSPENSION_NO_MFA,
     Role,
     Workspace,
@@ -681,5 +682,76 @@ def lift_no_mfa_suspensions_for_user(user_id) -> int:
     ).select_related("workspace", "user")
     for member in members:
         if unsuspend_member(member):
+            lifted += 1
+    return lifted
+
+
+def suspend_memberships_for_deactivated_user(user_id) -> int:
+    """``user.deactivated`` consumer body (#92): the ACCOUNT was
+    administratively deactivated in auth — suspend every membership it holds.
+
+    Unlike the MFA consumer this is not policy-conditional: no workspace
+    setting can make a deactivated account admissible, so every accepted
+    membership goes, whatever the workspace's security settings say. The
+    same suspension mechanism as everywhere else (``suspended_at`` +
+    reason), NOT a second way to switch a membership off — the row, the
+    role and the history stay, and :func:`lift_deactivation_suspensions_for_user`
+    puts them back verbatim.
+
+    Emphatically not deletion: the GDPR erasure path
+    (``user.deleted`` → :meth:`WorkspacesGDPRProvider.delete`) removes rows
+    and is a different event with different, irreversible consequences.
+
+    Idempotent (at-least-once delivery): a member already suspended for any
+    reason is filtered out, so a redelivery neither fails nor overwrites the
+    original ``suspended_at``/``suspension_reason``. That also means a
+    membership already suspended for ``no_mfa`` keeps that reason — and
+    stays suspended after reactivation, which is correct: the MFA gap did
+    not go away because the account came back.
+
+    Soft-deleted workspaces are skipped, as in the MFA consumer: there is no
+    access left to revoke there, and touching them would emit noise.
+
+    Returns the number of memberships suspended by this call.
+    """
+    suspended = 0
+    members = WorkspaceMember.objects.filter(
+        user_id=user_id,
+        accepted_at__isnull=False,
+        suspended_at__isnull=True,
+    ).select_related("workspace", "user")
+    for member in members:
+        if member.workspace.deleted_at:
+            continue
+        # notify=False: the account has just lost every way in — a per
+        # workspace letter to an address the owner can no longer act on is
+        # noise, and suspend_member only writes the MFA-worded one anyway.
+        if suspend_member(
+            member, reason=SUSPENSION_ACCOUNT_DEACTIVATED, notify=False
+        ):
+            suspended += 1
+    return suspended
+
+
+def lift_deactivation_suspensions_for_user(user_id) -> int:
+    """``user.reactivated`` consumer body (#92): the account is admitted
+    again — lift the suspensions THIS module put on for it.
+
+    Only ``account_deactivated`` ones. A ``no_mfa`` suspension is the MFA
+    consumer's to lift and stays put, or restoring an account would silently
+    walk an MFA-less user back into a require_mfa workspace.
+
+    Without this the deactivation half is a trap: the user logs back in
+    (the session guard admits them again) and sees an empty product.
+    Idempotent — an already-active membership is filtered out.
+    """
+    lifted = 0
+    members = WorkspaceMember.objects.filter(
+        user_id=user_id,
+        suspended_at__isnull=False,
+        suspension_reason=SUSPENSION_ACCOUNT_DEACTIVATED,
+    ).select_related("workspace", "user")
+    for member in members:
+        if unsuspend_member(member, notify=False):
             lifted += 1
     return lifted
