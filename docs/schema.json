@@ -248,6 +248,225 @@
         }
       }
     },
+    "/workspaces/api/v1/{workspace_id}/invitations": {
+      "get": {
+        "operationId": "workspaces_api_v1_invitations_list",
+        "description": "Who was invited and has not accepted (#109).\n\nBefore this endpoint an admin could send invitations and never see\nthem again: acceptance produced a member row, and everything else —\nthe unopened mail, the wrong address, the person who declined — was\ninvisible from the product. The roster answered \"who is in\"; nothing\nanswered \"who is still out, and since when\".\n\nGated on ``members.invite``: the mandate that creates invitations is\nthe mandate that sees and manages them. Reading the list is strictly\nless than sending one, so no separate capability is minted — a role\nthat may invite but may not audit its own invitations would be a\ndistinction without a use.\n\nThe invite token is never in the response. It is a bearer credential;\na list endpoint that carried it would hand every admin a working login\nlink for every invited address.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "name": "anchor",
+            "required": false,
+            "in": "query",
+            "description": "Anchor value to paginate from (exclusive)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "required": false,
+            "in": "query",
+            "description": "Pagination direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "next",
+                "prev",
+                "center"
+              ],
+              "default": "next"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Number of items (default 100, max 500)",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive substring filter on the invited email address."
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "never_accepted",
+                "pending"
+              ]
+            },
+            "description": "Which invitations to return. `pending` (default) — live, actionable, seat-reserving ones, i.e. who has not accepted yet. `never_accepted` — those plus the declined, revoked and expired ones. `all` — the full history, accepted rows included."
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedInvitationResponseList"
+                },
+                "examples": {
+                  "InvitationResponse": {
+                    "value": {
+                      "id": "0192f...",
+                      "email": "alice@example.com",
+                      "role": "member",
+                      "status": "pending",
+                      "expires_at": "2026-07-31T10:00:00Z",
+                      "invited_by_id": "0192a..."
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_resend_create",
+        "description": "Send the invitation email again (#109).\n\nAccepts an **expired** invitation on purpose — a dead TTL is the most\ncommon reason to resend — and refuses the three stored terminal states,\nwhich are decisions rather than delivery failures. The token is\nrotated and the TTL restarts, so the fresh letter carries a fresh link\nand any stale copy of the old one stops working.\n\nReviving an expired invitation re-reserves a seat, so the plan ceiling\nis re-checked here exactly as it is on invite: capability first (\"may\nYOU\", 403), then the org's plan (\"may the ORG\", 402). An invitation\nthat is already pending costs no additional seat and is never blocked\nby that check.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                },
+                "examples": {
+                  "InvitationResponse": {
+                    "value": {
+                      "id": "0192f...",
+                      "email": "alice@example.com",
+                      "role": "member",
+                      "status": "pending",
+                      "expires_at": "2026-07-31T10:00:00Z",
+                      "invited_by_id": "0192a..."
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/invitations/{invitation_id}/revoke": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_revoke_create",
+        "description": "Withdraw a live invitation (#109).\n\nThe workspace's terminal \"no\", the mirror of the invitee's decline —\nthe two stay distinguishable in ``status`` forever. The seat the\ninvitation reserved is freed on commit.\n\nOnly a **pending** invitation is revocable: an accepted one produced a\nmembership (remove the member instead), a declined or already-revoked\none is terminal, and an expired one is already harmless. Each of those\ngets its own error key rather than a shrug.\n\nThe transition is a compare-and-set under a row lock, not a blind\nwrite: an accept committing between this view's state check and the\nlock wins, and the revocation then fails honestly with\n``error.400.invitation_already_used``. The reverse — a revocation\ncommitting between an accept's check and its lock — is the race fixed\nin 0.10.0, and it is the same predicate holding both ends.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                },
+                "examples": {
+                  "InvitationResponse": {
+                    "value": {
+                      "id": "0192f...",
+                      "email": "alice@example.com",
+                      "role": "member",
+                      "status": "pending",
+                      "expires_at": "2026-07-31T10:00:00Z",
+                      "invited_by_id": "0192a..."
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
     "/workspaces/api/v1/{workspace_id}/members": {
       "get": {
         "operationId": "workspaces_api_v1_members_list",
@@ -949,45 +1168,76 @@
       },
       "InvitationResponse": {
         "type": "object",
-        "description": "InvitationResponse(id: uuid.UUID, workspace_id: uuid.UUID, email: str, role: str, expires_at: str, accepted_at: Optional[str], revoked_at: Optional[str], created_at: str)",
+        "description": "One invitation row — the admin's \"who has not accepted yet\" table (#109).\n\n``status`` is the derived label (``WorkspaceInvitation.status``), not a\nstored column: it is what the table renders and what the frontend\nroutes the revoke/resend affordances on. The raw timestamps travel\nalongside it because \"expires in 2 days\" and \"declined last Tuesday\"\nare different rows on the same screen; the label alone cannot say\nwhen.\n\nThe invite token is deliberately absent — it is a bearer secret that\nonly ever leaves this service inside the invitation email.",
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Invitation UUID",
+            "example": "0192f..."
           },
           "workspace_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Workspace UUID"
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Invited email address (normalized lowercase)",
+            "example": "alice@example.com"
           },
           "role": {
-            "type": "string"
+            "type": "string",
+            "description": "Role granted on acceptance",
+            "example": "member"
+          },
+          "status": {
+            "type": "string",
+            "description": "Derived state. One of pending / accepted / declined / revoked / expired",
+            "example": "pending"
           },
           "expires_at": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 8601 expiry time",
+            "example": "2026-07-31T10:00:00Z"
           },
           "accepted_at": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "ISO 8601 acceptance time; null unless accepted"
+          },
+          "declined_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 decline time (the invitee said no); null unless declined"
           },
           "revoked_at": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "ISO 8601 revocation time (the workspace withdrew it); null unless revoked"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 8601 creation time"
+          },
+          "invited_by_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "UUID of the admin who sent it; null when that account is gone",
+            "example": "0192a..."
           }
         },
         "required": [
           "accepted_at",
           "created_at",
+          "declined_at",
           "email",
           "expires_at",
           "id",
           "revoked_at",
           "role",
+          "status",
           "workspace_id"
         ]
       },
@@ -1095,6 +1345,45 @@
           "role",
           "user_id",
           "workspace_id"
+        ]
+      },
+      "PaginatedInvitationResponseList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvitationResponse"
+            }
+          },
+          "next_anchor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Anchor value for next page"
+          },
+          "prev_anchor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Anchor value for previous page"
+          },
+          "has_next": {
+            "type": "boolean",
+            "description": "Whether there are more items after this page"
+          },
+          "has_prev": {
+            "type": "boolean",
+            "description": "Whether there are items before this page"
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of items in current page"
+          }
+        },
+        "required": [
+          "items",
+          "has_next",
+          "has_prev",
+          "count"
         ]
       },
       "PaginatedMemberResponseList": {

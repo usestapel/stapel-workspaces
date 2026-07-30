@@ -117,15 +117,44 @@ class MemberInviteResponse:  # noqa: R004
 
 
 @dataclass
-class InvitationResponse:  # noqa: R004
+class InvitationResponse:
+    """One invitation row — the admin's "who has not accepted yet" table (#109).
+
+    ``status`` is the derived label (``WorkspaceInvitation.status``), not a
+    stored column: it is what the table renders and what the frontend
+    routes the revoke/resend affordances on. The raw timestamps travel
+    alongside it because "expires in 2 days" and "declined last Tuesday"
+    are different rows on the same screen; the label alone cannot say
+    when.
+
+    The invite token is deliberately absent — it is a bearer secret that
+    only ever leaves this service inside the invitation email.
+
+    Attributes:
+        id: Invitation UUID. Example: 0192f...
+        workspace_id: Workspace UUID.
+        email: Invited email address (normalized lowercase). Example: alice@example.com
+        role: Role granted on acceptance. Example: member
+        status: Derived state. One of pending / accepted / declined / revoked / expired. Example: pending
+        expires_at: ISO 8601 expiry time. Example: 2026-07-31T10:00:00Z
+        accepted_at: ISO 8601 acceptance time; null unless accepted.
+        declined_at: ISO 8601 decline time (the invitee said no); null unless declined.
+        revoked_at: ISO 8601 revocation time (the workspace withdrew it); null unless revoked.
+        created_at: ISO 8601 creation time.
+        invited_by_id: UUID of the admin who sent it; null when that account is gone. Example: 0192a...
+    """
+
     id: UUID
     workspace_id: UUID
     email: str
     role: str
+    status: str
     expires_at: str
     accepted_at: Optional[str]
+    declined_at: Optional[str]
     revoked_at: Optional[str]
     created_at: str
+    invited_by_id: Optional[UUID] = None
 
 
 @dataclass

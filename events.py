@@ -14,6 +14,7 @@ EVENT_WORKSPACE_MEMBER_ROLE_CHANGED = "workspace.member_role_changed"
 EVENT_WORKSPACE_MEMBER_PROVISIONED = "workspace.member_provisioned"
 EVENT_WORKSPACE_MEMBER_SUSPENDED = "workspace.member_suspended"
 EVENT_WORKSPACE_MEMBER_UNSUSPENDED = "workspace.member_unsuspended"
+EVENT_WORKSPACE_INVITATION_REVOKED = "workspace.invitation_revoked"
 
 
 @dataclass
@@ -130,6 +131,34 @@ class WorkspaceMemberUnsuspendedPayload:
     reason: str
 
 
+@dataclass
+class WorkspaceInvitationRevokedPayload:
+    """Payload for the workspace.invitation_revoked event (#109).
+
+    The org withdrew a live invitation. Emitted through the transactional
+    outbox in the same transaction as the ``revoked_at`` write, so it
+    leaves iff the revocation commits — this is the audit answer to "who
+    killed that invite", which the row itself cannot give (the model
+    stores ``revoked_at`` but no ``revoked_by``).
+
+    The invited **email is deliberately absent**: an invitation is
+    addressed to a person who never consented to anything here, and an
+    event fans out to every subscriber. The invitation UUID is enough for
+    a subscriber that legitimately holds the row.
+
+    Fields:
+        workspace_id: UUID of the workspace.
+        invitation_id: UUID of the revoked invitation.
+        role: Role the invitation would have granted.
+        revoked_by: UUID of the admin who withdrew it.
+    """
+
+    workspace_id: str
+    invitation_id: str
+    role: str
+    revoked_by: str
+
+
 EVENT_REGISTRY = {
     EVENT_WORKSPACE_PERSONAL_CREATED: WorkspacePersonalCreatedPayload,
     EVENT_WORKSPACE_MEMBER_REMOVED: WorkspaceMemberRemovedPayload,
@@ -137,4 +166,5 @@ EVENT_REGISTRY = {
     EVENT_WORKSPACE_MEMBER_PROVISIONED: WorkspaceMemberProvisionedPayload,
     EVENT_WORKSPACE_MEMBER_SUSPENDED: WorkspaceMemberSuspendedPayload,
     EVENT_WORKSPACE_MEMBER_UNSUSPENDED: WorkspaceMemberUnsuspendedPayload,
+    EVENT_WORKSPACE_INVITATION_REVOKED: WorkspaceInvitationRevokedPayload,
 }

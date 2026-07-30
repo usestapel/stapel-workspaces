@@ -29,6 +29,7 @@ from .entitlements import (
     member_seats_quantity,
 )
 from .events import (
+    EVENT_WORKSPACE_INVITATION_REVOKED,
     EVENT_WORKSPACE_MEMBER_PROVISIONED,
     EVENT_WORKSPACE_MEMBER_SUSPENDED,
     EVENT_WORKSPACE_MEMBER_UNSUSPENDED,
@@ -199,6 +200,95 @@ def issue_invitation_login_grant(
         payload["language"] = language
     result = call(ISSUE_LOGIN_GRANT, payload) or {}
     return result["grant_token"]
+
+
+@transaction.atomic
+def revoke_invitation(
+    *, invitation: WorkspaceInvitation, revoked_by
+) -> WorkspaceInvitation:
+    """Withdraw a live invitation on the workspace's behalf (#109).
+
+    The admin-side terminal transition, the mirror of
+    :func:`decline_invitation`: revoke is the *workspace* saying no,
+    decline is the *invitee*. Both stay distinguishable in
+    ``WorkspaceInvitation.status`` forever, and the freed seat is returned
+    to the org immediately — ``pending()`` drives
+    :func:`~stapel_workspaces.entitlements.member_seats_quantity`, so a
+    revoked row stops being billed the moment this commits.
+
+    Same compare-and-set as accept and decline, and for the same reason
+    (0.10.0): the view's state check and this lock are two different reads,
+    and the interval between them is exactly where the losing transition
+    used to slip through. Re-reading under ``select_for_update().
+    unresolved()`` means an accept that committed in that window makes
+    ``locked`` None and this raises — the invitee is a member and the
+    revocation honestly fails, instead of both "succeeding" and leaving a
+    revoked-and-accepted row.
+
+    Raises ``ValueError`` when the invitation is no longer actionable; the
+    view maps it to the state error the caller can read.
+    """
+    locked = (
+        WorkspaceInvitation.objects.select_for_update()
+        .unresolved()
+        .filter(pk=invitation.pk)
+        .first()
+    )
+    if locked is None:
+        raise ValueError("invitation is not pending")
+    locked.revoked_at = timezone.now()
+    locked.save(update_fields=["revoked_at"])
+    emit(
+        EVENT_WORKSPACE_INVITATION_REVOKED,
+        {
+            "workspace_id": str(locked.workspace_id),
+            "invitation_id": str(locked.pk),
+            "role": str(locked.role),
+            "revoked_by": str(revoked_by.pk),
+        },
+    )
+    return locked
+
+
+def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation:
+    """Re-deliver an invitation: rotate the token, extend the TTL, mail it (#109).
+
+    The reason an admin resends is almost always that the first letter
+    never arrived or the TTL ran out, so this deliberately accepts an
+    EXPIRED invitation: the compare-and-set is the clock-free
+    ``unresolved()``, which excludes exactly the three terminal timestamps
+    and nothing else. An accepted, declined or revoked invitation is never
+    resendable — those are decisions, not delivery failures.
+
+    The token is **rotated**, not reused. It is a bearer secret whose only
+    protection is that it stayed in one mailbox; a resend usually means
+    nobody knows where the first copy ended up. The fresh letter carries
+    the fresh link, and the old one dies with the row it no longer matches.
+
+    ``expires_at`` restarts from now (``INVITATION_TTL_DAYS``) — a resent
+    invitation the invitee cannot use before it expires again is not a
+    resend. NB: this re-reserves the seat (a revived expired invitation is
+    ``pending()`` again); the ceiling is re-checked by the caller, not
+    here.
+    """
+    with transaction.atomic():
+        locked = (
+            WorkspaceInvitation.objects.select_for_update()
+            .unresolved()
+            .filter(pk=invitation.pk)
+            .first()
+        )
+        if locked is None:
+            raise ValueError("invitation is not pending")
+        locked.token = token_urlsafe(32)
+        locked.expires_at = timezone.now() + timedelta(
+            days=workspaces_settings.INVITATION_TTL_DAYS
+        )
+        locked.save(update_fields=["token", "expires_at"])
+    # Outside the row lock: delivery is best-effort and must not hold a
+    # write lock open across a cross-service notification call.
+    _send_invitation_notification(locked)
+    return locked
 
 
 @transaction.atomic

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.invitation_revoked",
+  "description": "A workspace admin withdrew a live invitation (#109). The audit signal for the revocation — the row stores revoked_at but no revoked_by, so this event is the only record of who did it. The invited email is deliberately not carried: an invitation names a person who never consented to anything here, and an event fans out to every subscriber.",
+  "type": "object",
+  "required": ["workspace_id", "invitation_id", "role", "revoked_by"],
+  "properties": {
+    "workspace_id":  { "type": "string", "format": "uuid" },
+    "invitation_id": { "type": "string", "format": "uuid" },
+    "role":          { "type": "string" },
+    "revoked_by":    { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

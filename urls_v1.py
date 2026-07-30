@@ -12,12 +12,15 @@ from .views import (
     InvitationClaimView,
     InvitationDeclineView,
     InvitationPreviewView,
+    InvitationResendView,
+    InvitationRevokeView,
     MemberDetailView,
     MemberInviteView,
     MemberListView,
     MemberProvisionView,
     RoleListView,
     WorkspaceDetailView,
+    WorkspaceInvitationListView,
     WorkspaceListCreateView,
 )
 
@@ -44,6 +47,25 @@ urlpatterns = [
         "<uuid:workspace_id>/members/<uuid:user_id>",
         MemberDetailView.as_view(),
         name="workspace-member-detail",
+    ),
+    # Admin-side invitation surface (#109): who has not accepted, and the
+    # two actions on such a row. Workspace-scoped and capability-gated —
+    # distinct from the public, token-addressed `invitations/<token>`
+    # routes below, which the invitee uses without a session.
+    path(
+        "<uuid:workspace_id>/invitations",
+        WorkspaceInvitationListView.as_view(),
+        name="workspace-invitation-list",
+    ),
+    path(
+        "<uuid:workspace_id>/invitations/<uuid:invitation_id>/revoke",
+        InvitationRevokeView.as_view(),
+        name="workspace-invitation-revoke",
+    ),
+    path(
+        "<uuid:workspace_id>/invitations/<uuid:invitation_id>/resend",
+        InvitationResendView.as_view(),
+        name="workspace-invitation-resend",
     ),
     path(
         "invitations/accept",

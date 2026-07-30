@@ -29,6 +29,7 @@ MOUNT = "/workspaces/api/workspaces"
 
 WS = "11111111-1111-1111-1111-111111111111"
 UID = "22222222-2222-2222-2222-222222222222"
+INV = "33333333-3333-3333-3333-333333333333"
 TOKEN = "sometoken"
 
 #: (url name, reverse kwargs, full path as the network sees it).
@@ -51,6 +52,23 @@ ROUTES = [
         "workspace-member-detail",
         {"workspace_id": WS, "user_id": UID},
         f"{MOUNT}/v1/{WS}/members/{UID}",
+    ),
+    # Admin-side invitation surface (#109) — workspace-scoped and
+    # capability-gated, unlike the token-addressed public routes below.
+    (
+        "workspace-invitation-list",
+        {"workspace_id": WS},
+        f"{MOUNT}/v1/{WS}/invitations",
+    ),
+    (
+        "workspace-invitation-revoke",
+        {"workspace_id": WS, "invitation_id": INV},
+        f"{MOUNT}/v1/{WS}/invitations/{INV}/revoke",
+    ),
+    (
+        "workspace-invitation-resend",
+        {"workspace_id": WS, "invitation_id": INV},
+        f"{MOUNT}/v1/{WS}/invitations/{INV}/resend",
     ),
     ("workspace-invitation-accept", {}, f"{MOUNT}/v1/invitations/accept"),
     (

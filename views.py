@@ -100,13 +100,21 @@ from .events import (
     EVENT_WORKSPACE_MEMBER_REMOVED,
     EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
 )
-from .models import Role, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceType
+from .models import (
+    InvitationStatus,
+    Role,
+    Workspace,
+    WorkspaceInvitation,
+    WorkspaceMember,
+    WorkspaceType,
+)
 from .permissions import get_membership, require_role, role_at_least
 from .serializers import (
     InternalPersonalWorkspaceResponseSerializer,
     InvitationAcceptRequestSerializer,
     InvitationClaimResponseSerializer,
     InvitationPreviewResponseSerializer,
+    InvitationResponseSerializer,
     MemberInviteRequestSerializer,
     MemberInviteResponseSerializer,
     MemberResponseSerializer,
@@ -320,11 +328,34 @@ def _invitation_to_dto(inv: WorkspaceInvitation) -> InvitationResponse:
         workspace_id=inv.workspace_id,
         email=inv.email,
         role=inv.role,
+        status=str(inv.status),
         expires_at=inv.expires_at.isoformat(),
         accepted_at=inv.accepted_at.isoformat() if inv.accepted_at else None,
+        declined_at=inv.declined_at.isoformat() if inv.declined_at else None,
         revoked_at=inv.revoked_at.isoformat() if inv.revoked_at else None,
         created_at=inv.created_at.isoformat(),
+        invited_by_id=inv.invited_by_id,
     )
+
+
+def _invitation_terminal_error(inv: WorkspaceInvitation):
+    """State mapping for acting on an invitation the TTL may have caught.
+
+    :func:`_invitation_state_error` minus the expiry clause. Used by resend,
+    which exists precisely to revive an expired invitation: an expired row
+    is a *delivery* failure, and the three stored timestamps are
+    *decisions*. Returns ``None`` while the invitation is still unresolved
+    — the same set ``InvitationQuerySet.unresolved()`` selects, so the
+    view's answer and the service's compare-and-set agree on the boundary
+    by construction.
+    """
+    if inv.revoked_at:
+        return StapelErrorResponse(400, ERR_400_INVITATION_REVOKED)
+    if inv.accepted_at:
+        return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
+    if inv.declined_at:
+        return StapelErrorResponse(400, ERR_400_INVITATION_DECLINED)
+    return None
 
 
 @extend_schema(tags=["Workspaces"])
@@ -655,6 +686,257 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
                 )
             ),
             status=status.HTTP_201_CREATED,
+        )
+
+
+class InvitationPagination(AnchorPagination):
+    """Anchor pagination for the workspace invitation list (#109).
+
+    ``created_at`` (``auto_now_add``) is the invitation's own creation
+    timestamp — the same ETALON ``CreatedAtAnchorPagination`` shape the
+    member list uses over ``invited_at``. Anchor, not limit/offset
+    (stapel-core mandate): an admin working through a long pending list
+    while invites are still being sent must not have rows slip under the
+    window.
+    """
+
+    anchor_field = "created_at"
+    ordering = "-created_at"
+    page_size = 100
+    max_page_size = 500
+
+
+#: ``status`` filter values of the invitation list → the canonical
+#: predicate each one means. The predicates live in
+#: :class:`~stapel_workspaces.models.InvitationQuerySet` and are the ONLY
+#: place the lifecycle columns are spelled (``tests/
+#: test_lifecycle_predicates.py`` fails the build on a hand-written copy) —
+#: this map is a vocabulary for the wire, not a second definition.
+INVITATION_LIST_FILTERS = {
+    # The default and the reason this endpoint exists: live, actionable,
+    # seat-reserving invitations — "who has not accepted yet".
+    "pending": lambda qs: qs.pending(),
+    # Everything that never became a membership, for ANY reason: pending
+    # plus declined, revoked and expired. The audit view of the same
+    # question — an admin chasing a hire wants to see the decline.
+    "never_accepted": lambda qs: qs.never_accepted(),
+    # The full history of the workspace, accepted rows included.
+    "all": lambda qs: qs,
+}
+
+
+@extend_schema(tags=["Members"])
+class WorkspaceInvitationListView(SerializerSeamsMixin, APIView):
+    """Who was invited and has not accepted (#109).
+
+    Before this endpoint an admin could send invitations and never see
+    them again: acceptance produced a member row, and everything else —
+    the unopened mail, the wrong address, the person who declined — was
+    invisible from the product. The roster answered "who is in"; nothing
+    answered "who is still out, and since when".
+
+    Gated on ``members.invite``: the mandate that creates invitations is
+    the mandate that sees and manages them. Reading the list is strictly
+    less than sending one, so no separate capability is minted — a role
+    that may invite but may not audit its own invitations would be a
+    distinction without a use.
+
+    The invite token is never in the response. It is a bearer credential;
+    a list endpoint that carried it would hand every admin a working login
+    link for every invited address.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    # `members.invite` capability check in the body — a guest holds no
+    # membership and therefore no role that could carry it.
+    stapel_anonymous_access = ANONYMOUS_DENIED
+    pagination_class = InvitationPagination
+    response_serializer_class = InvitationResponseSerializer
+
+    @extend_schema(
+        responses={200: InvitationResponseSerializer(many=True)},
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=sorted(INVITATION_LIST_FILTERS),
+                description=(
+                    "Which invitations to return. `pending` (default) — "
+                    "live, actionable, seat-reserving ones, i.e. who has "
+                    "not accepted yet. `never_accepted` — those plus the "
+                    "declined, revoked and expired ones. `all` — the full "
+                    "history, accepted rows included."
+                ),
+            ),
+            OpenApiParameter(
+                name="search",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Case-insensitive substring filter on the invited "
+                    "email address."
+                ),
+            ),
+        ],
+    )
+    def get(self, request, workspace_id):  # noqa: R007
+        # (No docstring on the method on purpose: drf-spectacular turns a
+        # method docstring into the OpenAPI operation description, and the
+        # class docstring above is already the operation's description.)
+        ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
+        if not ws:
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+        err = _capability_check(
+            get_membership(ws.id, request.user.id, include_suspended=True),
+            "members.invite",
+        )
+        if err:
+            return err
+        wanted = (request.query_params.get("status") or "pending").strip()
+        predicate = INVITATION_LIST_FILTERS.get(wanted)
+        if predicate is None:
+            return StapelErrorResponse(
+                400, "error.400.field.invalid_choice", params={"field": "status"}
+            )
+        invitations = predicate(ws.invitations.all())
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            invitations = invitations.filter(email__icontains=search)
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(invitations, request)
+        response_cls = self.get_response_serializer_class()
+        items = [response_cls(_invitation_to_dto(i)).data for i in page]
+        return paginator.get_paginated_response(items)
+
+
+class WorkspaceInvitationActionView(SerializerSeamsMixin, APIView):
+    """Shared resolution for the admin-side invitation actions (#109).
+
+    Both actions answer with the SAME 404 for an unknown invitation UUID
+    and for a real invitation belonging to a different workspace: the
+    invitation id is scoped to the workspace in the URL, and an admin of
+    one org must not be able to probe another org's invitation ids by the
+    shape of the error.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    # `members.invite` capability check in `_resolve`; a guest has no
+    # membership, so 403 before any invitation row is read.
+    stapel_anonymous_access = ANONYMOUS_DENIED
+    response_serializer_class = InvitationResponseSerializer
+
+    def _resolve(self, request, workspace_id, invitation_id):
+        ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
+        if not ws:
+            return None, None, StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+        err = _capability_check(
+            get_membership(ws.id, request.user.id, include_suspended=True),
+            "members.invite",
+        )
+        if err:
+            return None, None, err
+        inv = WorkspaceInvitation.objects.filter(
+            pk=invitation_id, workspace_id=ws.id
+        ).first()
+        if inv is None:
+            return None, None, StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        return ws, inv, None
+
+
+@extend_schema(tags=["Members"])
+class InvitationRevokeView(WorkspaceInvitationActionView):
+    """Withdraw a live invitation (#109).
+
+    The workspace's terminal "no", the mirror of the invitee's decline —
+    the two stay distinguishable in ``status`` forever. The seat the
+    invitation reserved is freed on commit.
+
+    Only a **pending** invitation is revocable: an accepted one produced a
+    membership (remove the member instead), a declined or already-revoked
+    one is terminal, and an expired one is already harmless. Each of those
+    gets its own error key rather than a shrug.
+
+    The transition is a compare-and-set under a row lock, not a blind
+    write: an accept committing between this view's state check and the
+    lock wins, and the revocation then fails honestly with
+    ``error.400.invitation_already_used``. The reverse — a revocation
+    committing between an accept's check and its lock — is the race fixed
+    in 0.10.0, and it is the same predicate holding both ends.
+    """
+
+    @extend_schema(request=None, responses={200: InvitationResponseSerializer})
+    def post(self, request, workspace_id, invitation_id):  # noqa: R007
+        ws, inv, err = self._resolve(request, workspace_id, invitation_id)
+        if err:
+            return err
+        err = _invitation_state_error(inv)
+        if err:
+            return err
+        try:
+            inv = services.revoke_invitation(invitation=inv, revoked_by=request.user)
+        except ValueError:
+            # Lost the compare-and-set: a terminal transition committed
+            # between the check above and the row lock.
+            inv.refresh_from_db()
+            return _invitation_state_error(inv) or StapelErrorResponse(
+                400, ERR_400_INVITATION_ALREADY_USED
+            )
+        return StapelResponse(
+            self.get_response_serializer_class()(_invitation_to_dto(inv))
+        )
+
+
+@extend_schema(tags=["Members"])
+class InvitationResendView(WorkspaceInvitationActionView):
+    """Send the invitation email again (#109).
+
+    Accepts an **expired** invitation on purpose — a dead TTL is the most
+    common reason to resend — and refuses the three stored terminal states,
+    which are decisions rather than delivery failures. The token is
+    rotated and the TTL restarts, so the fresh letter carries a fresh link
+    and any stale copy of the old one stops working.
+
+    Reviving an expired invitation re-reserves a seat, so the plan ceiling
+    is re-checked here exactly as it is on invite: capability first ("may
+    YOU", 403), then the org's plan ("may the ORG", 402). An invitation
+    that is already pending costs no additional seat and is never blocked
+    by that check.
+    """
+
+    @extend_schema(request=None, responses={200: InvitationResponseSerializer})
+    def post(self, request, workspace_id, invitation_id):  # noqa: R007
+        ws, inv, err = self._resolve(request, workspace_id, invitation_id)
+        if err:
+            return err
+        err = _invitation_terminal_error(inv)
+        if err:
+            return err
+        # A live invitation already occupies its seat; a revived expired one
+        # does not yet, so it costs one more.
+        additional = 0 if inv.status == InvitationStatus.PENDING else 1
+        verdict = entitlements.check_org_entitlement(
+            ws,
+            entitlements.ENT_MEMBERS_MAX,
+            quantity=entitlements.member_seats_quantity(ws, additional=additional),
+        )
+        if not verdict.allowed:
+            return StapelErrorResponse(
+                402,
+                ERR_402_MEMBER_LIMIT_REACHED,
+                params={"limit": verdict.limit if verdict.limit is not None else 0},
+            )
+        try:
+            inv = services.resend_invitation(invitation=inv)
+        except ValueError:
+            inv.refresh_from_db()
+            return _invitation_terminal_error(inv) or StapelErrorResponse(
+                400, ERR_400_INVITATION_ALREADY_USED
+            )
+        return StapelResponse(
+            self.get_response_serializer_class()(_invitation_to_dto(inv))
         )
 
 
