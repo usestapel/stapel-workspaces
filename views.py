@@ -1,4 +1,31 @@
-"""DRF views for the workspaces service."""
+"""DRF views for the workspaces service.
+
+Guest (anonymous session) stance
+--------------------------------
+With ``AUTH_ANONYMOUS`` on, a guest session is ``is_authenticated``, so a bare
+``IsAuthenticated`` says nothing about whether guests belong on a view
+(``stapel_core.adoption`` E001/W002). Every view here now states its answer,
+and the shape of the answer follows from what this module is:
+
+* **Everything scoped to a workspace is already closed to guests** — not by
+  a permission class but by :func:`_capability_check` in the method body: a
+  guest holds no ``WorkspaceMember`` row, so ``membership is None`` and the
+  answer is 403 ``forbidden_workspace`` before any data is touched. The
+  invitation views close the same way, by the email match (an anonymous
+  account has no email; verifying one is exactly what flips
+  ``is_anonymous`` off). Those views declare ``ANONYMOUS_DENIED`` — the
+  declaration does not add the gate, it makes the existing gate readable
+  from the class header instead of only from the method body.
+* **``WorkspaceListCreateView`` is on the live guest path** and must stay
+  open: an app header asks "which workspaces am I in?" for *every* session,
+  guest included, to decide what to draw. For a guest the answer is an empty
+  list — the truth, and cheaper than a 403 the header would have to special-
+  case. Its POST half is a different question and is answered separately in
+  the method (see there).
+* **``RoleListView``** is deployment metadata (the role registry a
+  ``RoleSelect`` renders), not anybody's data. Closing it would protect
+  nothing and could only break a frontend.
+"""
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -15,9 +42,18 @@ from stapel_core.comm.exceptions import (
     FunctionRouteNotConfigured,
 )
 from stapel_core.core.language import parse_accept_language
-from stapel_core.django.api.errors import StapelErrorResponse, StapelResponse
+from stapel_core.django.api.errors import (
+    StapelErrorResponse,
+    StapelResponse,
+    error_403_forbidden,
+)
 from stapel_core.django.api.pagination import AnchorPagination
-from stapel_core.django.api.permissions import IsServiceRequest, IsStaffUser
+from stapel_core.django.api.permissions import (
+    ANONYMOUS_ALLOWED,
+    ANONYMOUS_DENIED,
+    IsServiceRequest,
+    IsStaffUser,
+)
 from stapel_core.django.openapi.schemas import StapelErrorSerializer
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
@@ -294,6 +330,12 @@ def _invitation_to_dto(inv: WorkspaceInvitation) -> InvitationResponse:
 @extend_schema(tags=["Workspaces"])
 class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    # GET is a live guest path: an app header asks "which workspaces am I in?"
+    # for every session, guest included, to decide what to draw (meettoday's
+    # Navbar does exactly this). The answer for a guest is an empty list — its
+    # own memberships, of which it has none. POST is a separate question and
+    # is answered inside `post` itself; see the guard there.
+    stapel_anonymous_access = ANONYMOUS_ALLOWED
     request_serializer_class = WorkspaceCreateRequestSerializer
     response_serializer_class = WorkspaceResponseSerializer
     list_response_serializer_class = WorkspaceListResponseSerializer
@@ -329,6 +371,17 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
         responses={201: WorkspaceResponseSerializer},
     )
     def post(self, request):  # noqa: R007
+        # The other half of this view's guest stance. Listing is open to a
+        # guest (see the class header); creating is not. A workspace has an
+        # owner, and `create_workspace` makes the caller it — for an ORG that
+        # owner is also the billing anchor. An anonymous account is throwaway
+        # by construction: nobody can ever log back into it, so the org would
+        # outlive the only account that can administer or pay for it. The
+        # entitlement seam below cannot catch this, because it degrades to
+        # allow when billing is not installed, and a PERSONAL workspace is
+        # never gated by it at all.
+        if getattr(request.user, "is_anonymous", False):
+            return error_403_forbidden()
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
@@ -362,6 +415,12 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
 @extend_schema(tags=["Workspaces"])
 class WorkspaceDetailView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    # Gated in the body by `_resolve` → `_capability_check` (workspace.view /
+    # workspace.update / workspace.delete). A guest holds no membership row,
+    # so `membership is None` → 403 forbidden_workspace. Declared rather than
+    # enforced by a permission class so the answer stays the keyed 403 the
+    # frontend routes on, instead of an anonymous permission refusal.
+    stapel_anonymous_access = ANONYMOUS_DENIED
     request_serializer_class = WorkspaceUpdateRequestSerializer
     response_serializer_class = WorkspaceResponseSerializer
 
@@ -482,6 +541,10 @@ class MemberPagination(AnchorPagination):
 @extend_schema(tags=["Members"])
 class MemberListView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    # `members.view` capability check in the body; a guest is not a member of
+    # anything, so it never reaches the roster. Same reasoning as
+    # WorkspaceDetailView.
+    stapel_anonymous_access = ANONYMOUS_DENIED
     pagination_class = MemberPagination
     response_serializer_class = MemberResponseSerializer
 
@@ -540,6 +603,9 @@ class MemberListView(SerializerSeamsMixin, APIView):
 @extend_schema(tags=["Members"])
 class MemberInviteView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    # `members.invite` capability check in the body — a guest has no
+    # membership and therefore no role that could carry it.
+    stapel_anonymous_access = ANONYMOUS_DENIED
     request_serializer_class = MemberInviteRequestSerializer
     response_serializer_class = MemberInviteResponseSerializer
 
@@ -620,6 +686,11 @@ class MemberProvisionView(SerializerSeamsMixin, APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+    # The strictest surface in this module, and a guest fails it twice over:
+    # `@requires_verification(scope="sensitive")` demands a HIGH step-up an
+    # anonymous account has no factor to satisfy, and `members.provision`
+    # demands a membership it does not have.
+    stapel_anonymous_access = ANONYMOUS_DENIED
     request_serializer_class = ProvisionMemberRequestSerializer
     response_serializer_class = ProvisionMemberResponseSerializer
 
@@ -694,6 +765,10 @@ def _status_of_error_key(error_key: str, default: int = 400) -> int:
 @extend_schema(tags=["Members"])
 class MemberDetailView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    # `members.role.change` / `members.remove` capability checks in
+    # `_resolve`; a guest has no membership, so 403 before any member row is
+    # read.
+    stapel_anonymous_access = ANONYMOUS_DENIED
     request_serializer_class = MemberUpdateRequestSerializer
     response_serializer_class = MemberResponseSerializer
 
@@ -831,6 +906,12 @@ class RoleListView(SerializerSeamsMixin, APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+    # Deployment metadata, not anybody's data: the same role registry for
+    # every caller, derived from BUILTIN_ROLES + STAPEL_WORKSPACES["ROLES"].
+    # A guest reading it learns nothing a registered user could not, and
+    # closing it would protect nothing while risking a frontend that fetches
+    # the registry before it knows who is looking.
+    stapel_anonymous_access = ANONYMOUS_ALLOWED
     response_serializer_class = RoleListResponseSerializer
 
     @extend_schema(responses={200: RoleListResponseSerializer})
@@ -853,6 +934,12 @@ class RoleListView(SerializerSeamsMixin, APIView):
 @extend_schema(tags=["Members"])
 class InvitationAcceptView(SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
+    # Gated in the body by the email match: an invitation is personal, and the
+    # caller's address must equal the invited one. An anonymous account has no
+    # email at all (verifying one is exactly the act that flips
+    # `is_anonymous` off), so it can never match — a guest gets the same 404
+    # any other wrong account gets, which is also the answer that leaks least.
+    stapel_anonymous_access = ANONYMOUS_DENIED
     request_serializer_class = InvitationAcceptRequestSerializer
     response_serializer_class = MemberResponseSerializer
 
@@ -947,6 +1034,9 @@ class InvitationDeclineView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+    # Mirror of InvitationAcceptView: the same email match keeps an anonymous
+    # (email-less) session out, in the same 404 shape.
+    stapel_anonymous_access = ANONYMOUS_DENIED
 
     @extend_schema(request=None, responses={204: None})
     def post(self, request, token):  # noqa: R007
