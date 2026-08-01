@@ -123,11 +123,21 @@ def _frontend_url(path: str) -> str:
     return f"{frontend_url}{path}" if frontend_url else path
 
 
-def _send_invitation_notification(invitation: WorkspaceInvitation) -> None:
+def _send_invitation_notification(
+    invitation: WorkspaceInvitation,
+    *,
+    notification_type: str = "workspace.invitation",
+) -> None:
     """Ask stapel-notifications to deliver the invite email.
 
     Best-effort: a delivery hiccup must never break invitation creation —
     the invite stays listable/resendable either way.
+
+    ``notification_type`` distinguishes the first letter from a re-delivery:
+    the resend path passes ``workspace.invitation.reminder`` (its own type
+    in the notifications catalog, >= 0.6.1), because "you are being
+    reminded — and the earlier link no longer works" is a different message
+    from "you are being invited". Same variables either way.
     """
     try:
         from django.contrib.auth import get_user_model
@@ -157,7 +167,7 @@ def _send_invitation_notification(invitation: WorkspaceInvitation) -> None:
             else {"email": invitation.email}
         )
         request_notification(
-            "workspace.invitation",
+            notification_type,
             variables={
                 "workspace_name": invitation.workspace.name,
                 "inviter_name": inviter_name,
@@ -287,8 +297,12 @@ def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation
         )
         locked.save(update_fields=["token", "expires_at"])
     # Outside the row lock: delivery is best-effort and must not hold a
-    # write lock open across a cross-service notification call.
-    _send_invitation_notification(locked)
+    # write lock open across a cross-service notification call. A resend is
+    # a reminder, not a first invitation — its own notification type, so
+    # the letter can say "the earlier link no longer works" honestly.
+    _send_invitation_notification(
+        locked, notification_type="workspace.invitation.reminder"
+    )
     return locked
 
 

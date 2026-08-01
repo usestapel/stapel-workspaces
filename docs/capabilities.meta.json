@@ -15,7 +15,7 @@
     {
       "module": "stapel-notifications",
       "optional": true,
-      "reason": "delivers the workspace.invitation email this module requests via request_notification; invitation creation succeeds regardless (best-effort)"
+      "reason": "delivers the letters this module requests via request_notification: workspace.invitation (create), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error"
     },
     {
       "module": "stapel-billing",

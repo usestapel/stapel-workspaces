@@ -547,14 +547,23 @@ class TestResend:
         org.expired.refresh_from_db()
         assert org.expired.expires_at > timezone.now()
 
-    def test_resend_mails_the_new_link(self, admin_client, org, monkeypatch):
+    def test_resend_mails_the_new_link_as_a_reminder(
+        self, admin_client, org, monkeypatch
+    ):
+        """The letter carries the rotated token AND is the reminder type —
+        a resend says "you are being reminded, the earlier link is dead",
+        not "you are being invited" (notifications catalog >= 0.6.1)."""
         sent = []
         monkeypatch.setattr(
-            services, "_send_invitation_notification", lambda inv: sent.append(inv)
+            services,
+            "_send_invitation_notification",
+            lambda inv, **kw: sent.append((inv, kw.get("notification_type"))),
         )
         self._resend(admin_client, org.ws, org.pending)
         org.pending.refresh_from_db()
-        assert [i.token for i in sent] == [org.pending.token]
+        assert [(i.token, t) for i, t in sent] == [
+            (org.pending.token, "workspace.invitation.reminder")
+        ]
 
     @pytest.mark.parametrize(
         "which,error_key",

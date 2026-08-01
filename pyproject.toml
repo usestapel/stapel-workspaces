@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-workspaces"
-version = "0.14.0"
+version = "0.14.1"
 description = "Team workspaces and RBAC Django app for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -55,6 +55,10 @@ stapel_workspaces = [
     "schemas/emits/*.json",
     "schemas/consumes/*.json",
     "schemas/functions/*.json",
+    "docs/capabilities.json",
+    "docs/flows.json",
+    "docs/errors.json",
+    "CONFIG.MD",
 ]
 
 [tool.ruff]
