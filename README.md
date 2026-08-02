@@ -6,6 +6,7 @@
 [![downloads](https://static.pepy.tech/badge/stapel-workspaces/month)](https://pepy.tech/project/stapel-workspaces)
 [![python](https://img.shields.io/pypi/pyversions/stapel-workspaces?logo=python&logoColor=white)](https://pypi.org/project/stapel-workspaces/)
 [![license](https://img.shields.io/github/license/usestapel/stapel-workspaces)](https://github.com/usestapel/stapel-workspaces/blob/main/LICENSE)
+[![llms.txt](https://img.shields.io/badge/llms.txt-blue)](https://github.com/usestapel/stapel-workspaces/blob/main/docs/llms.txt)
 
 > Team workspaces and RBAC — roles, invitations, membership, storage quotas
 

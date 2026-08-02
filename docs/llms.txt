@@ -1,0 +1,114 @@
+# stapel-workspaces 0.14.1
+
+Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
+
+Contract: extension points 5 · operations 21 · error codes 60.
+Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
+
+## Extension points — what a product replaces, fork-free
+- AUTH_USER_MODEL [swappable_model]
+  Standard Django user swap — owner/member/inviter FKs target settings.AUTH_USER_MODEL; the module resolves users via get_user_model(), never a concrete class.
+- Workspace.settings [json_settings]
+  A JSON bag on every workspace, PATCHable through the workspace API — the sanctioned place for app-level per-workspace preferences without schema changes.
+- capability_levels [merge_registry]
+  Raise individual capabilities to the high step-up level via STAPEL_WORKSPACES["CAPABILITY_LEVELS"] (merged over the builtin members.provision / workspace.security.manage); enforcement arrives with the provisioning wave.
+- role_capabilities [merge_registry]
+  Declare product roles and their capability strings in STAPEL_WORKSPACES["ROLES"] (last-wins over the builtin four; owner is system-protected). Check them via has_capability/require_capability (in-service) or the workspaces.check_capability / check_membership comm Functions (cross-service, no import); frontends read GET /roles and my_capabilities.
+- serializer_seams [class_override]
+  Every public view declares request/response serializer seams (SerializerSeamsMixin) — subclass the view, override the attribute, remount the URL.
+
+## Fits with — fleet dependencies
+- stapel-auth (optional) — emits the user.registered event that triggers personal-workspace creation and issues the authenticated sessions the workspace endpoints require; answers auth.issue_login_grant for the invitation claim step and auth.provision_user / auth.mfa_status for org provisioning and the require_mfa sweep; answers auth.admin_reset_password (>= 0.18) for the administrative password reset — which is where the credential work, the session revocation, the audit row and the refusal to touch a staff account live, because the caller knows who administers a workspace and nothing about who administers the deployment; answers auth.apply_first_login_policies (>= 0.17) when an organization has CONFIGURED first-login policies — that seam alone is fail-closed: an acceptance that cannot raise a demanded policy is refused (503) rather than admitting an unhardened member, while an organization that configured nothing never calls it at all; every other auth seam either degrades to an honest 503 (claim) or is never reached; decoupled via the comm bus
+- stapel-billing (optional) — answers billing.check_entitlement for org creation and member-seat ceilings; without it every entitlement check degrades to allow (OSS default), decoupled via the comm bus
+- stapel-core (required) — comm bus (workspace.* emits, workspaces.check_membership Function, user.registered consumer), JWT authentication, GDPR provider registry
+- stapel-notifications (optional) — delivers the letters this module requests via request_notification: workspace.invitation (create), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error
+
+## HTTP operations (21) — call by operationId, never by a typed path
+Paths are relative to `/workspaces/api/v1/`.
+### Internal
+- GET /internal/{workspace_id}/members/{user_id} — workspaces_api_v1_internal_members_retrieve
+- POST /internal/users/{user_id}/personal — workspaces_api_v1_internal_users_personal_create
+### Members
+- POST /invitations/accept — workspaces_api_v1_invitations_accept_create
+- POST /invitations/{token}/claim — workspaces_api_v1_invitations_claim_create
+- POST /invitations/{token}/decline — workspaces_api_v1_invitations_decline_create
+- GET /{workspace_id}/invitations — workspaces_api_v1_invitations_list
+- POST /{workspace_id}/invitations/{invitation_id}/resend — workspaces_api_v1_invitations_resend_create
+- GET /invitations/{token} — workspaces_api_v1_invitations_retrieve
+- POST /{workspace_id}/invitations/{invitation_id}/revoke — workspaces_api_v1_invitations_revoke_create
+- DELETE /{workspace_id}/members/{user_id} — workspaces_api_v1_members_destroy
+- POST /{workspace_id}/members/invite — workspaces_api_v1_members_invite_create
+- GET /{workspace_id}/members — workspaces_api_v1_members_list
+- PATCH /{workspace_id}/members/{user_id} — workspaces_api_v1_members_partial_update
+- POST /{workspace_id}/members/{user_id}/password/reset — workspaces_api_v1_members_password_reset_create
+- POST /{workspace_id}/members/provision — workspaces_api_v1_members_provision_create
+### Workspaces
+- POST / — workspaces_api_v1_create
+- DELETE /{workspace_id} — workspaces_api_v1_destroy
+- PATCH /{workspace_id} — workspaces_api_v1_partial_update
+- GET / — workspaces_api_v1_retrieve
+- GET /{workspace_id} — workspaces_api_v1_retrieve_2
+- GET /roles — workspaces_api_v1_roles_retrieve
+
+## Error codes (60) — the StapelError envelope
+Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
+- error.400.already_workspace_member [400] fix_input
+- error.400.bad_request [400] fix_input
+- error.400.captcha_invalid [400] retry
+- error.400.captcha_required [400] retry
+- error.400.expected_list [400] fix_input
+- error.400.field.blank [400] fix_input {field}
+- error.400.field.does_not_exist [400] fix_input {field}
+- error.400.field.invalid [400] fix_input {field}
+- error.400.field.invalid_choice [400] fix_input {field}
+- error.400.field.max_length [400] fix_input {field,max_length}
+- error.400.field.max_value [400] fix_input {field,max_value}
+- error.400.field.min_length [400] fix_input {field,min_length}
+- error.400.field.min_value [400] fix_input {field,min_value}
+- error.400.field.null [400] fix_input {field}
+- error.400.field.required [400] fix_input {field}
+- error.400.field.unique [400] fix_input {field}
+- error.400.invalid_ad_id [400] fix_input
+- error.400.invalid_provision_username [400] fix_input
+- error.400.invalid_role [400] fix_input
+- error.400.invitation_already_used [400] fix_input
+- error.400.invitation_declined [400] contact_support
+- error.400.invitation_expired [400] contact_support
+- error.400.invitation_revoked [400] contact_support
+- error.400.validation_error [400] fix_input
+- error.400.verification_failed [400] verify
+- error.400.verification_invalid_factor [400] verify
+- error.400.workspace_slug_taken [400] fix_input
+- error.401.unauthorized [401] reauthenticate
+- error.402.entitlement_required [402] fix_input
+- error.402.member_limit_reached [402] fix_input {limit}
+- error.402.payment_required [402] retry
+- error.403.forbidden [403] retry
+- error.403.forbidden_workspace [403] contact_support
+- error.403.last_owner_cannot_be_removed [403] fix_input
+- error.403.membership_suspended [403] fix_input {reason}
+- error.403.missing_capability [403] contact_support {capability}
+- error.403.network_blocked [403] contact_support
+- error.403.verification_enrollment_required [403] verify
+- error.403.verification_required [403] verify
+- error.404.ad_not_found [404] retry
+- error.404.invitation_not_found [404] fix_input
+- error.404.member_not_found [404] fix_input
+- error.404.not_found [404] retry
+- error.404.verification_challenge_not_found [404] verify
+- error.404.workspace_not_found [404] fix_input
+- error.405.method_not_allowed [405] retry
+- error.406.not_acceptable [406] retry
+- error.408.request_timeout [408] retry
+- error.409.conflict [409] fix_input
+- error.409.email_already_registered [409] reauthenticate
+- error.410.gone [410] retry
+- error.413.payload_too_large [413] retry
+- error.415.unsupported_media_type [415] retry
+- error.422.unprocessable_entity [422] wait_and_retry
+- error.423.locked [423] wait_and_retry
+- error.423.verification_locked [423] wait_and_retry
+- error.429.rate_limit [429] wait_and_retry {retry_after_minutes}
+- error.429.too_many_requests [429] wait_and_retry
+- error.500.internal [500] contact_support
+- error.503.auth_unavailable [503] wait_and_retry
