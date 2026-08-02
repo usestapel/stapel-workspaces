@@ -59,6 +59,7 @@ stapel_workspaces = [
     "docs/capabilities.json",
     "docs/flows.json",
     "docs/errors.json",
+    "docs/llms.txt",
     "CONFIG.MD",
 ]
 
