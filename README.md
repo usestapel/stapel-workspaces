@@ -1,8 +1,11 @@
 # stapel-workspaces
 
-[![CI](https://github.com/usestapel/stapel-workspaces/actions/workflows/ci.yml/badge.svg)](https://github.com/usestapel/stapel-workspaces/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/usestapel/stapel-workspaces/graph/badge.svg)](https://codecov.io/gh/usestapel/stapel-workspaces)
-[![PyPI](https://img.shields.io/pypi/v/stapel-workspaces.svg)](https://pypi.org/project/stapel-workspaces/)
+[![CI](https://img.shields.io/github/actions/workflow/status/usestapel/stapel-workspaces/ci.yml?branch=main&logo=github&label=CI)](https://github.com/usestapel/stapel-workspaces/actions/workflows/ci.yml?query=branch%3Amain)
+[![coverage](https://img.shields.io/codecov/c/github/usestapel/stapel-workspaces?branch=main&logo=codecov&label=coverage)](https://app.codecov.io/gh/usestapel/stapel-workspaces)
+[![pypi](https://img.shields.io/pypi/v/stapel-workspaces?logo=pypi&logoColor=white&label=pypi)](https://pypi.org/project/stapel-workspaces/)
+[![downloads](https://static.pepy.tech/badge/stapel-workspaces/month)](https://pepy.tech/project/stapel-workspaces)
+[![python](https://img.shields.io/pypi/pyversions/stapel-workspaces?logo=python&logoColor=white)](https://pypi.org/project/stapel-workspaces/)
+[![license](https://img.shields.io/github/license/usestapel/stapel-workspaces)](https://github.com/usestapel/stapel-workspaces/blob/main/LICENSE)
 
 > Team workspaces and RBAC — roles, invitations, membership, storage quotas
 
