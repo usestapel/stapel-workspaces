@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.14.2] — 2026-08-02
+
+Packaging/docs catch-up, no behavior change:
+
+- Badge canon in README + Python 3.14 classifier (#60b0fcd).
+- `docs/llms.txt` — the fifth contract artifact (badge-canon §3), emitted
+  by `stapel_tools.llms_txt` and checked by the `make contract-check`
+  drift gate alongside schema/flows/errors/capabilities.
+- `docs/llms.txt` now shipped in the wheel via `package-data`.
+
 ## [0.14.1] — 2026-08-01
 
 Переотправка приглашения — своё письмо (#193, notifications >= 0.6.1).
