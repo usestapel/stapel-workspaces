@@ -61,7 +61,14 @@ TRIAD = ("schema.json", "flows.json", "errors.json")
 # docs/capabilities.meta.json. Same emit/drift discipline.
 # The fifth artifact (badge-canon §3): docs/llms.txt, rendered from
 # docs/capabilities.json (+schema/errors/flows) by stapel_tools.llms_txt.
+#
+# The mandate-model surface (permissions.py + capabilities.py + services.py —
+# guest predicate, rank-guard, invitation/provision/suspension primitives)
+# does not fit the generator's default 4000-token budget. Same exception
+# stapel-auth already takes: raise the ceiling to 4500 for this module, do
+# not shorten intents to fit. The budget stays enforced, just at 4500.
 ARTIFACTS = TRIAD + ("capabilities.json", "llms.txt")
+LLMS_TXT_BUDGET = "4500"
 
 
 def _emit(out_dir: Path) -> None:
@@ -76,7 +83,10 @@ def _emit(out_dir: Path) -> None:
     # the just-regenerated tmp one) — same as `make contract-check` — so this
     # step also catches a stale llms.txt independently of the loop above.
     subprocess.run(
-        [sys.executable, "-m", "stapel_tools.llms_txt", ".", "--out", str(out_dir)],
+        [
+            sys.executable, "-m", "stapel_tools.llms_txt", ".",
+            "--out", str(out_dir), "--budget", LLMS_TXT_BUDGET,
+        ],
         cwd=str(REPO),
         check=True,
         capture_output=True,

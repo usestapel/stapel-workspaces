@@ -56,5 +56,165 @@
       "summary": "Controls what a freshly registered account gets when it showed up on its own (no invitation) — read by resolve_landing_workspace(user, origin=\"street\"). \"personal\" (default) gives it its own Personal workspace and makes it that workspace's owner — the open self-serve / demo-cloud shape, unchanged from every release before this axis existed. \"none\" gives it no workspace at all: the account is a guest (permissions.is_guest) until an existing organization invites it — the closed-organization shape. Does not affect invited registrations, which always land through the separate accept-invitation path.",
       "behavior": "personal: ensure_personal_workspace(user) runs, the account becomes OWNER of a new Personal workspace; none: no workspace is created, the account has zero memberships until invited."
     }
+  },
+  "surface_roots": [
+    {
+      "select": "functions",
+      "path": "permissions.py"
+    },
+    {
+      "select": "functions",
+      "path": "capabilities.py"
+    },
+    {
+      "select": "functions",
+      "path": "services.py"
+    }
+  ],
+  "surface": {
+    "role_at_least": {
+      "kind": "predicate",
+      "intent": "Role-ordering check — instead of hardcoding a role order."
+    },
+    "get_membership": {
+      "kind": "factory",
+      "intent": "Fetch a user's WorkspaceMember row (active by default; include_suspended=True also returns a suspended one, e.g. to render error.403.membership_suspended instead of a bare not-a-member 403) — defines what \"active membership\" means."
+    },
+    "require_role": {
+      "kind": "gate_function",
+      "intent": "Membership if the user holds at least a minimum role, else None — this module's own role-gate."
+    },
+    "has_capability": {
+      "kind": "predicate",
+      "intent": "True if the user's active membership grants a capability — the everyday authorization check."
+    },
+    "require_capability": {
+      "kind": "gate_function",
+      "intent": "Membership if the user holds a capability, else None — capability-gate for a view."
+    },
+    "has_active_mandate": {
+      "kind": "predicate",
+      "intent": "True if the user holds an active (accepted, non-suspended) membership ANYWHERE, workspace-agnostic — the primitive behind is_guest; use it when the question is \"has this account joined anything at all\", not \"is it a member of workspace W\"."
+    },
+    "is_guest": {
+      "kind": "predicate",
+      "intent": "THE canonical guest predicate (mandate-model vardict 2026-08-03): true for an authenticated user with no active mandate anywhere — an anonymous session qualifies by construction. Branch dashboards/onboarding on this, never on request.user.is_authenticated."
+    },
+    "effective_roles": {
+      "kind": "factory",
+      "intent": "Builtin roles merged with STAPEL_WORKSPACES[\"ROLES\"] — read instead of merging the setting yourself."
+    },
+    "effective_capability_levels": {
+      "kind": "factory",
+      "intent": "Builtin capability step-up levels merged with the CAPABILITY_LEVELS override."
+    },
+    "capability_level": {
+      "kind": "factory",
+      "intent": "\"standard\"/\"high\" step-up level of a capability — check before gating on step-up."
+    },
+    "capability_matches": {
+      "kind": "predicate",
+      "intent": "Match one granted capability string (wildcards \"*\" and \"prefix.*\") against a requested one — reach for this instead of writing your own prefix/wildcard comparison; stapel-core's cross-service consumer helper mirrors this exact semantics."
+    },
+    "capabilities_for": {
+      "kind": "factory",
+      "intent": "Granted capability strings of a role — primitive behind role_has_capability."
+    },
+    "role_has_capability": {
+      "kind": "predicate",
+      "intent": "Does this role grant this capability, no membership needed — for role definitions/invite pickers."
+    },
+    "role_rank": {
+      "kind": "factory",
+      "intent": "Numeric rank of a role, or None — prefer role_at_least/role_exceeds_rank for yes/no."
+    },
+    "role_exceeds_rank": {
+      "kind": "predicate",
+      "intent": "The invite/role-grant rank-guard (mandate-model vardict 2026-08-03): true if a role outranks the acting role, so a product-defined role below admin that still carries members.invite/members.role.change/members.provision cannot hand out a rank above its own. Call this before creating any membership, invitation or provision row that assigns a role; unknown ranks fail closed."
+    },
+    "create_workspace": {
+      "kind": "factory",
+      "intent": "Create a workspace and atomically seed its owner membership — instead of a bare, ownerless row."
+    },
+    "ensure_personal_workspace": {
+      "kind": "factory",
+      "intent": "Idempotent get-or-create of a user's Personal workspace; prefer resolve_landing_workspace."
+    },
+    "resolve_landing_workspace": {
+      "kind": "factory",
+      "intent": "The canon landing-mandate policy (mandate-model vardict 2026-08-03) for a freshly (re)appearing account — call this from a user.registered subscriber instead of unconditionally minting a personal workspace; reads STREET_LANDING_MODE and is a deliberate no-op for an invited origin, so a subscriber cannot double-mint or race the invite's own membership."
+    },
+    "create_invitation": {
+      "kind": "factory",
+      "intent": "Create a single-use, TTL'd invitation and best-effort deliver it."
+    },
+    "issue_invitation_login_grant": {
+      "kind": "factory",
+      "intent": "Mint an auth-backed login grant for a not-yet-registered invitee's claim step (0.7)."
+    },
+    "revoke_invitation": {
+      "kind": "factory",
+      "intent": "Withdraw a live invitation under the same compare-and-set lock as accept/decline."
+    },
+    "resend_invitation": {
+      "kind": "factory",
+      "intent": "Rotate an invitation's token, extend its TTL and re-deliver — instead of editing fields by hand."
+    },
+    "decline_invitation": {
+      "kind": "factory",
+      "intent": "The invitee's terminal \"no\" (≠ revoke), same row-lock as accept."
+    },
+    "accept_invitation": {
+      "kind": "factory",
+      "intent": "Resolve a pending invitation into a membership — entitlement check, first-login policies, emits together."
+    },
+    "apply_first_login_policies": {
+      "kind": "gate_function",
+      "intent": "Demand an org's first-login steps of an account, failing closed."
+    },
+    "security_settings_for": {
+      "kind": "factory",
+      "intent": "Typed, defaulted view of Workspace.settings[\"security\"] — instead of indexing the JSON bag directly."
+    },
+    "provision_member": {
+      "kind": "factory",
+      "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
+    },
+    "reset_member_password": {
+      "kind": "factory",
+      "intent": "Reset a member's password on the org's order, with the audit emit and security-signal letter."
+    },
+    "suspend_member": {
+      "kind": "gate_function",
+      "intent": "Suspend a membership without removing it (idempotent) — instead of writing suspended_at directly."
+    },
+    "unsuspend_member": {
+      "kind": "gate_function",
+      "intent": "Lift a membership suspension (idempotent) — counterpart of suspend_member."
+    },
+    "enforce_require_mfa": {
+      "kind": "gate_function",
+      "intent": "Sweep a workspace's members via auth.mfa_status, suspend the unenrolled, fail-open on an auth hiccup."
+    },
+    "lift_no_mfa_suspensions": {
+      "kind": "factory",
+      "intent": "Lift every no_mfa suspension in a workspace — call when require_mfa turns off."
+    },
+    "suspend_memberships_without_mfa": {
+      "kind": "factory",
+      "intent": "Per-user no_mfa suspension sweep wired to auth's user.mfa_disabled — call to force it on demand."
+    },
+    "lift_no_mfa_suspensions_for_user": {
+      "kind": "factory",
+      "intent": "Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled."
+    },
+    "suspend_memberships_for_deactivated_user": {
+      "kind": "factory",
+      "intent": "Suspend every membership of a deactivated account, wired to auth's user.deactivated."
+    },
+    "lift_deactivation_suspensions_for_user": {
+      "kind": "factory",
+      "intent": "Reverse deactivation suspensions on reactivation, leaving no_mfa ones alone."
+    }
   }
 }

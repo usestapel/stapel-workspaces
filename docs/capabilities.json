@@ -46,6 +46,224 @@
       "summary": "Raise individual capabilities to the high step-up level via STAPEL_WORKSPACES[\"CAPABILITY_LEVELS\"] (merged over the builtin members.provision / workspace.security.manage); enforcement arrives with the provisioning wave."
     }
   ],
+  "surface": [
+    {
+      "name": "capabilities_for",
+      "kind": "factory",
+      "path": "stapel_workspaces.capabilities.capabilities_for",
+      "intent": "Granted capability strings of a role — primitive behind role_has_capability."
+    },
+    {
+      "name": "capability_level",
+      "kind": "factory",
+      "path": "stapel_workspaces.capabilities.capability_level",
+      "intent": "\"standard\"/\"high\" step-up level of a capability — check before gating on step-up."
+    },
+    {
+      "name": "capability_matches",
+      "kind": "predicate",
+      "path": "stapel_workspaces.capabilities.capability_matches",
+      "intent": "Match one granted capability string (wildcards \"*\" and \"prefix.*\") against a requested one — reach for this instead of writing your own prefix/wildcard comparison; stapel-core's cross-service consumer helper mirrors this exact semantics."
+    },
+    {
+      "name": "effective_capability_levels",
+      "kind": "factory",
+      "path": "stapel_workspaces.capabilities.effective_capability_levels",
+      "intent": "Builtin capability step-up levels merged with the CAPABILITY_LEVELS override."
+    },
+    {
+      "name": "effective_roles",
+      "kind": "factory",
+      "path": "stapel_workspaces.capabilities.effective_roles",
+      "intent": "Builtin roles merged with STAPEL_WORKSPACES[\"ROLES\"] — read instead of merging the setting yourself."
+    },
+    {
+      "name": "role_exceeds_rank",
+      "kind": "predicate",
+      "path": "stapel_workspaces.capabilities.role_exceeds_rank",
+      "intent": "The invite/role-grant rank-guard (mandate-model vardict 2026-08-03): true if a role outranks the acting role, so a product-defined role below admin that still carries members.invite/members.role.change/members.provision cannot hand out a rank above its own. Call this before creating any membership, invitation or provision row that assigns a role; unknown ranks fail closed."
+    },
+    {
+      "name": "role_has_capability",
+      "kind": "predicate",
+      "path": "stapel_workspaces.capabilities.role_has_capability",
+      "intent": "Does this role grant this capability, no membership needed — for role definitions/invite pickers."
+    },
+    {
+      "name": "role_rank",
+      "kind": "factory",
+      "path": "stapel_workspaces.capabilities.role_rank",
+      "intent": "Numeric rank of a role, or None — prefer role_at_least/role_exceeds_rank for yes/no."
+    },
+    {
+      "name": "get_membership",
+      "kind": "factory",
+      "path": "stapel_workspaces.permissions.get_membership",
+      "intent": "Fetch a user's WorkspaceMember row (active by default; include_suspended=True also returns a suspended one, e.g. to render error.403.membership_suspended instead of a bare not-a-member 403) — defines what \"active membership\" means."
+    },
+    {
+      "name": "has_active_mandate",
+      "kind": "predicate",
+      "path": "stapel_workspaces.permissions.has_active_mandate",
+      "intent": "True if the user holds an active (accepted, non-suspended) membership ANYWHERE, workspace-agnostic — the primitive behind is_guest; use it when the question is \"has this account joined anything at all\", not \"is it a member of workspace W\"."
+    },
+    {
+      "name": "has_capability",
+      "kind": "predicate",
+      "path": "stapel_workspaces.permissions.has_capability",
+      "intent": "True if the user's active membership grants a capability — the everyday authorization check."
+    },
+    {
+      "name": "is_guest",
+      "kind": "predicate",
+      "path": "stapel_workspaces.permissions.is_guest",
+      "intent": "THE canonical guest predicate (mandate-model vardict 2026-08-03): true for an authenticated user with no active mandate anywhere — an anonymous session qualifies by construction. Branch dashboards/onboarding on this, never on request.user.is_authenticated."
+    },
+    {
+      "name": "require_capability",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.permissions.require_capability",
+      "intent": "Membership if the user holds a capability, else None — capability-gate for a view."
+    },
+    {
+      "name": "require_role",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.permissions.require_role",
+      "intent": "Membership if the user holds at least a minimum role, else None — this module's own role-gate."
+    },
+    {
+      "name": "role_at_least",
+      "kind": "predicate",
+      "path": "stapel_workspaces.permissions.role_at_least",
+      "intent": "Role-ordering check — instead of hardcoding a role order."
+    },
+    {
+      "name": "accept_invitation",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.accept_invitation",
+      "intent": "Resolve a pending invitation into a membership — entitlement check, first-login policies, emits together."
+    },
+    {
+      "name": "apply_first_login_policies",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.services.apply_first_login_policies",
+      "intent": "Demand an org's first-login steps of an account, failing closed."
+    },
+    {
+      "name": "create_invitation",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.create_invitation",
+      "intent": "Create a single-use, TTL'd invitation and best-effort deliver it."
+    },
+    {
+      "name": "create_workspace",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.create_workspace",
+      "intent": "Create a workspace and atomically seed its owner membership — instead of a bare, ownerless row."
+    },
+    {
+      "name": "decline_invitation",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.decline_invitation",
+      "intent": "The invitee's terminal \"no\" (≠ revoke), same row-lock as accept."
+    },
+    {
+      "name": "enforce_require_mfa",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.services.enforce_require_mfa",
+      "intent": "Sweep a workspace's members via auth.mfa_status, suspend the unenrolled, fail-open on an auth hiccup."
+    },
+    {
+      "name": "ensure_personal_workspace",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.ensure_personal_workspace",
+      "intent": "Idempotent get-or-create of a user's Personal workspace; prefer resolve_landing_workspace."
+    },
+    {
+      "name": "issue_invitation_login_grant",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.issue_invitation_login_grant",
+      "intent": "Mint an auth-backed login grant for a not-yet-registered invitee's claim step (0.7)."
+    },
+    {
+      "name": "lift_deactivation_suspensions_for_user",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.lift_deactivation_suspensions_for_user",
+      "intent": "Reverse deactivation suspensions on reactivation, leaving no_mfa ones alone."
+    },
+    {
+      "name": "lift_no_mfa_suspensions",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.lift_no_mfa_suspensions",
+      "intent": "Lift every no_mfa suspension in a workspace — call when require_mfa turns off."
+    },
+    {
+      "name": "lift_no_mfa_suspensions_for_user",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.lift_no_mfa_suspensions_for_user",
+      "intent": "Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled."
+    },
+    {
+      "name": "provision_member",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.provision_member",
+      "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
+    },
+    {
+      "name": "resend_invitation",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.resend_invitation",
+      "intent": "Rotate an invitation's token, extend its TTL and re-deliver — instead of editing fields by hand."
+    },
+    {
+      "name": "reset_member_password",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.reset_member_password",
+      "intent": "Reset a member's password on the org's order, with the audit emit and security-signal letter."
+    },
+    {
+      "name": "resolve_landing_workspace",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.resolve_landing_workspace",
+      "intent": "The canon landing-mandate policy (mandate-model vardict 2026-08-03) for a freshly (re)appearing account — call this from a user.registered subscriber instead of unconditionally minting a personal workspace; reads STREET_LANDING_MODE and is a deliberate no-op for an invited origin, so a subscriber cannot double-mint or race the invite's own membership."
+    },
+    {
+      "name": "revoke_invitation",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.revoke_invitation",
+      "intent": "Withdraw a live invitation under the same compare-and-set lock as accept/decline."
+    },
+    {
+      "name": "security_settings_for",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.security_settings_for",
+      "intent": "Typed, defaulted view of Workspace.settings[\"security\"] — instead of indexing the JSON bag directly."
+    },
+    {
+      "name": "suspend_member",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.services.suspend_member",
+      "intent": "Suspend a membership without removing it (idempotent) — instead of writing suspended_at directly."
+    },
+    {
+      "name": "suspend_memberships_for_deactivated_user",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.suspend_memberships_for_deactivated_user",
+      "intent": "Suspend every membership of a deactivated account, wired to auth's user.deactivated."
+    },
+    {
+      "name": "suspend_memberships_without_mfa",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.suspend_memberships_without_mfa",
+      "intent": "Per-user no_mfa suspension sweep wired to auth's user.mfa_disabled — call to force it on demand."
+    },
+    {
+      "name": "unsuspend_member",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.services.unsuspend_member",
+      "intent": "Lift a membership suspension (idempotent) — counterpart of suspend_member."
+    }
+  ],
   "operations_total": 21,
   "requires": [
     {

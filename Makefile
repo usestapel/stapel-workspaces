@@ -14,10 +14,20 @@ PYTHON ?= python3
 
 # Emit the contract triad + capabilities.json + llms.txt (the fifth contract
 # artifact, stapel_tools.llms_txt) into docs/.
+#
+# The mandate-model surface section (permissions.py + capabilities.py +
+# services.py — 36 entries: guest predicate, rank-guard, invitation/provision/
+# suspension primitives) does not fit the generator's default 4000-token
+# budget (~4400 tokens at honest intent length). The owner's call, same
+# exception stapel-auth already takes: raise the ceiling for this module
+# rather than shorten intents to fit — a trimmed-to-fit context file is
+# indistinguishable from a complete one at the point of use, which is the
+# failure mode the hard-budget gate exists to prevent. contract-check below
+# enforces the same ceiling; it does not disable the check.
 contract:
 	$(PYTHON) -m stapel_workspaces._codegen --out docs
 	$(PYTHON) -m stapel_workspaces._capabilities --out docs
-	$(PYTHON) -m stapel_tools.llms_txt . --out docs
+	$(PYTHON) -m stapel_tools.llms_txt . --out docs --budget 4500
 
 # Drift gate: regenerate into a temp dir and diff against the committed docs/*.json
 # (mirrors the monolith's `make codegen-check` and the frontend's `gen:*:check`).
@@ -25,7 +35,7 @@ contract-check:
 	@tmp=$$(mktemp -d); \
 	$(PYTHON) -m stapel_workspaces._codegen --out "$$tmp" || { rm -rf "$$tmp"; exit 1; }; \
 	$(PYTHON) -m stapel_workspaces._capabilities --out "$$tmp" || { rm -rf "$$tmp"; exit 1; }; \
-	$(PYTHON) -m stapel_tools.llms_txt . --out "$$tmp" || { rm -rf "$$tmp"; exit 1; }; \
+	$(PYTHON) -m stapel_tools.llms_txt . --out "$$tmp" --budget 4500 || { rm -rf "$$tmp"; exit 1; }; \
 	rc=0; \
 	for f in schema.json flows.json errors.json capabilities.json llms.txt; do \
 		if ! diff -q "docs/$$f" "$$tmp/$$f" >/dev/null 2>&1; then \

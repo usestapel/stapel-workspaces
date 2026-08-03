@@ -2,13 +2,91 @@
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · extension points 5 · operations 21 · error codes 61.
+Contract: axes 1 · surface 36 · extension points 5 · operations 21 · error codes 61.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
 Settings keys; `default` is what you get by saying nothing. Turning an axis off unmounts the operations it gates.
 - STREET_LANDING_MODE [enum, default "personal"] — What an un-invited signup lands with
   Controls what a freshly registered account gets when it showed up on its own (no invitation) — read by resolve_landing_workspace(user, origin="street"). "personal" (default) gives it its own Personal workspace and makes it that workspace's owner — the open self-serve / demo-cloud shape, unchanged from every release before this axis existed. "none" gives it no workspace at all: the account is a guest (permissions.is_guest) until an existing organization invites it — the closed-organization shape. Does not affect invited registrations, which always land through the separate accept-invitation path.
+
+## Usage surface — call these before writing your own
+This is the answer to "does Stapel already have something for X?". `instead of` names the outside symbol this one displaces.
+### gate_function
+- apply_first_login_policies — stapel_workspaces.services.apply_first_login_policies
+  Demand an org's first-login steps of an account, failing closed.
+- enforce_require_mfa — stapel_workspaces.services.enforce_require_mfa
+  Sweep a workspace's members via auth.mfa_status, suspend the unenrolled, fail-open on an auth hiccup.
+- require_capability — stapel_workspaces.permissions.require_capability
+  Membership if the user holds a capability, else None — capability-gate for a view.
+- require_role — stapel_workspaces.permissions.require_role
+  Membership if the user holds at least a minimum role, else None — this module's own role-gate.
+- suspend_member — stapel_workspaces.services.suspend_member
+  Suspend a membership without removing it (idempotent) — instead of writing suspended_at directly.
+- unsuspend_member — stapel_workspaces.services.unsuspend_member
+  Lift a membership suspension (idempotent) — counterpart of suspend_member.
+### predicate
+- capability_matches — stapel_workspaces.capabilities.capability_matches
+  Match one granted capability string (wildcards "*" and "prefix.*") against a requested one — reach for this instead of writing your own prefix/wildcard comparison; stapel-core's cross-service consumer helper mirrors this exact semantics.
+- has_active_mandate — stapel_workspaces.permissions.has_active_mandate
+  True if the user holds an active (accepted, non-suspended) membership ANYWHERE, workspace-agnostic — the primitive behind is_guest; use it when the question is "has this account joined anything at all", not "is it a member of workspace W".
+- has_capability — stapel_workspaces.permissions.has_capability
+  True if the user's active membership grants a capability — the everyday authorization check.
+- is_guest — stapel_workspaces.permissions.is_guest
+  THE canonical guest predicate (mandate-model vardict 2026-08-03): true for an authenticated user with no active mandate anywhere — an anonymous session qualifies by construction. Branch dashboards/onboarding on this, never on request.user.is_authenticated.
+- role_at_least — stapel_workspaces.permissions.role_at_least
+  Role-ordering check — instead of hardcoding a role order.
+- role_exceeds_rank — stapel_workspaces.capabilities.role_exceeds_rank
+  The invite/role-grant rank-guard (mandate-model vardict 2026-08-03): true if a role outranks the acting role, so a product-defined role below admin that still carries members.invite/members.role.change/members.provision cannot hand out a rank above its own. Call this before creating any membership, invitation or provision row that assigns a role; unknown ranks fail closed.
+- role_has_capability — stapel_workspaces.capabilities.role_has_capability
+  Does this role grant this capability, no membership needed — for role definitions/invite pickers.
+### factory
+- accept_invitation — stapel_workspaces.services.accept_invitation
+  Resolve a pending invitation into a membership — entitlement check, first-login policies, emits together.
+- capabilities_for — stapel_workspaces.capabilities.capabilities_for
+  Granted capability strings of a role — primitive behind role_has_capability.
+- capability_level — stapel_workspaces.capabilities.capability_level
+  "standard"/"high" step-up level of a capability — check before gating on step-up.
+- create_invitation — stapel_workspaces.services.create_invitation
+  Create a single-use, TTL'd invitation and best-effort deliver it.
+- create_workspace — stapel_workspaces.services.create_workspace
+  Create a workspace and atomically seed its owner membership — instead of a bare, ownerless row.
+- decline_invitation — stapel_workspaces.services.decline_invitation
+  The invitee's terminal "no" (≠ revoke), same row-lock as accept.
+- effective_capability_levels — stapel_workspaces.capabilities.effective_capability_levels
+  Builtin capability step-up levels merged with the CAPABILITY_LEVELS override.
+- effective_roles — stapel_workspaces.capabilities.effective_roles
+  Builtin roles merged with STAPEL_WORKSPACES["ROLES"] — read instead of merging the setting yourself.
+- ensure_personal_workspace — stapel_workspaces.services.ensure_personal_workspace
+  Idempotent get-or-create of a user's Personal workspace; prefer resolve_landing_workspace.
+- get_membership — stapel_workspaces.permissions.get_membership
+  Fetch a user's WorkspaceMember row (active by default; include_suspended=True also returns a suspended one, e.g. to render error.403.membership_suspended instead of a bare not-a-member 403) — defines what "active membership" means.
+- issue_invitation_login_grant — stapel_workspaces.services.issue_invitation_login_grant
+  Mint an auth-backed login grant for a not-yet-registered invitee's claim step (0.7).
+- lift_deactivation_suspensions_for_user — stapel_workspaces.services.lift_deactivation_suspensions_for_user
+  Reverse deactivation suspensions on reactivation, leaving no_mfa ones alone.
+- lift_no_mfa_suspensions — stapel_workspaces.services.lift_no_mfa_suspensions
+  Lift every no_mfa suspension in a workspace — call when require_mfa turns off.
+- lift_no_mfa_suspensions_for_user — stapel_workspaces.services.lift_no_mfa_suspensions_for_user
+  Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled.
+- provision_member — stapel_workspaces.services.provision_member
+  Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials).
+- resend_invitation — stapel_workspaces.services.resend_invitation
+  Rotate an invitation's token, extend its TTL and re-deliver — instead of editing fields by hand.
+- reset_member_password — stapel_workspaces.services.reset_member_password
+  Reset a member's password on the org's order, with the audit emit and security-signal letter.
+- resolve_landing_workspace — stapel_workspaces.services.resolve_landing_workspace
+  The canon landing-mandate policy (mandate-model vardict 2026-08-03) for a freshly (re)appearing account — call this from a user.registered subscriber instead of unconditionally minting a personal workspace; reads STREET_LANDING_MODE and is a deliberate no-op for an invited origin, so a subscriber cannot double-mint or race the invite's own membership.
+- revoke_invitation — stapel_workspaces.services.revoke_invitation
+  Withdraw a live invitation under the same compare-and-set lock as accept/decline.
+- role_rank — stapel_workspaces.capabilities.role_rank
+  Numeric rank of a role, or None — prefer role_at_least/role_exceeds_rank for yes/no.
+- security_settings_for — stapel_workspaces.services.security_settings_for
+  Typed, defaulted view of Workspace.settings["security"] — instead of indexing the JSON bag directly.
+- suspend_memberships_for_deactivated_user — stapel_workspaces.services.suspend_memberships_for_deactivated_user
+  Suspend every membership of a deactivated account, wired to auth's user.deactivated.
+- suspend_memberships_without_mfa — stapel_workspaces.services.suspend_memberships_without_mfa
+  Per-user no_mfa suspension sweep wired to auth's user.mfa_disabled — call to force it on demand.
 
 ## Extension points — what a product replaces, fork-free
 - AUTH_USER_MODEL [swappable_model]
