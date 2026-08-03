@@ -1148,6 +1148,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RoleListResponse"
+                },
+                "examples": {
+                  "RoleListResponse": {
+                    "value": {
+                      "capability_levels": {
+                        "members.provision": "high"
+                      }
+                    }
+                  }
                 }
               }
             },
@@ -1664,12 +1673,23 @@
       },
       "RoleListResponse": {
         "type": "object",
-        "description": "RoleListResponse(roles: List[stapel_workspaces.dto.RoleResponse] = <factory>)",
+        "description": "The effective role registry (builtin four + STAPEL_WORKSPACES overlay).",
         "properties": {
           "roles": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RoleResponse"
+            },
+            "description": "One entry per effective role, descending rank"
+          },
+          "capability_levels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Step-up level per namespaced capability string, builtin ``members.provision`` / ``members.password.reset`` / ``workspace.security.manage`` plus the deployment's ``STAPEL_WORKSPACES[\"CAPABILITY_LEVELS\"]`` overlay. A capability absent from this map is ``\"standard\"`` — the client-side default. Lets a frontend stop hardcoding its own copy of this registry",
+            "example": {
+              "members.provision": "high"
             }
           }
         }
@@ -1770,13 +1790,18 @@
       },
       "WorkspaceListResponse": {
         "type": "object",
-        "description": "WorkspaceListResponse(workspaces: List[stapel_workspaces.dto.WorkspaceResponse] = <factory>)",
+        "description": "The caller's own workspace list.",
         "properties": {
           "workspaces": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WorkspaceResponse"
-            }
+            },
+            "description": "The caller's active memberships (empty for a guest — see is_guest)"
+          },
+          "is_guest": {
+            "type": "boolean",
+            "description": "True when the caller holds NO active mandate anywhere (permissions.is_guest) — the wire form of the mandate-model vardict's guest predicate (2026-08-03), so a frontend can render the \"incomplete dashboard\" without re-deriving it from workspaces == []"
           }
         }
       },

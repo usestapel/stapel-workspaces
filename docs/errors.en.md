@@ -1,6 +1,6 @@
 # Errors — English
 
-`60` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`61` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -41,6 +41,7 @@
 | `error.403.membership_suspended` | 403 | `reason` | `fix_input` | Your membership in this workspace is suspended ({reason}) |
 | `error.403.missing_capability` | 403 | `capability` | `contact_support` | Your role does not include the {capability} capability in this workspace |
 | `error.403.network_blocked` | 403 | — | `contact_support` | Requests from this network are not allowed |
+| `error.403.role_exceeds_inviter_rank` | 403 | `role` | `fix_input` | You cannot grant a role that outranks your own ({role}) |
 | `error.403.verification_enrollment_required` | 403 | — | `verify` | Verification factor enrollment required |
 | `error.403.verification_required` | 403 | — | `verify` | Additional verification required |
 | `error.404.ad_not_found` | 404 | — | `retry` | Listing not found |

@@ -78,3 +78,50 @@ def require_capability(workspace_id, user_id, capability: str) -> WorkspaceMembe
     if membership and role_has_capability(membership.role, capability):
         return membership
     return None
+
+
+def has_active_mandate(user) -> bool:
+    """True if *user* holds at least one active mandate ANYWHERE.
+
+    Active = accepted AND not suspended (:meth:`MembershipQuerySet.active`),
+    in a workspace that has not been soft-deleted — the same filter
+    ``WorkspaceListCreateView.get`` applies to a member's own workspace
+    list, so this predicate and that endpoint always agree.
+
+    Deliberately workspace-agnostic — it does not take a ``workspace_id``.
+    A caller asking "may X act in WORKSPACE W" wants
+    :func:`get_membership`/:func:`has_capability` instead; this one answers
+    "does X hold a mandate ANYWHERE at all", which is a different question
+    (a member of workspace A is still mandate-less in workspace B).
+    """
+    if getattr(user, "is_anonymous", False):
+        return False
+    return (
+        WorkspaceMember.objects.active()
+        .filter(user=user, workspace__deleted_at__isnull=True)
+        .exists()
+    )
+
+
+def is_guest(user) -> bool:
+    """True if *user* is a guest: authenticated with NO active mandate anywhere.
+
+    THE canonical guest predicate (mandate-model vardict, 2026-08-03,
+    developer's decision #1: guest is a STATE, "authenticated but without an
+    active mandate", not a role). An anonymous session is guest by
+    construction (:func:`has_active_mandate` is unconditionally False for
+    it — it can hold no ``WorkspaceMember`` row at all); a REGISTERED
+    account with zero accepted, non-suspended memberships gets the exact
+    same answer, on purpose — the owner's decision was that both get "the
+    same incomplete dashboard as Anonymous".
+
+    Modeling this as a role was rejected during the vardict: a role needs a
+    ``WorkspaceMember`` row to live on, and minting one for every guest
+    would make guests count against seat billing, MFA suspension sweeps,
+    member listings and GDPR erasure — machinery built for people who
+    actually joined something. It also cannot express "member of org A,
+    guest of org B's resource", because a role is absolute and guestness is
+    relational (user × workspace). This predicate has neither problem: it
+    reads existing rows and creates none.
+    """
+    return not has_active_mandate(user)

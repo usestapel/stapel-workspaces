@@ -21,6 +21,7 @@ ERR_409_EMAIL_ALREADY_REGISTERED = "error.409.email_already_registered"
 ERR_503_AUTH_UNAVAILABLE = "error.503.auth_unavailable"
 ERR_403_MEMBERSHIP_SUSPENDED = "error.403.membership_suspended"
 ERR_400_INVALID_PROVISION_USERNAME = "error.400.invalid_provision_username"
+ERR_403_ROLE_EXCEEDS_INVITER_RANK = "error.403.role_exceeds_inviter_rank"
 
 WORKSPACES_ERRORS = {
     ERR_404_WORKSPACE_NOT_FOUND: "Workspace not found",
@@ -42,6 +43,7 @@ WORKSPACES_ERRORS = {
     ERR_503_AUTH_UNAVAILABLE: "The authentication service is unavailable; try again later",
     ERR_403_MEMBERSHIP_SUSPENDED: "Your membership in this workspace is suspended ({reason})",
     ERR_400_INVALID_PROVISION_USERNAME: "Invalid username for a provisioned account",
+    ERR_403_ROLE_EXCEEDS_INVITER_RANK: "You cannot grant a role that outranks your own ({role})",
 }
 
 # Machine-readable recovery hints (remediation) — the canonical "what to do"
@@ -125,6 +127,13 @@ WORKSPACES_ERRORS = {
 #   * 400 invalid_provision_username → fix_input. Genuine bad-input: the
 #     local username part fails the stock username canon (or smuggles a
 #     '/'); the admin picks a different local name. Matches the heuristic.
+#   * 403 role_exceeds_inviter_rank → fix_input. A self-serve precondition,
+#     not an authorization wall the caller cannot influence: the request
+#     names a role rank above the actor's own, and the fix is entirely
+#     within the caller's own request — pick a role at or below their rank.
+#     Retrying the identical request loops; no other party need be involved
+#     (matches the last_owner_cannot_be_removed precedent, not
+#     forbidden_workspace/missing_capability's contact_support).
 WORKSPACES_REMEDIATION = {
     ERR_404_WORKSPACE_NOT_FOUND: "fix_input",
     ERR_404_MEMBER_NOT_FOUND: "fix_input",
@@ -145,6 +154,7 @@ WORKSPACES_REMEDIATION = {
     ERR_503_AUTH_UNAVAILABLE: "wait_and_retry",
     ERR_403_MEMBERSHIP_SUSPENDED: "fix_input",
     ERR_400_INVALID_PROVISION_USERNAME: "fix_input",
+    ERR_403_ROLE_EXCEEDS_INVITER_RANK: "fix_input",
 }
 
 register_service_errors(WORKSPACES_ERRORS, remediation=WORKSPACES_REMEDIATION)

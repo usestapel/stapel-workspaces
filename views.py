@@ -63,7 +63,9 @@ from . import entitlements, services
 from .capabilities import (
     BUILTIN_ROLES,
     capabilities_for,
+    effective_capability_levels,
     effective_roles,
+    role_exceeds_rank,
     role_has_capability,
 )
 from .dto import (
@@ -91,6 +93,7 @@ from .errors import (
     ERR_403_LAST_OWNER,
     ERR_403_MEMBERSHIP_SUSPENDED,
     ERR_403_MISSING_CAPABILITY,
+    ERR_403_ROLE_EXCEEDS_INVITER_RANK,
     ERR_404_INVITATION_NOT_FOUND,
     ERR_404_MEMBER_NOT_FOUND,
     ERR_404_WORKSPACE_NOT_FOUND,
@@ -173,6 +176,24 @@ def _capability_check(membership, capability: str):
     if not role_has_capability(membership.role, capability):
         return StapelErrorResponse(
             403, ERR_403_MISSING_CAPABILITY, params={"capability": capability}
+        )
+    return None
+
+
+def _rank_check(actor_role: str, target_role: str):
+    """403 when *target_role* outranks *actor_role* (rank-gard).
+
+    Shared by invite/role-change/provision — every write that hands a role
+    to somebody. Deliberately does not special-case ``owner``: the
+    hardcoded owner-only gates at each call site already forbid granting or
+    touching ``owner`` outright, and this ceiling gives the SAME verdict for
+    it too (owner's rank always exceeds a non-owner actor's) — the two
+    checks agree rather than one silently depending on the other never
+    having been called for that case.
+    """
+    if role_exceeds_rank(target_role, actor_role):
+        return StapelErrorResponse(
+            403, ERR_403_ROLE_EXCEEDS_INVITER_RANK, params={"role": target_role}
         )
     return None
 
@@ -394,9 +415,13 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
             if ws.deleted_at:
                 continue
             workspaces.append(_workspace_to_dto(ws, my_role=m.role))
+        # Definitionally the same answer as permissions.is_guest(request.user)
+        # (same active()+deleted_at__isnull filter this loop already applied)
+        # — read off the list already fetched instead of a second query.
+        # test_guest_predicate.py pins the two never drifting apart.
         return StapelResponse(
             self.get_list_response_serializer_class()(
-                WorkspaceListResponse(workspaces=workspaces)
+                WorkspaceListResponse(workspaces=workspaces, is_guest=not workspaces)
             )
         )
 
@@ -651,15 +676,20 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
         if not ws:
             return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
-        err = _capability_check(
-            get_membership(ws.id, request.user.id, include_suspended=True),
-            "members.invite",
-        )
+        membership = get_membership(ws.id, request.user.id, include_suspended=True)
+        err = _capability_check(membership, "members.invite")
         if err:
             return err
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
+        # Rank-gard (mandate-model vardict 2026-08-03): `members.invite`
+        # says "may invite at all", not "up to which rank" — a role below
+        # admin that also carries the capability must not hand out a rank
+        # above its own holder's.
+        err = _rank_check(membership.role, data.role)
+        if err:
+            return err
         # Entitlement seam (spec §D2): capability first ("may YOU", 403),
         # then the org's plan ceiling ("may the ORG", 402). Seats = accepted
         # + pending live invitations + the invitations about to be created.
@@ -988,15 +1018,19 @@ class MemberProvisionView(SerializerSeamsMixin, APIView):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
         if not ws:
             return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
-        err = _capability_check(
-            get_membership(ws.id, request.user.id, include_suspended=True),
-            "members.provision",
-        )
+        membership = get_membership(ws.id, request.user.id, include_suspended=True)
+        err = _capability_check(membership, "members.provision")
         if err:
             return err
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
+        # Rank-gard (mandate-model vardict 2026-08-03): `members.provision`
+        # says "may provision at all", not "up to which rank" — same ceiling
+        # as invite/role-change.
+        err = _rank_check(membership.role, data.role)
+        if err:
+            return err
         # Entitlement seam (spec §D2): capability first ("may YOU", 403),
         # then the org's plan ("may the ORG", 402). Boolean key — plans
         # either include org-provisioned users or not.
@@ -1091,6 +1125,17 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
             workspace_id, request.user.id, Role.OWNER
         ):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        # Rank-gard (mandate-model vardict 2026-08-03): the capability check
+        # in `_resolve` only proved "may change roles at all", not "up to
+        # which rank" — see `_rank_check`. The owner-only gate above already
+        # covers every OWNER-involving case (an owner's own rank never
+        # exceeds itself), so this only bites the general case: a role
+        # below admin that also carries `members.role.change` handing out a
+        # rank above its own holder's.
+        actor_membership = get_membership(workspace_id, request.user.id)
+        err = _rank_check(actor_membership.role, new_role) if actor_membership else None
+        if err:
+            return err
         if member.role == Role.OWNER and new_role != Role.OWNER:
             others = (
                 WorkspaceMember.objects.filter(
@@ -1355,7 +1400,11 @@ class RoleListView(SerializerSeamsMixin, APIView):
         ]
         roles.sort(key=lambda r: (-r.rank, r.role))
         return StapelResponse(
-            self.get_response_serializer_class()(RoleListResponse(roles=roles))
+            self.get_response_serializer_class()(
+                RoleListResponse(
+                    roles=roles, capability_levels=effective_capability_levels()
+                )
+            )
         )
 
 

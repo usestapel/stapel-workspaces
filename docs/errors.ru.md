@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`60` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`61` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -41,6 +41,7 @@
 | `error.403.membership_suspended` | 403 | `reason` | `fix_input` | Ваше членство в этом рабочем пространстве приостановлено ({reason}) |
 | `error.403.missing_capability` | 403 | `capability` | `contact_support` | Ваша роль не включает право {capability} в этом рабочем пространстве |
 | `error.403.network_blocked` | 403 | — | `contact_support` | Запросы из этой сети не разрешены. |
+| `error.403.role_exceeds_inviter_rank` | 403 | `role` | `fix_input` | Вы не можете выдать роль, которая превышает вашу собственную ({role}) |
 | `error.403.verification_enrollment_required` | 403 | — | `verify` | Требуется регистрация фактора подтверждения. |
 | `error.403.verification_required` | 403 | — | `verify` | Требуется дополнительная проверка |
 | `error.404.ad_not_found` | 404 | — | `retry` | Объявление не найдено |

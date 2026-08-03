@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-curated layer of docs/capabilities.json (capability-config.md §2 p.3). The emitter (stapel_workspaces/_capabilities.py) merges this over the derived axes; this module's settings namespace (STAPEL_WORKSPACES) carries merge-registries and tuning, no CTO-facing axes — axes is empty by design — provides/requires/extension_points still feed the capability catalog. Keep language business-facing — it surfaces in CTO conversations, not in code.",
+  "_comment": "Hand-curated layer of docs/capabilities.json (capability-config.md §2 p.3). The emitter (stapel_workspaces/_capabilities.py) merges this over the derived axes; this module's settings namespace (STAPEL_WORKSPACES) mostly carries merge-registries and tuning. One CTO-facing axis as of the mandate-model vardict (2026-08-03, org-program #85) — STREET_LANDING_MODE — curated below; provides/requires/extension_points still feed the capability catalog. Keep language business-facing — it surfaces in CTO conversations, not in code.",
   "provides": "Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.",
   "requires": [
     {
@@ -50,5 +50,11 @@
       "summary": "Raise individual capabilities to the high step-up level via STAPEL_WORKSPACES[\"CAPABILITY_LEVELS\"] (merged over the builtin members.provision / workspace.security.manage); enforcement arrives with the provisioning wave."
     }
   ],
-  "axes": {}
+  "axes": {
+    "STREET_LANDING_MODE": {
+      "business_label": "What an un-invited signup lands with",
+      "summary": "Controls what a freshly registered account gets when it showed up on its own (no invitation) — read by resolve_landing_workspace(user, origin=\"street\"). \"personal\" (default) gives it its own Personal workspace and makes it that workspace's owner — the open self-serve / demo-cloud shape, unchanged from every release before this axis existed. \"none\" gives it no workspace at all: the account is a guest (permissions.is_guest) until an existing organization invites it — the closed-organization shape. Does not affect invited registrations, which always land through the separate accept-invitation path.",
+      "behavior": "personal: ensure_personal_workspace(user) runs, the account becomes OWNER of a new Personal workspace; none: no workspace is created, the account has zero memberships until invited."
+    }
+  }
 }

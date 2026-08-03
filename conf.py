@@ -22,6 +22,11 @@ Everything a host project previously had to fork is an override here::
         "INVITATION_THROTTLE": "30/min",
         # credits debited per provisioned org user (0 = free)
         "PROVISION_USER_CREDITS": 0,
+        # landing-mandate policy for an un-invited ("street") registration —
+        # "personal" (default, back-compat) or "none" (closed-organization:
+        # a fresh account is a guest until invited). See
+        # services.resolve_landing_workspace.
+        "STREET_LANDING_MODE": "personal",
     }
 
 Resolution per key: STAPEL_WORKSPACES dict → env → default.
@@ -49,6 +54,19 @@ DEFAULTS = {
     "INVITATION_THROTTLE": "30/min",
     # Credits debited per provisioned org user (0 = free).
     "PROVISION_USER_CREDITS": 0,
+    # Mandate axis for an un-invited ("street") registration — the policy
+    # `resolve_landing_workspace(user, origin=...)` reads for every origin
+    # OTHER than "invited" (org-program #85, mandate-model vardict 2026-08-03).
+    # * "personal" (default — back-compat): the pre-#85 behavior, unchanged
+    #   for every existing deployment that does not set this key. A fresh
+    #   account gets its own Personal workspace and is its OWNER — this is
+    #   the OSS/demo-cloud shape (self-serve signup, no invitation needed).
+    # * "none": a fresh account lands with NO workspace at all — a
+    #   registered account is a "guest" (see permissions.is_guest) until an
+    #   existing organization invites it. This is the closed-organization
+    #   shape; a host switches to it deliberately, it is never silently
+    #   turned on by a version bump.
+    "STREET_LANDING_MODE": "personal",
 }
 
 workspaces_settings = AppSettings(

@@ -103,6 +103,50 @@ def ensure_personal_workspace(user) -> Workspace:
     return ws
 
 
+def resolve_landing_workspace(user, *, origin: str = "street") -> Workspace | None:
+    """Canon landing-mandate policy for a freshly (re)appearing account.
+
+    Org-program #85 (mandate-model vardict, 2026-08-03): before this, the
+    ONLY caller-facing primitive was :func:`ensure_personal_workspace`,
+    which is unconditional — every product subscriber to ``user.registered``
+    that called it made "become OWNER of a personal workspace" the
+    inescapable fate of every signup. That is a product policy wearing a
+    library function's clothes: this canon is the seam that lets a host
+    CHOOSE the policy instead of forking the subscriber.
+
+    ``origin`` describes what the CALLER already knows about how the
+    account got here:
+
+    * ``"invited"`` — the account's membership was (or will be) created by
+      a *separate* mechanism, :func:`accept_invitation`. This canon is a
+      deliberate no-op for that origin: acting here too would either
+      duplicate the invite's own membership or race it. Returns ``None``.
+    * anything else (``"street"``, ``"anon"``, ...) — no invitation context;
+      the account showed up on its own. Governed by the
+      ``STREET_LANDING_MODE`` setting (default ``"personal"``):
+
+      - ``"personal"``: :func:`ensure_personal_workspace` — the historical
+        behavior, preserved byte-for-byte so an existing deployment that
+        never touches the setting sees no change at all.
+      - ``"none"``: no workspace is created; the account is a guest per
+        :func:`~stapel_workspaces.permissions.is_guest` until somebody
+        invites it. This is the closed-organization shape from the owner's
+        mandate-model decision — a host opts in explicitly, it is never the
+        default for an existing install.
+
+    Any other value of ``STREET_LANDING_MODE`` is treated as ``"none"``
+    (fail toward NOT minting an unrequested workspace, the safer side of an
+    admin typo — the opposite failure, silently making everyone an owner
+    again, is exactly what #85 exists to stop being the default).
+    """
+    if origin == "invited":
+        return None
+    mode = workspaces_settings.STREET_LANDING_MODE
+    if mode == "personal":
+        return ensure_personal_workspace(user)
+    return None
+
+
 def create_invitation(*, workspace: Workspace, email: str, role: str, invited_by) -> WorkspaceInvitation:
     invitation = WorkspaceInvitation.objects.create(
         workspace=workspace,

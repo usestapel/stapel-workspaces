@@ -1,5 +1,92 @@
 # Changelog
 
+## [0.15.0] — 2026-08-03
+
+Мандатная модель миттудея: посадка «с улицы», гость как состояние, rank-гард
+инвайтов, уровни капабилити наружу (org-program #85/#87, мандатная-модель
+вердикт архитектора 2026-08-03).
+
+### Ось политики посадки — `resolve_landing_workspace`
+
+До этого релиза единственным примитивом был `ensure_personal_workspace` —
+безусловный: каждый подписчик на `user.registered`, который его звал,
+делал «стать OWNER персонального воркспейса» неизбежной судьбой любой
+регистрации. `services.resolve_landing_workspace(user, *, origin)` —
+канон, который продукт зовёт ВМЕСТО этого:
+
+- `origin="invited"` — no-op (`None`); членство создаётся отдельным
+  механизмом, `accept_invitation`, независимо от значения оси.
+- любой другой origin (`"street"`, `"anon"`, ...) — читает новую настройку
+  `STAPEL_WORKSPACES["STREET_LANDING_MODE"]`: `"personal"` (дефолт,
+  побайтово прежнее поведение) зовёт `ensure_personal_workspace`; `"none"`
+  не создаёт ничего — аккаунт садится гостем до инвайта. Нераспознанное
+  значение падает в сторону `"none"` (fail-closed).
+
+**Дефолт `"personal"` — обязательное требование, не гипотеза**: на этой же
+версии стоит второй продукт (айронмемо), которому мандатная модель НЕ
+нужна — «персональные воркспейсы + автосоздание» остаётся его дефолтным
+поведением. Бамп до этой версии не требует от него ни новой настройки, ни
+миграции, ни правки подписчика: `STAPEL_WORKSPACES` он не трогает вовсе, и
+единственная точка входа (`management/commands/consume_auth_events.py`,
+которую он же и гоняет отдельным процессом) теперь зовёт канон вместо
+`ensure_personal_workspace` напрямую — с дефолтной настройкой результат
+побайтово тот же.
+
+Встроенный bus-консьюмер (`consume_auth_events`) — единственная точка
+входа оси для микросервисного деплоя без продуктового подписчика — тоже
+переведён на канон; раньше он звал `ensure_personal_workspace` напрямую и
+полностью игнорировал бы новую ось.
+
+### Гость — состояние, не роль
+
+`permissions.has_active_mandate(user)` / `is_guest(user)` — «аутентифицирован,
+но нет активного мандата ни в одном воркспейсе» (accepted, не suspended, в
+несилённом воркспейсе). Намеренно не привязан к workspace_id: участник
+организации A остаётся гостем организации B. `WorkspaceListCreateView`
+(`GET /`) теперь отдаёт `is_guest` рядом со списком воркспейсов — тот же
+предикат на проводе, без второго запроса (вычислен из уже пустого/непустого
+списка).
+
+### Rank-гард инвайтов, смены роли и провижена
+
+`members.invite` / `members.role.change` / `members.provision` проверяли
+только КАПАБИЛИТИ — «может выдавать роли вообще», не «до какого ранга».
+Сегодня это безопасно только потому, что капабилити держат admin(300)/owner
+— первая же продуктовая роль ниже admin с `members.invite` (владелец
+называет её «менеджер») могла бы выдать роль выше своей собственной.
+`capabilities.role_exceeds_rank(role, actor_role)` — новая проверка,
+`error.403.role_exceeds_inviter_rank`, поверх существующих
+owner-инвариантов (не заменяет их). Тесты `tests/test_rank_gate.py`
+воспроизводят дыру с продуктовой ролью ниже admin и фиксируют, что она
+красная на старом коде.
+
+### `GET /roles` отдаёт уровни капабилити
+
+`RoleListResponse.capability_levels` — эффективная карта
+capability → `"standard"|"high"` (builtins + `STAPEL_WORKSPACES["CAPABILITY_LEVELS"]`
+оверлей). Фронту больше не нужен собственный порт реестра
+(`workspaces-react/src/model/stepUp.ts`), который рисковал разъехаться с
+деплойным оверлеем.
+
+### Добавлено
+
+- `STAPEL_WORKSPACES["STREET_LANDING_MODE"]` — новая ось (capability-config.md
+  §2), `"personal"` (дефолт) | `"none"`.
+- `services.resolve_landing_workspace(user, *, origin)`.
+- `permissions.has_active_mandate(user)` / `is_guest(user)`.
+- `WorkspaceListResponse.is_guest`.
+- `capabilities.role_exceeds_rank(role, actor_role)`.
+- `RoleListResponse.capability_levels`.
+- `error.403.role_exceeds_inviter_rank`.
+- Публичный экспорт: `resolve_landing_workspace`, `is_guest`,
+  `has_active_mandate` (`__init__.py`).
+
+### Изменено
+
+- `management/commands/consume_auth_events.py` зовёт
+  `resolve_landing_workspace` вместо безусловного `ensure_personal_workspace`
+  — с дефолтной настройкой поведение не меняется.
+
 ## [0.14.2] — 2026-08-02
 
 Packaging/docs catch-up, no behavior change:

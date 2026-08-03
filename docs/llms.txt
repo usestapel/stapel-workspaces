@@ -1,9 +1,14 @@
-# stapel-workspaces 0.14.2
+# stapel-workspaces 0.15.0
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: extension points 5 · operations 21 · error codes 60.
+Contract: axes 1 · extension points 5 · operations 21 · error codes 61.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
+
+## Configuration axes — what a product switches on
+Settings keys; `default` is what you get by saying nothing. Turning an axis off unmounts the operations it gates.
+- STREET_LANDING_MODE [enum, default "personal"] — What an un-invited signup lands with
+  Controls what a freshly registered account gets when it showed up on its own (no invitation) — read by resolve_landing_workspace(user, origin="street"). "personal" (default) gives it its own Personal workspace and makes it that workspace's owner — the open self-serve / demo-cloud shape, unchanged from every release before this axis existed. "none" gives it no workspace at all: the account is a guest (permissions.is_guest) until an existing organization invites it — the closed-organization shape. Does not affect invited registrations, which always land through the separate accept-invitation path.
 
 ## Extension points — what a product replaces, fork-free
 - AUTH_USER_MODEL [swappable_model]
@@ -50,7 +55,7 @@ Paths are relative to `/workspaces/api/v1/`.
 - GET /{workspace_id} — workspaces_api_v1_retrieve_2
 - GET /roles — workspaces_api_v1_roles_retrieve
 
-## Error codes (60) — the StapelError envelope
+## Error codes (61) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.already_workspace_member [400] fix_input
 - error.400.bad_request [400] fix_input
@@ -89,6 +94,7 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.403.membership_suspended [403] fix_input {reason}
 - error.403.missing_capability [403] contact_support {capability}
 - error.403.network_blocked [403] contact_support
+- error.403.role_exceeds_inviter_rank [403] fix_input {role}
 - error.403.verification_enrollment_required [403] verify
 - error.403.verification_required [403] verify
 - error.404.ad_not_found [404] retry

@@ -1,7 +1,7 @@
 """Data Transfer Objects for workspaces API."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 
@@ -41,8 +41,16 @@ class WorkspaceResponse:
 
 
 @dataclass
-class WorkspaceListResponse:  # noqa: R004
+class WorkspaceListResponse:
+    """The caller's own workspace list.
+
+    Attributes:
+        workspaces: The caller's active memberships (empty for a guest — see is_guest).
+        is_guest: True when the caller holds NO active mandate anywhere (permissions.is_guest) — the wire form of the mandate-model vardict's guest predicate (2026-08-03), so a frontend can render the "incomplete dashboard" without re-deriving it from workspaces == []. Example: false
+    """
+
     workspaces: List[WorkspaceResponse] = field(default_factory=list)
+    is_guest: bool = False
 
 
 @dataclass
@@ -378,5 +386,13 @@ class RoleResponse:
 
 
 @dataclass
-class RoleListResponse:  # noqa: R004
+class RoleListResponse:
+    """The effective role registry (builtin four + STAPEL_WORKSPACES overlay).
+
+    Attributes:
+        roles: One entry per effective role, descending rank.
+        capability_levels: Step-up level per namespaced capability string, builtin ``members.provision`` / ``members.password.reset`` / ``workspace.security.manage`` plus the deployment's ``STAPEL_WORKSPACES["CAPABILITY_LEVELS"]`` overlay. A capability absent from this map is ``"standard"`` — the client-side default. Lets a frontend stop hardcoding its own copy of this registry. Example: {"members.provision": "high"}
+    """
+
     roles: List[RoleResponse] = field(default_factory=list)
+    capability_levels: Dict[str, str] = field(default_factory=dict)

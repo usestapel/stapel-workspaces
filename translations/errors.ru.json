@@ -36,6 +36,7 @@
   "error.403.membership_suspended": "Ваше членство в этом рабочем пространстве приостановлено ({reason})",
   "error.403.missing_capability": "Ваша роль не включает право {capability} в этом рабочем пространстве",
   "error.403.network_blocked": "Запросы из этой сети не разрешены.",
+  "error.403.role_exceeds_inviter_rank": "Вы не можете выдать роль, которая превышает вашу собственную ({role})",
   "error.403.verification_enrollment_required": "Требуется регистрация фактора подтверждения.",
   "error.403.verification_required": "Требуется дополнительная проверка",
   "error.404.ad_not_found": "Объявление не найдено",

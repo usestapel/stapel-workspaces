@@ -113,3 +113,30 @@ def role_rank(role: str) -> int | None:
         return None
     rank = entry.get("rank")
     return rank if isinstance(rank, int) else None
+
+
+def role_exceeds_rank(role: str, actor_role: str) -> bool:
+    """True if *role* outranks *actor_role* (rank-gard, mandate-model vardict 2026-08-03).
+
+    The gap this closes: ``members.invite`` / ``members.role.change`` /
+    ``members.provision`` are CAPABILITY gates — "may this role hand out
+    roles at all" — and say nothing about "up to which rank". Today that is
+    safe only by coincidence: the builtin capability sits on ``admin``
+    (rank 300) and ``owner``, so the highest an admin can grant is another
+    admin (equal rank). The coincidence breaks the moment a lower-rank role
+    also carries the capability (a product-defined "manager" role below
+    admin with ``members.invite``, e.g. the owner's "host OR manager"
+    mandate decision) — that role could otherwise hand out a rank above its
+    own. Callers use this BEFORE
+    creating the membership/invitation/provision row, alongside the
+    existing hardcoded owner-only invariants (which stay — this is an
+    additional ceiling, not a replacement).
+
+    Unknown ranks on EITHER side compare as exceeding (fail closed): a
+    ceiling that cannot be proven true must not silently become "allowed".
+    """
+    role_r = role_rank(role)
+    actor_r = role_rank(actor_role)
+    if role_r is None or actor_r is None:
+        return True
+    return role_r > actor_r

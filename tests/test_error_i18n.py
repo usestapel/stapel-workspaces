@@ -83,6 +83,9 @@ _MACHINE_RU = {
         "Ваше членство в этом рабочем пространстве приостановлено ({reason})",
     "error.400.invalid_provision_username":
         "Недопустимое имя пользователя для создаваемого аккаунта",
+    # Rank-gard (mandate-model vardict 2026-08-03, org-program #85).
+    "error.403.role_exceeds_inviter_rank":
+        "Вы не можете выдать роль, которая превышает вашу собственную ({role})",
 }
 
 

@@ -1,8 +1,24 @@
 {
   "module": "stapel-workspaces",
-  "version": "0.14.2",
+  "version": "0.15.0",
   "provides": "Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.",
-  "axes": [],
+  "axes": [
+    {
+      "key": "STREET_LANDING_MODE",
+      "kind": "enum",
+      "default": "personal",
+      "group": "workspaces.landing",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "personal: ensure_personal_workspace(user) runs, the account becomes OWNER of a new Personal workspace; none: no workspace is created, the account has zero memberships until invited."
+      },
+      "curated": {
+        "summary": "Controls what a freshly registered account gets when it showed up on its own (no invitation) — read by resolve_landing_workspace(user, origin=\"street\"). \"personal\" (default) gives it its own Personal workspace and makes it that workspace's owner — the open self-serve / demo-cloud shape, unchanged from every release before this axis existed. \"none\" gives it no workspace at all: the account is a guest (permissions.is_guest) until an existing organization invites it — the closed-organization shape. Does not affect invited registrations, which always land through the separate accept-invitation path.",
+        "business_label": "What an un-invited signup lands with"
+      }
+    }
+  ],
   "extension_points": [
     {
       "name": "Workspace.settings",

@@ -291,6 +291,15 @@
     "en": "Requests from this network are not allowed"
   },
   {
+    "code": "error.403.role_exceeds_inviter_rank",
+    "status": 403,
+    "params": [
+      "role"
+    ],
+    "remediation": "fix_input",
+    "en": "You cannot grant a role that outranks your own ({role})"
+  },
+  {
     "code": "error.403.verification_enrollment_required",
     "status": 403,
     "params": [],

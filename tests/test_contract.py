@@ -53,10 +53,11 @@ if _PY != (3, 12):
 REPO = Path(__file__).resolve().parent.parent
 DOCS = REPO / "docs"
 TRIAD = ("schema.json", "flows.json", "errors.json")
-# The fourth artifact (capability-config.md §2): this module has no settings
-# namespace, so the manifest carries axes: [] — provides/requires/
-# extension_points still feed the capability catalog. Emitted from the
-# urls.py gate registry + schema.json + the curated
+# The fourth artifact (capability-config.md §2): STAPEL_WORKSPACES carries
+# mostly merge-registries and tuning, plus ONE CTO-facing axis as of the
+# mandate-model vardict (2026-08-03, org-program #85) — STREET_LANDING_MODE
+# (personal|none, what an un-invited registration lands with). Emitted from
+# the urls.py gate registry + schema.json + the curated
 # docs/capabilities.meta.json. Same emit/drift discipline.
 # The fifth artifact (badge-canon §3): docs/llms.txt, rendered from
 # docs/capabilities.json (+schema/errors/flows) by stapel_tools.llms_txt.
@@ -198,9 +199,17 @@ def _capabilities() -> dict:
     return json.loads((DOCS / "capabilities.json").read_text())
 
 
-def test_capabilities_axes_empty_by_design():
-    """No settings namespace → a valid manifest with axes: [] (capability-config.md §2)."""
-    assert _capabilities()["axes"] == []
+def test_capabilities_has_the_street_landing_mode_axis():
+    """One CTO-facing axis (mandate-model vardict 2026-08-03, org-program #85).
+
+    STREET_LANDING_MODE is the only settings key promoted to an axis — every
+    other STAPEL_WORKSPACES key is a merge-registry (ROLES,
+    CAPABILITY_LEVELS) or a tuning knob (capability-config.md §2).
+    """
+    axes = {a["key"]: a for a in _capabilities()["axes"]}
+    assert set(axes) == {"STREET_LANDING_MODE"}
+    assert axes["STREET_LANDING_MODE"]["default"] == "personal"
+    assert axes["STREET_LANDING_MODE"]["kind"] == "enum"
 
 
 def test_capabilities_operations_total_matches_schema():

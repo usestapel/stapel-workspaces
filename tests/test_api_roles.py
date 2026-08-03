@@ -37,6 +37,32 @@ class TestRolesEndpoint:
             "role": "owner", "rank": 400, "capabilities": ["*"], "builtin": True,
         }
 
+    def test_returns_builtin_capability_levels(self, authed_client):
+        """The step-up ceiling (capability-config.md §A3) is deployment
+        metadata too: a frontend must stop hardcoding its own copy of
+        CAPABILITY_LEVELS (workspaces-react's stepUp.ts) to know which
+        capabilities demand a fresh step-up."""
+        resp = authed_client.get(f"{BASE}/roles")
+        assert resp.status_code == 200, resp.content
+        levels = resp.json()["capability_levels"]
+        assert levels == {
+            "members.provision": "high",
+            "members.password.reset": "high",
+            "workspace.security.manage": "high",
+        }
+        # A capability with no entry is "standard" client-side — not listed.
+        assert "members.invite" not in levels
+
+    @override_settings(
+        STAPEL_WORKSPACES={"CAPABILITY_LEVELS": {"records.purge": "high"}}
+    )
+    def test_capability_levels_overlay_is_merged_in(self, authed_client):
+        resp = authed_client.get(f"{BASE}/roles")
+        levels = resp.json()["capability_levels"]
+        assert levels["records.purge"] == "high"
+        # builtins survive the merge
+        assert levels["members.provision"] == "high"
+
     @override_settings(STAPEL_WORKSPACES={"ROLES": {"secretary": SECRETARY}})
     def test_overlay_role_listed_with_builtin_false(self, authed_client):
         resp = authed_client.get(f"{BASE}/roles")

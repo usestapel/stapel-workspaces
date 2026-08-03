@@ -21,6 +21,7 @@ class TestPublicAPI:
                 "suspend_member",
                 "unsuspend_member",
                 "security_settings_for",
+                "resolve_landing_workspace",
                 "CHECK_MEMBERSHIP",
                 "check_membership",
                 "CHECK_CAPABILITY",
@@ -30,6 +31,8 @@ class TestPublicAPI:
                 "role_has_capability",
                 "has_capability",
                 "require_capability",
+                "is_guest",
+                "has_active_mandate",
                 "check_org_entitlement",
                 "EntitlementResult",
                 "EVENT_WORKSPACE_PERSONAL_CREATED",
@@ -66,6 +69,14 @@ class TestPublicAPI:
         assert stapel_workspaces.has_capability is permissions.has_capability
         assert (
             stapel_workspaces.require_capability is permissions.require_capability
+        )
+        assert stapel_workspaces.is_guest is permissions.is_guest
+        assert (
+            stapel_workspaces.has_active_mandate is permissions.has_active_mandate
+        )
+        assert (
+            stapel_workspaces.resolve_landing_workspace
+            is services.resolve_landing_workspace
         )
         assert (
             stapel_workspaces.check_org_entitlement

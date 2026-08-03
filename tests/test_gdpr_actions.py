@@ -173,6 +173,24 @@ class TestConsumeAuthEventsCommand:
         cmd = self._command()
         cmd.handle_event(self._event({}))
         assert "missing user_id" in cmd.stderr.getvalue()
+
+    def test_none_landing_mode_creates_no_workspace(self, user):
+        """The bundled bus consumer routes through the same
+        STREET_LANDING_MODE axis as any custom subscriber (mandate-model
+        vardict 2026-08-03) — this is the ONLY wiring point for a
+        microservices deployment with no product-specific subscriber, so a
+        closed-organization host relying on it must actually get "no
+        workspace", not a silently-ignored setting.
+        """
+        from django.test import override_settings
+
+        with override_settings(
+            STAPEL_WORKSPACES={"STREET_LANDING_MODE": "none"}
+        ):
+            cmd = self._command()
+            cmd.handle_event(self._event({"user_id": str(user.id)}))
+        assert not Workspace.objects.filter(owner=user).exists()
+        assert "no workspace created" in cmd.stdout.getvalue()
         assert Workspace.objects.count() == 0
 
     def test_unknown_user_skipped(self, db):

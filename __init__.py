@@ -16,6 +16,11 @@ Service functions (``stapel_workspaces.services``):
   membership (spec §C3, 0.8).
 - ``security_settings_for`` — typed ``WorkspaceSecuritySettings`` view of
   ``Workspace.settings["security"]``.
+- ``resolve_landing_workspace`` — canon landing-mandate policy for a
+  freshly (re)appearing account (org-program #85, mandate-model vardict
+  2026-08-03): ``STAPEL_WORKSPACES["STREET_LANDING_MODE"]`` chooses
+  ``"personal"`` (default, back-compat) vs ``"none"`` (closed-organization
+  guest-until-invited).
 
 comm Function providers (``stapel_workspaces.functions``):
 - ``CHECK_MEMBERSHIP`` — name of the ``workspaces.check_membership``
@@ -31,6 +36,10 @@ Mandate model (``stapel_workspaces.capabilities`` / ``.permissions``):
   (wildcards ``"*"`` / ``"prefix.*"`` supported).
 - ``has_capability`` / ``require_capability`` — in-service checks against a
   user's accepted membership.
+- ``is_guest`` / ``has_active_mandate`` — the canonical guest predicate
+  (mandate-model vardict 2026-08-03): a guest is "authenticated but holds
+  no active mandate anywhere", a STATE, not a role. Workspace-agnostic on
+  purpose — a member of one workspace can still be a guest of another.
 
 Entitlement seam (``stapel_workspaces.entitlements``):
 - ``check_org_entitlement`` — ask billing whether the org's plan allows a
@@ -64,6 +73,7 @@ _EXPORTS = {
     "suspend_member": ".services",
     "unsuspend_member": ".services",
     "security_settings_for": ".services",
+    "resolve_landing_workspace": ".services",
     "CHECK_MEMBERSHIP": ".functions",
     "check_membership": ".functions",
     "CHECK_CAPABILITY": ".functions",
@@ -73,6 +83,8 @@ _EXPORTS = {
     "role_has_capability": ".capabilities",
     "has_capability": ".permissions",
     "require_capability": ".permissions",
+    "is_guest": ".permissions",
+    "has_active_mandate": ".permissions",
     "check_org_entitlement": ".entitlements",
     "EntitlementResult": ".entitlements",
     "EVENT_WORKSPACE_PERSONAL_CREATED": ".events",
