@@ -295,19 +295,45 @@ def _send_invitation_notification(
         inviter = invitation.invited_by
         inviter_name = ""
         if inviter is not None:
+            # Canonical name lives in stapel-profiles (same best-effort HTTP
+            # batch seam as the member roster's display_name, above) —
+            # ``get_full_name()`` is usually empty and ``username`` is a
+            # generated login that must never reach a human in an email.
+            # Found 2026-08 (owner report): an inviter with no profile name
+            # and no first/last name on the User row mailed the invitee a
+            # string like "u_8f2a1c" as their name. Drop straight to the
+            # email address instead — an address at least identifies who
+            # sent it, where a generated login identifies nothing.
+            profile_names = _fetch_profile_display_names([inviter.pk])
             inviter_name = (
-                (inviter.get_full_name() or "").strip()
-                or inviter.username
+                profile_names.get(str(inviter.pk))
+                or (inviter.get_full_name() or "").strip()
                 or inviter.email
                 or ""
             )
 
         invitee = User.objects.filter(email__iexact=invitation.email).first()
-        target = (
-            {"user_id": str(invitee.pk)}
-            if invitee is not None
-            else {"email": invitation.email}
-        )
+        # Always carry the invitation's own address — it is the one thing
+        # this function is certain of, and notifications treats an explicit
+        # ``email`` as an override over its own contact-table lookup
+        # (``recipient_email = email or (contact.email if contact else
+        # None)`` in stapel-notifications services.process_notification).
+        # ``user_id`` rides ALONGSIDE it (not instead of it) when the
+        # invitee already has an account, purely so notifications can apply
+        # that account's language/push/preference settings.
+        #
+        # Before this, a known invitee was targeted by user_id ALONE. That
+        # works only when stapel-notifications' own UserContact table
+        # happens to have a row for them — it does not look at the
+        # account's own email field at all. An invitee who registered
+        # before UserContact existed (or via a path that never wrote one)
+        # has no row there, so the invite silently produced zero deliverable
+        # channels: created (201), logged
+        # "no email address for this recipient", nobody notified. Found on
+        # the meettoday sandbox 2026-08 by inviting a pre-existing account.
+        target = {"email": invitation.email}
+        if invitee is not None:
+            target["user_id"] = str(invitee.pk)
         request_notification(
             notification_type,
             variables={

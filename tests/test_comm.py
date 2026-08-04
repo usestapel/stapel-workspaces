@@ -277,6 +277,39 @@ class TestInvitationNotification:
             == f"https://app.example.com/invite/{inv.token}"
         )
 
+    def test_registered_invitee_also_carries_email(
+        self, user, other_user, monkeypatch
+    ):
+        """A known invitee must be reachable even with no UserContact row.
+
+        stapel-notifications resolves the recipient address from its own
+        UserContact table ONLY when the request omits ``email`` — an
+        explicit ``email`` overrides that lookup
+        (``recipient_email = email or (contact.email if contact else
+        None)``). Before this test's fix, a registered invitee was
+        targeted by ``user_id`` alone: an account that predates
+        UserContact, or was never enriched into it, has no row there and
+        the invite produced zero deliverable channels (created 201, then
+        silently "no email address for this recipient" in the log).
+        Found on the meettoday sandbox 2026-08 by inviting a pre-existing
+        account. Carrying ``email`` alongside ``user_id`` always closes the
+        gap regardless of what UserContact does or doesn't have.
+        """
+        from stapel_workspaces import services
+
+        sent = []
+        monkeypatch.setattr(
+            "stapel_core.notifications.request_notification",
+            lambda notification_type, **kwargs: sent.append(kwargs) or True,
+        )
+        ws = services.create_workspace(user=user, name="Acme")
+        services.create_invitation(
+            workspace=ws, email=other_user.email, role=Role.MEMBER, invited_by=user
+        )
+        assert len(sent) == 1
+        assert sent[0]["user_id"] == str(other_user.pk)
+        assert sent[0]["email"] == other_user.email
+
     def test_unregistered_invitee_targeted_by_email(self, user, monkeypatch):
         from stapel_workspaces import services
 
@@ -292,6 +325,69 @@ class TestInvitationNotification:
         assert len(sent) == 1
         assert sent[0].get("user_id") is None
         assert sent[0]["email"] == "stranger@example.com"
+
+    def test_inviter_name_prefers_the_profile_over_the_generated_login(
+        self, user, other_user, settings, monkeypatch
+    ):
+        """The letter must never show the inviter's generated username.
+
+        ``user`` (the conftest fixture) has no first/last name — its
+        ``get_full_name()`` is empty — and a generated ``u-xxxxxxxx``
+        username. Before this test's fix, the fallback chain was
+        ``get_full_name() -> username -> email``, so that generated login
+        landed in the invitee's inbox as the inviter's name (owner report:
+        "пришло кривовато, какой-то сгенеренный юзернейм"). The canonical
+        name lives in stapel-profiles (0.16.0's best-effort batch read,
+        reused here rather than duplicated) and must win when present.
+        """
+        from stapel_workspaces import services
+
+        settings.PROFILES_SERVICE_URL = "http://stapel-profiles:8000"
+
+        class _Resp:
+            status_code = 200
+            headers = {"Content-Type": "application/json"}
+
+            def json(self):
+                return {
+                    "profiles": [
+                        {"user_id": str(user.pk), "display_name": "Ada Lovelace"}
+                    ],
+                    "missing": [],
+                }
+
+        monkeypatch.setattr(services.requests, "post", lambda *a, **k: _Resp())
+
+        sent = []
+        monkeypatch.setattr(
+            "stapel_core.notifications.request_notification",
+            lambda notification_type, **kwargs: sent.append(kwargs) or True,
+        )
+        ws = services.create_workspace(user=user, name="Acme")
+        services.create_invitation(
+            workspace=ws, email=other_user.email, role=Role.MEMBER, invited_by=user
+        )
+        assert sent[0]["variables"]["inviter_name"] == "Ada Lovelace"
+
+    def test_inviter_name_falls_back_to_email_not_the_generated_login(
+        self, user, other_user, settings, monkeypatch
+    ):
+        """No profile, no full name -> the email, never ``username``."""
+        from stapel_workspaces import services
+
+        settings.PROFILES_SERVICE_URL = ""  # integration off -> {} every time
+
+        sent = []
+        monkeypatch.setattr(
+            "stapel_core.notifications.request_notification",
+            lambda notification_type, **kwargs: sent.append(kwargs) or True,
+        )
+        ws = services.create_workspace(user=user, name="Acme")
+        services.create_invitation(
+            workspace=ws, email=other_user.email, role=Role.MEMBER, invited_by=user
+        )
+        assert sent[0]["variables"]["inviter_name"] == user.email
+        assert sent[0]["variables"]["inviter_name"] != user.username
 
     def test_notification_failure_does_not_break_invitation(self, user, monkeypatch):
         from stapel_workspaces import services
