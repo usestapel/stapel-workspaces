@@ -21,6 +21,11 @@
       "module": "stapel-billing",
       "optional": true,
       "reason": "answers billing.check_entitlement for org creation and member-seat ceilings; without it every entitlement check degrades to allow (OSS default), decoupled via the comm bus"
+    },
+    {
+      "module": "stapel-profiles",
+      "optional": true,
+      "reason": "the canonical source of a member's display name — this module stores only a name HINT typed at invite/provision time (WorkspaceMember.display_name_hint), never a second copy of the real field; MemberResponse.display_name reads stapel-profiles' public POST /batch over HTTP (PROFILES_SERVICE_URL) and falls back to the hint when profiles is absent, unreachable, or has no name yet for the user; no comm Function either way (profiles registers none for this), so this is a plain best-effort HTTP read, never a hard import — degrades to hint-only behavior with zero configuration"
     }
   ],
   "extension_points": [

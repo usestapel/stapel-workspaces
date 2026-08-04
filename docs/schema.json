@@ -340,7 +340,8 @@
                       "role": "member",
                       "status": "pending",
                       "expires_at": "2026-07-31T10:00:00Z",
-                      "invited_by_id": "0192a..."
+                      "invited_by_id": "0192a...",
+                      "display_name": "Ada Lovelace"
                     }
                   }
                 }
@@ -398,7 +399,8 @@
                       "role": "member",
                       "status": "pending",
                       "expires_at": "2026-07-31T10:00:00Z",
-                      "invited_by_id": "0192a..."
+                      "invited_by_id": "0192a...",
+                      "display_name": "Ada Lovelace"
                     }
                   }
                 }
@@ -456,7 +458,8 @@
                       "role": "member",
                       "status": "pending",
                       "expires_at": "2026-07-31T10:00:00Z",
-                      "invited_by_id": "0192a..."
+                      "invited_by_id": "0192a...",
+                      "display_name": "Ada Lovelace"
                     }
                   }
                 }
@@ -542,7 +545,8 @@
                   "MemberResponse": {
                     "value": {
                       "id": "0192...",
-                      "role": "admin"
+                      "role": "admin",
+                      "display_name": "Ada Lovelace"
                     }
                   }
                 }
@@ -615,7 +619,8 @@
                   "MemberResponse": {
                     "value": {
                       "id": "0192...",
-                      "role": "admin"
+                      "role": "admin",
+                      "display_name": "Ada Lovelace"
                     }
                   }
                 }
@@ -904,7 +909,8 @@
                   "MemberResponse": {
                     "value": {
                       "id": "0192...",
-                      "role": "admin"
+                      "role": "admin",
+                      "display_name": "Ada Lovelace"
                     }
                   }
                 }
@@ -1119,7 +1125,8 @@
                   "MemberResponse": {
                     "value": {
                       "id": "0192...",
-                      "role": "admin"
+                      "role": "admin",
+                      "display_name": "Ada Lovelace"
                     }
                   }
                 }
@@ -1311,6 +1318,12 @@
             "nullable": true,
             "description": "UUID of the admin who sent it; null when that account is gone",
             "example": "0192a..."
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name hint typed for this invitee at invite time, if any; null otherwise",
+            "example": "Ada Lovelace"
           }
         },
         "required": [
@@ -1330,6 +1343,13 @@
         "type": "object",
         "description": "Invite payload.",
         "properties": {
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name hint for the invitee (this invite's \"Имя\" field), applied to every email in this request. Optional — an invite without one behaves exactly as before. NOT written into stapel-profiles directly (that store is the invitee's own): held on the invitation, copied onto the member at accept time, and shown only until stapel-profiles has a real name for the person",
+            "example": "Ada Lovelace",
+            "maxLength": 35
+          },
           "emails": {
             "type": "array",
             "items": {
@@ -1486,6 +1506,12 @@
             "type": "string",
             "nullable": true,
             "description": "Why the membership is suspended (canonical value no_mfa); null while active"
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Best-effort display name — a live lookup in stapel-profiles when it is installed and has one, else the name typed at invite/provision time (never both, never invented when neither exists). Null when nobody has one yet",
+            "example": "Ada Lovelace"
           }
         },
         "required": [

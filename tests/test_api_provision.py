@@ -189,6 +189,22 @@ class TestProvisionHappyPath:
         assert resp.json()["generated_password"] is None
         assert fake_auth_provision["calls"][-1]["password"] == "Chosen-pass-1"
 
+    def test_display_name_forwarded_and_stored_as_hint(
+        self, authed_client, user, sensitive_grant, fake_auth_provision
+    ):
+        """Same name-hint treatment as an invitation (meettoday audit,
+        2026-08-04): forwarded to auth.provision_user (unchanged) AND kept
+        on the member as ``display_name_hint`` so the roster has something
+        to show besides a synthetic username until stapel-profiles has a
+        real name for the account."""
+        ws = _ws(user)
+        resp = _provision(authed_client, ws, {"display_name": "Jane Doe"})
+        assert resp.status_code == 201, resp.content
+        assert fake_auth_provision["calls"][-1]["display_name"] == "Jane Doe"
+        (created,) = fake_auth_provision["created"]
+        member = WorkspaceMember.objects.get(workspace=ws, user=created)
+        assert member.display_name_hint == "Jane Doe"
+
 
 @pytest.mark.django_db
 class TestProvisionEmailNuance:

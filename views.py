@@ -225,7 +225,7 @@ def _workspace_to_dto(
     )
 
 
-def _member_to_dto(m: WorkspaceMember) -> MemberResponse:
+def _member_to_dto(m: WorkspaceMember, display_name: str | None = None) -> MemberResponse:
     return MemberResponse(
         id=m.id,
         workspace_id=m.workspace_id,
@@ -238,7 +238,26 @@ def _member_to_dto(m: WorkspaceMember) -> MemberResponse:
         provisioned=m.provisioned,
         suspended_at=m.suspended_at.isoformat() if m.suspended_at else None,
         suspension_reason=m.suspension_reason or None,
+        display_name=display_name,
     )
+
+
+def _member_display_names(members) -> dict:
+    """Resolve display names for a batch of members (stapel-profiles first).
+
+    stapel-profiles wins whenever it has a name (a live, canonical answer);
+    ``display_name_hint`` — the name typed at invite/provision time — is the
+    fallback for exactly the gap that leaves open: profiles not installed in
+    this deployment, unreachable, or simply not having caught up yet. Never
+    both, never invented when neither exists.
+    """
+    members = list(members)
+    names = services._fetch_profile_display_names(m.user_id for m in members)
+    for m in members:
+        key = str(m.user_id)
+        if not names.get(key) and m.display_name_hint:
+            names[key] = m.display_name_hint
+    return names
 
 
 def _member_display_name_expr():
@@ -359,6 +378,7 @@ def _invitation_to_dto(inv: WorkspaceInvitation) -> InvitationResponse:
         revoked_at=inv.revoked_at.isoformat() if inv.revoked_at else None,
         created_at=inv.created_at.isoformat(),
         invited_by_id=inv.invited_by_id,
+        display_name=inv.display_name_hint or None,
     )
 
 
@@ -655,7 +675,11 @@ class MemberListView(SerializerSeamsMixin, APIView):
         paginator = MemberPagination()
         page = paginator.paginate_queryset(members, request)
         response_cls = self.get_response_serializer_class()
-        items = [response_cls(_member_to_dto(m)).data for m in page]
+        names = _member_display_names(page)
+        items = [
+            response_cls(_member_to_dto(m, names.get(str(m.user_id)))).data
+            for m in page
+        ]
         return paginator.get_paginated_response(items)
 
 
@@ -708,7 +732,11 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
             )
         invitations = [
             services.create_invitation(
-                workspace=ws, email=e, role=data.role, invited_by=request.user
+                workspace=ws,
+                email=e,
+                role=data.role,
+                invited_by=request.user,
+                display_name=getattr(data, "display_name", None),
             )
             for e in data.emails
         ]
@@ -1174,7 +1202,11 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
             action="updated",
         )
         return StapelResponse(
-            self.get_response_serializer_class()(_member_to_dto(member))
+            self.get_response_serializer_class()(
+                _member_to_dto(
+                    member, _member_display_names([member]).get(str(member.user_id))
+                )
+            )
         )
 
     @extend_schema(responses={204: None})
@@ -1472,7 +1504,11 @@ class InvitationAcceptView(SerializerSeamsMixin, APIView):
         except ValueError:
             return StapelErrorResponse(400, ERR_400_INVITATION_ALREADY_USED)
         return StapelResponse(
-            self.get_response_serializer_class()(_member_to_dto(member))
+            self.get_response_serializer_class()(
+                _member_to_dto(
+                    member, _member_display_names([member]).get(str(member.user_id))
+                )
+            )
         )
 
 
@@ -1628,7 +1664,11 @@ class InternalMembershipView(SerializerSeamsMixin, APIView):
         if not member:
             return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         return StapelResponse(
-            self.get_response_serializer_class()(_member_to_dto(member))
+            self.get_response_serializer_class()(
+                _member_to_dto(
+                    member, _member_display_names([member]).get(str(member.user_id))
+                )
+            )
         )
 
 

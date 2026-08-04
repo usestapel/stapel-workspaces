@@ -110,6 +110,14 @@ class MemberResponseSerializer(StapelDataclassSerializer):
 
 
 class MemberInviteRequestSerializer(StapelDataclassSerializer):
+    # Explicit override: the auto-generated field for an `Optional[str] =
+    # None` dataclass attribute allows null but not BLANK — a "   " (or ""
+    # after normalization) display_name must be accepted and treated as
+    # "no hint given" (validate_display_name below), not rejected outright.
+    display_name = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=35
+    )
+
     class Meta:
         dataclass = MemberInviteRequest
 
@@ -125,6 +133,21 @@ class MemberInviteRequestSerializer(StapelDataclassSerializer):
         if not value:
             raise serializers.ValidationError("At least one email is required")  # noqa: R002
         return [e.lower().strip() for e in value]
+
+    def validate_display_name(self, value):
+        # A hint, not the canonical name (that canon — including its own
+        # character/emoji rules — lives in stapel-profiles; this module does
+        # not import it, per this module's own "never import a sibling
+        # module" convention (MODULE.md), so it does not re-derive that
+        # validator here). The length ceiling (35, matching stapel-profiles'
+        # Profile.display_name) is enforced by the field declaration above;
+        # this just normalizes "given but blank" to "no hint" — a stray
+        # space in the modal must not read as a distinct choice from
+        # leaving the field empty.
+        if value is None:
+            return value
+        value = value.strip()
+        return value or None
 
 
 class MemberInviteResponseSerializer(StapelDataclassSerializer):

@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.16.0] — 2026-08-04
+
+Имя участника (аудит фронта миттудея): приглашение с полем «Имя» никуда не
+доезжало, а список участников не мог показать ничего, кроме почты.
+
+### `display_name` в приглашении и в ответе об участнике
+
+- `MemberInviteRequest` принимает необязательный `display_name` («Имя» в
+  модалке приглашения) — старый вызов без него работает как раньше.
+  `MemberResponse` теперь отдаёт `display_name`.
+- Имя пользователя НЕ дублируется в этом модуле — оно живёт в
+  stapel-profiles (docs/llms.txt). Здесь хранится только ПОДСКАЗКА,
+  типизированная при приглашении/провижининге — новое поле
+  `display_name_hint` на `WorkspaceInvitation` и `WorkspaceMember`,
+  скопированное на участника ровно один раз, при создании (повторное
+  принятие приглашения его не перезаписывает).
+- `MemberResponse.display_name` предпочитает живой ответ stapel-profiles
+  (`POST /profiles/api/v1/batch`, best-effort HTTP через флаг-настройку
+  `PROFILES_SERVICE_URL` — та же плоская конвенция, что и `FRONTEND_URL`)
+  и падает на `display_name_hint`, когда profiles не установлен,
+  недоступен или ещё не знает имени. Ни импорта `stapel_profiles`, ни
+  comm Function — модуль профилей их не регистрирует; используется
+  `stapel_core.django.peers.service_answered`, чтобы роутинговый 404
+  не читался как «имени нет».
+- `ProvisionMemberRequest.display_name` (уже существовавшее поле)
+  теперь тоже оседает в `display_name_hint` — та же подсказка, тот же
+  повод её показать.
+- `GET .../invitations` — админский список ожидающих — тоже отдаёт
+  `display_name` на каждой строке.
+
+### Известный смежный разрыв — не в этом модуле
+
+Для НЕЗАРЕГИСТРИРОВАННОГО приглашённого (claim-флоу,
+`issue_invitation_login_grant` → `auth.issue_login_grant` →
+`POST /grant/exchange/`) имя не долетает до профиля даже после этого
+релиза: грант в stapel-auth (`LoginGrantService`) не несёт
+`display_name` — ни в схеме `auth.issue_login_grant`, ни в кэше гранта,
+ни в вызове `_notify_user_registered()` на exchange. Это ровно тот же
+`display_name`, который уже проходит по пути `auth.provision_user`
+(`_notify_user_registered(display_name=...)` там вызывается). Правка
+нужна в stapel-auth (три места, все указаны в services.py рядом с
+`issue_invitation_login_grant`), не здесь — вне мандата этого релиза.
+
 ## [0.15.0] — 2026-08-03
 
 Мандатная модель миттудея: посадка «с улицы», гость как состояние, rank-гард

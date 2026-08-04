@@ -1,10 +1,12 @@
 """Service-layer helpers for workspaces (creation, invites, provision, suspension)."""
 
 import logging
+import os
 import uuid
 from datetime import timedelta
 from secrets import token_urlsafe
 
+import requests
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -16,6 +18,7 @@ from stapel_core.comm.exceptions import (
     FunctionNotRegistered,
     FunctionRouteNotConfigured,
 )
+from stapel_core.django.peers import service_answered
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 
@@ -147,7 +150,98 @@ def resolve_landing_workspace(user, *, origin: str = "street") -> Workspace | No
     return None
 
 
-def create_invitation(*, workspace: Workspace, email: str, role: str, invited_by) -> WorkspaceInvitation:
+# ---------------------------------------------------------------------------
+# stapel-profiles integration (read-only, best-effort, HTTP — not an import)
+# ---------------------------------------------------------------------------
+#
+# This module's own convention (MODULE.md: "Stapel modules never import each
+# other; all cross-module communication goes through stapel-core") rules out
+# ``from stapel_profiles... import ...`` here — same as every other sibling
+# seam in this file (auth, notifications, billing), all of which go through
+# stapel-core instead of a direct import. stapel-profiles registers no comm
+# Function for this (its own docs/capabilities.json surface is HTTP-operation
+# only), so the mechanism is a plain HTTP call to its public, AllowAny
+# ``POST /profiles/api/v1/batch`` — built by that module for exactly this
+# "resolve many ids at once" shape — using stapel-core's own peer-client
+# discipline (``service_answered``: a routing 404 is never a verdict) rather
+# than reading a network hiccup as "nobody has a name".
+#
+# PROFILES_SERVICE_URL follows the same flat-setting canon as FRONTEND_URL
+# above and stapel-core's WORKSPACES_SERVICE_URL: unset (the default) turns
+# the whole integration off, no network attempt is ever made, and every
+# caller falls back to WorkspaceMember.display_name_hint alone.
+def _profiles_service_url() -> str:
+    return (
+        getattr(settings, "PROFILES_SERVICE_URL", "")
+        or os.environ.get("PROFILES_SERVICE_URL", "")
+    ).rstrip("/")
+
+
+def _fetch_profile_display_names(user_ids) -> dict:
+    """Best-effort ``{str(user_id): display_name}`` from stapel-profiles.
+
+    Only ids with a NON-EMPTY name there are present in the result — an id
+    with no profile row, or an empty ``display_name``, is simply absent,
+    never a placeholder (mirrors ``ProfileBatchResponse``'s own "missing is
+    not invented" contract). Callers fall back further to
+    ``WorkspaceMember.display_name_hint`` for anything absent here.
+
+    Best-effort like every other optional cross-service seam this module
+    already has (auth/notifications/billing): ``PROFILES_SERVICE_URL``
+    unset, a transport error, a routing miss (this service and
+    stapel-profiles disagree about the path — see ``service_answered``), or
+    any non-200 all degrade to ``{}`` rather than raising. A member's name
+    is cosmetic; it is never worth failing a roster over.
+    """
+    ids = list(dict.fromkeys(str(uid) for uid in user_ids))
+    if not ids:
+        return {}
+    base = _profiles_service_url()
+    if not base:
+        return {}
+    try:
+        headers = {"Accept": "application/json"}
+        api_key = os.environ.get("SERVICE_API_KEY", "")
+        if api_key:
+            headers["X-API-KEY"] = api_key
+        resp = requests.post(
+            f"{base}/profiles/api/v1/batch",
+            json={"user_ids": ids},
+            headers=headers,
+            timeout=3.0,
+        )
+        if resp.status_code == 404 and not service_answered(resp):
+            logger.warning(
+                "stapel-profiles batch endpoint not found at %s (routing, "
+                "not the view — path skew between this service and "
+                "stapel-profiles)",
+                base,
+            )
+            return {}
+        if resp.status_code != 200:
+            logger.warning(
+                "stapel-profiles batch lookup failed: HTTP %s", resp.status_code
+            )
+            return {}
+        payload = resp.json()
+        return {
+            p["user_id"]: p["display_name"]
+            for p in payload.get("profiles", [])
+            if p.get("display_name")
+        }
+    except Exception:
+        logger.warning("stapel-profiles batch lookup errored", exc_info=True)
+        return {}
+
+
+def create_invitation(
+    *,
+    workspace: Workspace,
+    email: str,
+    role: str,
+    invited_by,
+    display_name: str | None = None,
+) -> WorkspaceInvitation:
     invitation = WorkspaceInvitation.objects.create(
         workspace=workspace,
         email=email.lower().strip(),
@@ -156,6 +250,10 @@ def create_invitation(*, workspace: Workspace, email: str, role: str, invited_by
         token=token_urlsafe(32),
         expires_at=timezone.now()
         + timedelta(days=workspaces_settings.INVITATION_TTL_DAYS),
+        # A NAME HINT (this invite's "Имя" field), not the canonical name —
+        # see WorkspaceMember.display_name_hint's docstring for why this
+        # module stores it at all despite the name living in stapel-profiles.
+        display_name_hint=(display_name or "").strip(),
     )
     _send_invitation_notification(invitation)
     return invitation
@@ -245,6 +343,26 @@ def issue_invitation_login_grant(
     ``FunctionRouteNotConfigured``) propagate to the caller — an invite
     flow without auth is meaningless, so the view degrades to 503, never
     to allow. The returned token is a credential: never log it.
+
+    KNOWN GAP (meettoday audit, 2026-08-04), not fixable from this side:
+    ``invitation.display_name_hint`` is deliberately NOT forwarded in the
+    payload below. auth's ``ISSUE_LOGIN_GRANT_SCHEMA`` (functions.py) has no
+    ``display_name`` property, ``LoginGrantService.issue``/the cache payload
+    never stores one, and ``LoginGrantService.exchange`` calls
+    ``_notify_user_registered(user, language=...)`` WITHOUT a
+    ``display_name`` — so even if this call carried the hint, it would be
+    silently dropped three times over before ``user.registered`` fires.
+    Contrast ``auth.provision_user``, which already threads a
+    ``display_name`` through to that same
+    ``_notify_user_registered(display_name=...)`` call — this is the exact
+    same plumbing, just missing on the grant path. Fixing it is a
+    stapel-auth change (add the schema property, store it on the grant,
+    pass it through on exchange), out of this module's repo. Until then, an
+    invite accepted via the claim flow (a brand-new account) keeps its name
+    ONLY as ``WorkspaceMember.display_name_hint`` — never in stapel-profiles
+    — whereas an invite accepted by an ALREADY-registered account gets the
+    hint on the membership row exactly the same way either way (see
+    ``accept_invitation``).
     """
     payload: dict = {
         "email": invitation.email,
@@ -407,7 +525,17 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
     member, _ = WorkspaceMember.objects.get_or_create(
         workspace=locked.workspace,
         user=user,
-        defaults={"role": locked.role, "accepted_at": timezone.now()},
+        # display_name_hint only applies on CREATE (get_or_create's
+        # defaults never touch an existing row) — accepting an invitation a
+        # second time (already_member above) must not clobber whatever name
+        # the member already carries. This is the "не потерять имя по
+        # дороге" step: the hint typed into the invite modal survives all
+        # the way to the membership row it becomes.
+        defaults={
+            "role": locked.role,
+            "accepted_at": timezone.now(),
+            "display_name_hint": locked.display_name_hint,
+        },
     )
     # The org's first-login demands, applied to the joining account (#90).
     # Inside the transaction on purpose: if auth cannot be reached, the
@@ -605,6 +733,11 @@ def provision_member(
             invited_by=provisioned_by,
             accepted_at=timezone.now(),
             provisioned=True,
+            # Same name-hint treatment as an invitation (see
+            # WorkspaceMember.display_name_hint) — the admin already typed
+            # this name once for auth.provision_user above; showing it in
+            # the member list too costs nothing extra.
+            display_name_hint=(display_name or "").strip(),
         )
         # Transactional outbox: leaves iff this transaction commits. The
         # audit/metering signal for the provisioning action — no

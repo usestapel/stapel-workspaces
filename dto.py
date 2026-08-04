@@ -91,6 +91,7 @@ class MemberResponse:
         provisioned: Whether this is an org-created (synthetic) member joined via members/provision. Example: false
         suspended_at: ISO 8601 suspension timestamp; null while active. Suspension is not removal — the role stays but access is closed. Example: null
         suspension_reason: Why the membership is suspended (canonical value no_mfa); null while active.
+        display_name: Best-effort display name — a live lookup in stapel-profiles when it is installed and has one, else the name typed at invite/provision time (never both, never invented when neither exists). Null when nobody has one yet. Example: Ada Lovelace
     """
 
     id: UUID
@@ -104,6 +105,7 @@ class MemberResponse:
     provisioned: bool = False
     suspended_at: Optional[str] = None
     suspension_reason: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 @dataclass
@@ -113,10 +115,12 @@ class MemberInviteRequest:
     Attributes:
         emails: One or more emails to invite. Example: ["alice@example.com"]
         role: Role to grant on acceptance. Example: member
+        display_name: Name hint for the invitee (this invite's "Имя" field), applied to every email in this request. Optional — an invite without one behaves exactly as before. NOT written into stapel-profiles directly (that store is the invitee's own): held on the invitation, copied onto the member at accept time, and shown only until stapel-profiles has a real name for the person. Example: Ada Lovelace
     """
 
     emails: List[str]
     role: str = "member"
+    display_name: Optional[str] = None
 
 
 @dataclass
@@ -150,6 +154,7 @@ class InvitationResponse:
         revoked_at: ISO 8601 revocation time (the workspace withdrew it); null unless revoked.
         created_at: ISO 8601 creation time.
         invited_by_id: UUID of the admin who sent it; null when that account is gone. Example: 0192a...
+        display_name: Name hint typed for this invitee at invite time, if any; null otherwise. Example: Ada Lovelace
     """
 
     id: UUID
@@ -163,6 +168,7 @@ class InvitationResponse:
     revoked_at: Optional[str]
     created_at: str
     invited_by_id: Optional[UUID] = None
+    display_name: Optional[str] = None
 
 
 @dataclass

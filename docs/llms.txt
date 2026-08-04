@@ -1,4 +1,4 @@
-# stapel-workspaces 0.15.0
+# stapel-workspaces 0.16.0
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
@@ -105,6 +105,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - stapel-billing (optional) — answers billing.check_entitlement for org creation and member-seat ceilings; without it every entitlement check degrades to allow (OSS default), decoupled via the comm bus
 - stapel-core (required) — comm bus (workspace.* emits, workspaces.check_membership Function, user.registered consumer), JWT authentication, GDPR provider registry
 - stapel-notifications (optional) — delivers the letters this module requests via request_notification: workspace.invitation (create), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error
+- stapel-profiles (optional) — the canonical source of a member's display name — this module stores only a name HINT typed at invite/provision time (WorkspaceMember.display_name_hint), never a second copy of the real field; MemberResponse.display_name reads stapel-profiles' public POST /batch over HTTP (PROFILES_SERVICE_URL) and falls back to the hint when profiles is absent, unreachable, or has no name yet for the user; no comm Function either way (profiles registers none for this), so this is a plain best-effort HTTP read, never a hard import — degrades to hint-only behavior with zero configuration
 
 ## HTTP operations (21) — call by operationId, never by a typed path
 Paths are relative to `/workspaces/api/v1/`.
