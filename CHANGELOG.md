@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.16.2] — 2026-08-05
+
+### Fixed
+
+- The stapel-profiles seam now looks in-process before it looks over HTTP.
+  `_fetch_profile_display_names` read `PROFILES_SERVICE_URL` and returned
+  `{}` on the first line when it was unset — which is always, in a monolith:
+  nobody points a service at itself. So a deployment with `stapel_profiles`
+  right there in `INSTALLED_APPS` never found a name, and every caller
+  degraded to a bare email address.
+
+  Measured live on meettoday (2026-08-05). The product had already grown a
+  workaround for it — a `profile.changed` subscriber copying `display_name`
+  into `User.first_name` purely so Django's `get_full_name()` would fire —
+  written, per its own docstring, because "you cannot patch the library, it
+  is installed from a package". The library was the right place; it just
+  could not see a module sitting next to it. A cross-service seam that only
+  knows how to make an HTTP call is half a seam.
+
 ## [0.16.1] — 2026-08-05
 
 Два дефекта со стенда (sandbox.meettoday.app): приглашение существующему

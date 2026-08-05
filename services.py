@@ -196,6 +196,34 @@ def _fetch_profile_display_names(user_ids) -> dict:
     ids = list(dict.fromkeys(str(uid) for uid in user_ids))
     if not ids:
         return {}
+
+    # In-process FIRST. This seam was written as if stapel-profiles were
+    # always a remote service, so a monolith that has `stapel_profiles` right
+    # there in INSTALLED_APPS still got `{}` — PROFILES_SERVICE_URL is unset
+    # (nobody points a service at itself), the HTTP branch bails on line one,
+    # and the caller silently degrades to an email address. Measured live on
+    # meettoday 2026-08-05: profiles installed in the same process, name
+    # never found, invitation emails addressed from a bare email — which is
+    # why the product had grown its own `profile.changed` subscriber copying
+    # display_name into `User.first_name` just to make `get_full_name()` fire.
+    # A cross-service seam that cannot see a module sitting next to it is
+    # half a seam.
+    try:
+        from django.apps import apps as _django_apps
+
+        if _django_apps.is_installed("stapel_profiles"):
+            Profile = _django_apps.get_model("stapel_profiles", "Profile")
+            rows = Profile.objects.filter(user_id__in=ids).values_list(
+                "user_id", "display_name"
+            )
+            local = {str(uid): name for uid, name in rows if (name or "").strip()}
+            if local:
+                return local
+    except Exception:
+        # Same best-effort contract as the HTTP branch below: a cosmetic name
+        # is never worth failing a roster over.
+        logger.warning("in-process stapel-profiles lookup errored", exc_info=True)
+
     base = _profiles_service_url()
     if not base:
         return {}
