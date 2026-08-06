@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.17.0] — 2026-08-07
+
+### Added — `DEFAULT_WORKSPACE_ID`: the instance names its default, clients stop guessing
+
+Measured on the meettoday stand (2026-08-06). The frontend took
+`workspaces[0]` — literally the first row of a list this API orders by
+`-last_accessed_at` — as "the active workspace". A person belonging to two
+spaces therefore landed in whichever they had touched last. The owner's four
+pending invitations sat in the org space while his screen showed his PERSONAL
+one, and it reached us as "the owner cannot see his own invitations".
+
+Nothing was broken in invitations: the rows were there, the mandate was there,
+the page was mounted. The client had to answer "which workspace?" and no one
+had ever told it.
+
+`STAPEL_WORKSPACES["DEFAULT_WORKSPACE_ID"]` names that answer once, on the
+server. The workspace list response now carries `default_workspace_id`, and
+carries it **only when the caller actually holds an active membership in it** —
+pointing a client at a space it cannot open would trade one wrong screen for
+another. Unset (the default) yields `""`: a deployment that declares nothing
+gets no guess, not a guess of ours.
+
+It is a default, not a cage — an explicit choice by the person still wins, and
+making that choice is the client's half of the job.
+
+Regression pinned in tests: `w.id` is a `UUID` and the setting is a `str`, and
+`UUID(...) == "a8bb…"` is `False` in Python. Compared naively the key would
+have silently never matched — the same shape of defect it exists to remove.
+
 ## [0.16.2] — 2026-08-05
 
 ### Fixed

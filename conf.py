@@ -67,6 +67,24 @@ DEFAULTS = {
     #   shape; a host switches to it deliberately, it is never silently
     #   turned on by a version bump.
     "STREET_LANDING_MODE": "personal",
+    # The instance's DEFAULT workspace id (a uuid string), or "" for none.
+    #
+    # Without it a client has no way to know which workspace to open, and the
+    # ones that guessed guessed badly: meettoday's frontend took
+    # `workspaces[0]` — literally the first row of a list ordered by
+    # `-last_accessed_at` — so a person who belonged to two spaces landed in
+    # whichever they had touched last. Measured 2026-08-06: the owner's four
+    # pending invitations sat in the org space while the screen showed his
+    # PERSONAL one, and read as "the owner cannot see his own invitations".
+    #
+    # This key names the answer once, on the server, so every client resolves
+    # it the same way. It is a DEFAULT, not a cage: a person still switches
+    # spaces, and their explicit choice wins over it.
+    #
+    # Exposed to clients through the workspace list response, and ONLY when
+    # the caller actually holds an active membership in it — pointing a client
+    # at a space it cannot open would trade one wrong screen for another.
+    "DEFAULT_WORKSPACE_ID": "",
 }
 
 workspaces_settings = AppSettings(

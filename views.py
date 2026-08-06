@@ -439,9 +439,31 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
         # (same active()+deleted_at__isnull filter this loop already applied)
         # — read off the list already fetched instead of a second query.
         # test_guest_predicate.py pins the two never drifting apart.
+        #
+        # The instance default is echoed back ONLY when this caller is
+        # actually a member of it. A client told to open a workspace it
+        # cannot open would trade one wrong screen for another — and the
+        # membership list needed to decide that is right here, already
+        # fetched.
+        from .conf import workspaces_settings
+
+        configured = str(workspaces_settings.DEFAULT_WORKSPACE_ID or "")
+        # str() on both sides deliberately: `w.id` is a UUID and the setting
+        # is a string, and `UUID(...) == "a8bb..."` is False in Python — the
+        # comparison would have silently never matched, which is the same
+        # shape of defect this whole key exists to remove.
+        default_id = (
+            configured
+            if configured and any(str(w.id) == configured for w in workspaces)
+            else ""
+        )
         return StapelResponse(
             self.get_list_response_serializer_class()(
-                WorkspaceListResponse(workspaces=workspaces, is_guest=not workspaces)
+                WorkspaceListResponse(
+                    workspaces=workspaces,
+                    is_guest=not workspaces,
+                    default_workspace_id=default_id,
+                )
             )
         )
 

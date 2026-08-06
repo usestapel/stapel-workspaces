@@ -93,7 +93,13 @@ class TestWireExposure:
     def test_guest_field_true_for_a_registered_mandate_less_user(self, authed_client, user):
         resp = authed_client.get(f"{BASE}/")
         assert resp.status_code == 200, resp.content
-        assert resp.json() == {"workspaces": [], "is_guest": True}
+        assert resp.json() == {
+            "workspaces": [],
+            "is_guest": True,
+            # A guest belongs nowhere, so the instance default is
+            # withheld too — it is only echoed to a member of it.
+            "default_workspace_id": "",
+        }
         assert is_guest(user) is True
 
     def test_guest_field_false_once_a_membership_exists(self, authed_client, user):

@@ -62,7 +62,13 @@ class TestGuestMayListWorkspaces:
     def test_guest_gets_an_empty_list_not_a_refusal(self, guest_client):
         resp = guest_client.get(f"{BASE}/")
         assert resp.status_code == 200, resp.content
-        assert resp.json() == {"workspaces": [], "is_guest": True}
+        assert resp.json() == {
+            "workspaces": [],
+            "is_guest": True,
+            # A guest belongs nowhere, so the instance default is
+            # withheld too — it is only echoed to a member of it.
+            "default_workspace_id": "",
+        }
 
     def test_guest_list_does_not_leak_other_peoples_workspaces(
         self, guest_client, user
