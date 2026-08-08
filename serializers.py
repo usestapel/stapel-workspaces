@@ -9,6 +9,7 @@ from stapel_core.django.api.serializers import StapelDataclassSerializer
 from .capabilities import effective_roles
 from .dto import (
     PROVISIONED_USER_POLICIES,
+    InstanceShapeResponse,
     InvitationAcceptRequest,
     InvitationClaimResponse,
     InvitationPreviewResponse,
@@ -256,3 +257,8 @@ class InternalPersonalWorkspaceResponseSerializer(serializers.Serializer):
     """Get-or-create result for a user's personal workspace (service-to-service)."""
 
     workspace_id = serializers.UUIDField(help_text="Personal workspace UUID.")
+
+
+class InstanceShapeResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = InstanceShapeResponse

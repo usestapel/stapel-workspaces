@@ -6,6 +6,7 @@ from django.urls import path
 
 from .errors import WorkspacesErrorKeysView
 from .views import (
+    InstanceShapeView,
     InternalMembershipView,
     InternalPersonalWorkspaceView,
     InvitationAcceptView,
@@ -28,6 +29,8 @@ from .views import (
 urlpatterns = [
     path("", WorkspaceListCreateView.as_view(), name="workspace-list"),
     path("roles", RoleListView.as_view(), name="workspace-roles"),
+    # Форма инстанса — публично: её читает тот, кто спейсу уже никто.
+    path("instance", InstanceShapeView.as_view(), name="instance-shape"),
     path("<uuid:workspace_id>", WorkspaceDetailView.as_view(), name="workspace-detail"),
     path(
         "<uuid:workspace_id>/members",

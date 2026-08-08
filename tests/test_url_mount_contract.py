@@ -36,6 +36,9 @@ TOKEN = "sometoken"
 ROUTES = [
     ("workspace-list", {}, f"{MOUNT}/v1/"),
     ("workspace-roles", {}, f"{MOUNT}/v1/roles"),
+    # Форма инстанса — публичная, без авторизации: её читает тот, кто
+    # спейсу уже никто (выброшенный или вышедший сам).
+    ("instance-shape", {}, f"{MOUNT}/v1/instance"),
     ("workspace-detail", {"workspace_id": WS}, f"{MOUNT}/v1/{WS}"),
     ("workspace-members", {"workspace_id": WS}, f"{MOUNT}/v1/{WS}/members"),
     (

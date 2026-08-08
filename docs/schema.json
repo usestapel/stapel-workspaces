@@ -873,6 +873,38 @@
         }
       }
     },
+    "/workspaces/api/v1/instance": {
+      "get": {
+        "operationId": "workspaces_api_v1_instance_retrieve",
+        "description": "Instance shape: how a street signup lands (personal | none) and whether self-serve registration is open. Public, unauthenticated — the screen a kicked/left member sees depends on it.\n\n**Permissions:** `AllowAny`",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceShapeResponse"
+                },
+                "examples": {
+                  "InstanceShapeResponse": {
+                    "value": {
+                      "landing": "personal",
+                      "registration_open": "True"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
     "/workspaces/api/v1/internal/{workspace_id}/members/{user_id}": {
       "get": {
         "operationId": "workspaces_api_v1_internal_members_retrieve",
@@ -1182,6 +1214,26 @@
   },
   "components": {
     "schemas": {
+      "InstanceShapeResponse": {
+        "type": "object",
+        "description": "Как развёрнут ЭТОТ инстанс — то, что клиенту нужно знать ДО того, как\nон решит, что показать человеку без пространства.\n\nОсь ``landing`` (``STREET_LANDING_MODE``) существовала с 03.08.2026, но\nжила только в окружении бэкенда: наружу не отдавалась ничем, и отличить\nзакрытый контур от публичного облака на клиенте было НЕЧЕМ.\n\nПочему это не косметика. Экран, который видит человек, выброшенный из\nСпейса (или вышедший сам), в этих двух мирах разный по существу:\n\n* ``none`` — закрытый контур: своего пространства у человека нет и\nвзяться неоткуда. Честный экран говорит «вы не участник, попросите\nприглашение» и никуда не зовёт;\n* ``personal`` — публичное облако: у него есть собственное\nпространство, и туда можно вести.\n\nПоказать «создайте встречу» тому, кому инстанс её создать не даст, —\nэто тупик, нарисованный кнопкой.",
+        "properties": {
+          "landing": {
+            "type": "string",
+            "description": "С чем приземляется человек «с улицы»",
+            "example": "personal"
+          },
+          "registration_open": {
+            "type": "boolean",
+            "description": "Можно ли завести учётку самому",
+            "example": "True"
+          }
+        },
+        "required": [
+          "landing",
+          "registration_open"
+        ]
+      },
       "InternalPersonalWorkspaceResponse": {
         "type": "object",
         "description": "Get-or-create result for a user's personal workspace (service-to-service).",

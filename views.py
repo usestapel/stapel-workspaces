@@ -114,6 +114,7 @@ from .models import (
 )
 from .permissions import get_membership, require_role, role_at_least
 from .serializers import (
+    InstanceShapeResponseSerializer,
     InternalPersonalWorkspaceResponseSerializer,
     InvitationAcceptRequestSerializer,
     InvitationClaimResponseSerializer,
@@ -1718,3 +1719,50 @@ class InternalPersonalWorkspaceView(APIView):
             return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         ws = services.ensure_personal_workspace(user)
         return StapelResponse({"workspace_id": str(ws.id)}, status=status.HTTP_200_OK)  # noqa: R006
+
+
+class InstanceShapeView(APIView):
+    """Как развёрнут этот инстанс — публично, до всякой авторизации.
+
+    Ось ``STREET_LANDING_MODE`` существовала с 03.08.2026, но жила только в
+    окружении бэкенда: наружу не отдавалась ничем. Клиент не мог отличить
+    закрытый контур от публичного облака — и рисовал одинаковый экран
+    человеку, у которого пространство есть, и тому, у кого его быть не
+    может.
+
+    Открыта анониму намеренно и без исключений: этот ответ читает ровно
+    тот, кто Спейсу уже никто — выброшенный из него или вышедший сам.
+    Требовать здесь авторизацию значило бы закрыть ручку от её
+    единственного адресата. Секретов в ответе нет: это форма развёртывания,
+    видимая и так — по тому, пускает ли инстанс регистрироваться.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        tags=["Workspaces"],
+        description=(
+            "Instance shape: how a street signup lands (personal | none) and "
+            "whether self-serve registration is open. Public, unauthenticated "
+            "— the screen a kicked/left member sees depends on it."
+        ),
+        responses={200: InstanceShapeResponseSerializer},
+    )
+    def get(self, request):  # noqa: R007
+        from .dto import InstanceShapeResponse
+
+        from .conf import workspaces_settings
+
+        landing = workspaces_settings.STREET_LANDING_MODE or "personal"
+        return StapelResponse(
+            InstanceShapeResponseSerializer(
+                InstanceShapeResponse(
+                    landing=landing,
+                    # Закрытый контур не даёт завести учётку самому — туда
+                    # попадают только по приглашению. Это одно и то же
+                    # решение, названное с двух сторон, и клиенту нужны обе.
+                    registration_open=(landing != "none"),
+                )
+            )
+        )

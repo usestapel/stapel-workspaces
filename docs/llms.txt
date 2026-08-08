@@ -1,8 +1,8 @@
-# stapel-workspaces 0.17.0
+# stapel-workspaces 0.18.0
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 36 · extension points 5 · operations 21 · error codes 61.
+Contract: axes 1 · surface 36 · extension points 5 · operations 22 · error codes 61.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -107,7 +107,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - stapel-notifications (optional) — delivers the letters this module requests via request_notification: workspace.invitation (create), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error
 - stapel-profiles (optional) — the canonical source of a member's display name — this module stores only a name HINT typed at invite/provision time (WorkspaceMember.display_name_hint), never a second copy of the real field; MemberResponse.display_name reads stapel-profiles' public POST /batch over HTTP (PROFILES_SERVICE_URL) and falls back to the hint when profiles is absent, unreachable, or has no name yet for the user; no comm Function either way (profiles registers none for this), so this is a plain best-effort HTTP read, never a hard import — degrades to hint-only behavior with zero configuration
 
-## HTTP operations (21) — call by operationId, never by a typed path
+## HTTP operations (22) — call by operationId, never by a typed path
 Paths are relative to `/workspaces/api/v1/`.
 ### Internal
 - GET /internal/{workspace_id}/members/{user_id} — workspaces_api_v1_internal_members_retrieve
@@ -129,6 +129,7 @@ Paths are relative to `/workspaces/api/v1/`.
 ### Workspaces
 - POST / — workspaces_api_v1_create
 - DELETE /{workspace_id} — workspaces_api_v1_destroy
+- GET /instance — workspaces_api_v1_instance_retrieve
 - PATCH /{workspace_id} — workspaces_api_v1_partial_update
 - GET / — workspaces_api_v1_retrieve
 - GET /{workspace_id} — workspaces_api_v1_retrieve_2
