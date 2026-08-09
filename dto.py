@@ -117,7 +117,7 @@ class MemberInviteRequest:
     Attributes:
         emails: One or more emails to invite. Example: ["alice@example.com"]
         role: Role to grant on acceptance. Example: member
-        display_name: Name hint for the invitee (this invite's "Имя" field), applied to every email in this request. Optional — an invite without one behaves exactly as before. NOT written into stapel-profiles directly (that store is the invitee's own): held on the invitation, copied onto the member at accept time, and shown only until stapel-profiles has a real name for the person. Example: Ada Lovelace
+        display_name: Name hint for the invitee (this invite's "Name" field), applied to every email in this request. Optional — an invite without one behaves exactly as before. NOT written into stapel-profiles directly (that store is the invitee's own): held on the invitation, copied onto the member at accept time, and shown only until stapel-profiles has a real name for the person. Example: Ada Lovelace
     """
 
     emails: List[str]
@@ -408,28 +408,28 @@ class RoleListResponse:
 
 @dataclass
 class InstanceShapeResponse:
-    """Как развёрнут ЭТОТ инстанс — то, что клиенту нужно знать ДО того, как
-    он решит, что показать человеку без пространства.
+    """How THIS instance is deployed — what the client needs to know before
+    deciding what to show a person with no workspace.
 
-    Ось ``landing`` (``STREET_LANDING_MODE``) существовала с 03.08.2026, но
-    жила только в окружении бэкенда: наружу не отдавалась ничем, и отличить
-    закрытый контур от публичного облака на клиенте было НЕЧЕМ.
+    The ``landing`` axis (``STREET_LANDING_MODE``) has existed since
+    2026-08-03 but lived only in backend config, with nothing exposing it —
+    a client had no way to tell a closed deployment from a public cloud one.
 
-    Почему это не косметика. Экран, который видит человек, выброшенный из
-    Спейса (или вышедший сам), в этих двух мирах разный по существу:
+    This matters because the screen shown to someone who is no longer (or
+    never was) a workspace member differs by deployment:
 
-    * ``none`` — закрытый контур: своего пространства у человека нет и
-      взяться неоткуда. Честный экран говорит «вы не участник, попросите
-      приглашение» и никуда не зовёт;
-    * ``personal`` — публичное облако: у него есть собственное
-      пространство, и туда можно вести.
+    * ``none`` — closed deployment: the person has no workspace and none is
+      obtainable. An honest screen says "you're not a member, ask for an
+      invite" and offers no path forward;
+    * ``personal`` — public cloud: they have their own workspace, and the
+      client can route them there.
 
-    Показать «создайте встречу» тому, кому инстанс её создать не даст, —
-    это тупик, нарисованный кнопкой.
+    Offering "create a workspace" to someone the instance will never let
+    create one is a dead end drawn as a button.
 
     Attributes:
-        landing: С чем приземляется человек «с улицы». Example: personal
-        registration_open: Можно ли завести учётку самому. Example: True
+        landing: What a "street" (no-invite) arrival lands on. Example: personal
+        registration_open: Whether self-registration is available. Example: True
     """
 
     landing: str

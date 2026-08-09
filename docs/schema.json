@@ -1216,16 +1216,16 @@
     "schemas": {
       "InstanceShapeResponse": {
         "type": "object",
-        "description": "Как развёрнут ЭТОТ инстанс — то, что клиенту нужно знать ДО того, как\nон решит, что показать человеку без пространства.\n\nОсь ``landing`` (``STREET_LANDING_MODE``) существовала с 03.08.2026, но\nжила только в окружении бэкенда: наружу не отдавалась ничем, и отличить\nзакрытый контур от публичного облака на клиенте было НЕЧЕМ.\n\nПочему это не косметика. Экран, который видит человек, выброшенный из\nСпейса (или вышедший сам), в этих двух мирах разный по существу:\n\n* ``none`` — закрытый контур: своего пространства у человека нет и\nвзяться неоткуда. Честный экран говорит «вы не участник, попросите\nприглашение» и никуда не зовёт;\n* ``personal`` — публичное облако: у него есть собственное\nпространство, и туда можно вести.\n\nПоказать «создайте встречу» тому, кому инстанс её создать не даст, —\nэто тупик, нарисованный кнопкой.",
+        "description": "How THIS instance is deployed — what the client needs to know before\ndeciding what to show a person with no workspace.\n\nThe ``landing`` axis (``STREET_LANDING_MODE``) has existed since\n2026-08-03 but lived only in backend config, with nothing exposing it —\na client had no way to tell a closed deployment from a public cloud one.\n\nThis matters because the screen shown to someone who is no longer (or\nnever was) a workspace member differs by deployment:\n\n* ``none`` — closed deployment: the person has no workspace and none is\nobtainable. An honest screen says \"you're not a member, ask for an\ninvite\" and offers no path forward;\n* ``personal`` — public cloud: they have their own workspace, and the\nclient can route them there.\n\nOffering \"create a workspace\" to someone the instance will never let\ncreate one is a dead end drawn as a button.",
         "properties": {
           "landing": {
             "type": "string",
-            "description": "С чем приземляется человек «с улицы»",
+            "description": "What a \"street\" (no-invite) arrival lands on",
             "example": "personal"
           },
           "registration_open": {
             "type": "boolean",
-            "description": "Можно ли завести учётку самому",
+            "description": "Whether self-registration is available",
             "example": "True"
           }
         },
@@ -1405,7 +1405,7 @@
           "display_name": {
             "type": "string",
             "nullable": true,
-            "description": "Name hint for the invitee (this invite's \"Имя\" field), applied to every email in this request. Optional — an invite without one behaves exactly as before. NOT written into stapel-profiles directly (that store is the invitee's own): held on the invitation, copied onto the member at accept time, and shown only until stapel-profiles has a real name for the person",
+            "description": "Name hint for the invitee (this invite's \"Name\" field), applied to every email in this request. Optional — an invite without one behaves exactly as before. NOT written into stapel-profiles directly (that store is the invitee's own): held on the invitation, copied onto the member at accept time, and shown only until stapel-profiles has a real name for the person",
             "example": "Ada Lovelace",
             "maxLength": 35
           },

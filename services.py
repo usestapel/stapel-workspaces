@@ -278,7 +278,7 @@ def create_invitation(
         token=token_urlsafe(32),
         expires_at=timezone.now()
         + timedelta(days=workspaces_settings.INVITATION_TTL_DAYS),
-        # A NAME HINT (this invite's "Имя" field), not the canonical name —
+        # A NAME HINT (this invite's "Name" field), not the canonical name —
         # see WorkspaceMember.display_name_hint's docstring for why this
         # module stores it at all despite the name living in stapel-profiles.
         display_name_hint=(display_name or "").strip(),
@@ -582,8 +582,8 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
         # display_name_hint only applies on CREATE (get_or_create's
         # defaults never touch an existing row) — accepting an invitation a
         # second time (already_member above) must not clobber whatever name
-        # the member already carries. This is the "не потерять имя по
-        # дороге" step: the hint typed into the invite modal survives all
+        # the member already carries. This is the "don't lose the name
+        # along the way" step: the hint typed into the invite modal survives all
         # the way to the membership row it becomes.
         defaults={
             "role": locked.role,

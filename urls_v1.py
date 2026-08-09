@@ -29,7 +29,7 @@ from .views import (
 urlpatterns = [
     path("", WorkspaceListCreateView.as_view(), name="workspace-list"),
     path("roles", RoleListView.as_view(), name="workspace-roles"),
-    # Форма инстанса — публично: её читает тот, кто спейсу уже никто.
+    # Instance shape — public: read by someone who is no longer anyone to the workspace.
     path("instance", InstanceShapeView.as_view(), name="instance-shape"),
     path("<uuid:workspace_id>", WorkspaceDetailView.as_view(), name="workspace-detail"),
     path(

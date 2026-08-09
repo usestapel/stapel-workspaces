@@ -1722,19 +1722,18 @@ class InternalPersonalWorkspaceView(APIView):
 
 
 class InstanceShapeView(APIView):
-    """Как развёрнут этот инстанс — публично, до всякой авторизации.
+    """How this instance is deployed — public, before any authorization.
 
-    Ось ``STREET_LANDING_MODE`` существовала с 03.08.2026, но жила только в
-    окружении бэкенда: наружу не отдавалась ничем. Клиент не мог отличить
-    закрытый контур от публичного облака — и рисовал одинаковый экран
-    человеку, у которого пространство есть, и тому, у кого его быть не
-    может.
+    The ``STREET_LANDING_MODE`` axis has existed since 2026-08-03 but lived
+    only in backend config, exposing nothing — a client couldn't tell a
+    closed deployment from a public cloud one, and rendered the same screen
+    to someone with a workspace and someone who can never have one.
 
-    Открыта анониму намеренно и без исключений: этот ответ читает ровно
-    тот, кто Спейсу уже никто — выброшенный из него или вышедший сам.
-    Требовать здесь авторизацию значило бы закрыть ручку от её
-    единственного адресата. Секретов в ответе нет: это форма развёртывания,
-    видимая и так — по тому, пускает ли инстанс регистрироваться.
+    Deliberately open to anonymous callers, no exceptions: this response is
+    read by exactly the person who is no longer anyone to the workspace —
+    kicked out or left on their own. Requiring auth here would lock out its
+    only audience. Nothing secret in the response: it's the deployment
+    shape, already visible from whether the instance allows registration.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -1759,9 +1758,9 @@ class InstanceShapeView(APIView):
             InstanceShapeResponseSerializer(
                 InstanceShapeResponse(
                     landing=landing,
-                    # Закрытый контур не даёт завести учётку самому — туда
-                    # попадают только по приглашению. Это одно и то же
-                    # решение, названное с двух сторон, и клиенту нужны обе.
+                    # A closed deployment has no self-serve signup — entry is
+                    # by invitation only. Same decision, named from both
+                    # sides; the client needs both fields.
                     registration_open=(landing != "none"),
                 )
             )

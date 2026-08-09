@@ -1,6 +1,6 @@
 """Display name closes the gap the meettoday frontend audit found (2026-08-04):
 
-* the invite modal has an "Имя" field that went nowhere — ``MemberInviteRequest``
+* the invite modal has a "Name" field that went nowhere — ``MemberInviteRequest``
   only carried ``{emails, role}``;
 * the member list had nothing to show but email — ``MemberResponse`` never
   carried a name at all.

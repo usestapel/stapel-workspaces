@@ -1,4 +1,4 @@
-# Name hint fields (meettoday audit, 2026-08-04): the invite modal's "Имя"
+# Name hint fields (meettoday audit, 2026-08-04): the invite modal's "Name"
 # field had nowhere to go — `MemberInviteRequest` only carried
 # `{emails, role}` — and the member list had nothing to show but email.
 #

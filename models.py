@@ -240,7 +240,7 @@ class WorkspaceMember(models.Model):
     #: A NAME HINT, not the canonical name — the name lives in stapel-profiles
     #: (this module never grows its own copy of that field). Copied once, at
     #: creation, from ``WorkspaceInvitation.display_name_hint`` (the invite's
-    #: "Имя" field) or ``ProvisionMemberRequest.display_name``; never touched
+    #: "Name" field) or ``ProvisionMemberRequest.display_name``; never touched
     #: again by this module. ``MemberResponse.display_name`` prefers a live
     #: lookup in stapel-profiles and falls back to this only when profiles has
     #: no name yet for the user — so the moment the person sets their own name
@@ -390,7 +390,7 @@ class WorkspaceInvitation(models.Model):
     declined_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    #: The invite modal's "Имя" field (a NAME HINT, not the canonical name —
+    #: The invite modal's "Name" field (a NAME HINT, not the canonical name —
     #: see ``WorkspaceMember.display_name_hint``, which this is copied onto at
     #: accept time). Optional: an invite without one behaves exactly as
     #: before. Max length mirrors stapel-profiles' ``Profile.display_name``.

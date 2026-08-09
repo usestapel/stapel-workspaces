@@ -336,7 +336,7 @@ class TestInvitationNotification:
         username. Before this test's fix, the fallback chain was
         ``get_full_name() -> username -> email``, so that generated login
         landed in the invitee's inbox as the inviter's name (owner report:
-        "пришло кривовато, какой-то сгенеренный юзернейм"). The canonical
+        "came out janky, some kind of generated username"). The canonical
         name lives in stapel-profiles (0.16.0's best-effort batch read,
         reused here rather than duplicated) and must win when present.
         """
