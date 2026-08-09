@@ -36,7 +36,9 @@ ERR_503_PROFILES_NOT_CONFIGURED = "error.503.profiles_not_configured"
 # (`validators.validate_display_name`, its docs/llms.txt: "any host
 # onboarding form, admin action or importer that writes a name must run it
 # through here instead of inventing a second, differently-strict regex").
-# This module calls that validator (services.display_name_canon) and lets
+# This module asks that validator by name over comm — the
+# `profiles.validate_display_name` Function, via `services.check_display_name`
+# (0.21; before that it resolved the symbol by dotted path) — and lets
 # its refusals out verbatim — same string keys, same English, same
 # remediation — so a frontend branches on ONE set of display-name codes no
 # matter which service refused the write.
