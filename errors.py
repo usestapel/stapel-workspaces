@@ -23,6 +23,11 @@ ERR_403_MEMBERSHIP_SUSPENDED = "error.403.membership_suspended"
 ERR_400_INVALID_PROVISION_USERNAME = "error.400.invalid_provision_username"
 ERR_403_ROLE_EXCEEDS_INVITER_RANK = "error.403.role_exceeds_inviter_rank"
 ERR_503_PROFILES_UNAVAILABLE = "error.503.profiles_unavailable"
+#: The write to stapel-profiles could not be ATTEMPTED: this deployment
+#: has no provider for ``profiles.set_display_name`` and no comm route to
+#: one. A configuration fact, not an outage — see the remediation note
+#: below and env-address-class v2 §2.
+ERR_503_PROFILES_NOT_CONFIGURED = "error.503.profiles_not_configured"
 
 # Display-name keys BORROWED from stapel-profiles, not minted here.
 #
@@ -71,6 +76,10 @@ WORKSPACES_ERRORS = {
     ERR_400_INVALID_PROVISION_USERNAME: "Invalid username for a provisioned account",
     ERR_403_ROLE_EXCEEDS_INVITER_RANK: "You cannot grant a role that outranks your own ({role})",
     ERR_503_PROFILES_UNAVAILABLE: "The profiles service is unavailable; try again later",
+    ERR_503_PROFILES_NOT_CONFIGURED: (
+        "This deployment has no profiles service configured, so a display "
+        "name cannot be written here"
+    ),
     # Verbatim from stapel-profiles' own registry — see the note above.
     ERR_400_DISPLAY_NAME_TOO_SHORT: "Display name must be at least 2 characters",
     ERR_400_DISPLAY_NAME_FORBIDDEN_CHARS: "Display name contains forbidden characters",
@@ -167,10 +176,24 @@ WORKSPACES_ERRORS = {
 #     (matches the last_owner_cannot_be_removed precedent, not
 #     forbidden_workspace/missing_capability's contact_support).
 #   * 503 profiles_unavailable → wait_and_retry, the same shape as
-#     auth_unavailable: the request itself is fine and succeeds once the
-#     module that OWNS display names is reachable in this deployment. It is
-#     a wiring gap (stapel-profiles not installed in this process), not
-#     anything the caller can edit.
+#     auth_unavailable: the call to the module that OWNS display names was
+#     ATTEMPTED and failed — a transport blip, a restarting profiles
+#     service. The request itself is fine and succeeds on retry, and there
+#     is nothing the caller can edit.
+#   * 503 profiles_not_configured → contact_support, and this is the split
+#     0.19.0 did not draw. There, a deployment where stapel-profiles was not
+#     in the process answered profiles_unavailable/wait_and_retry — advising
+#     a retry for a module that was never coming, forever. An unconfigured
+#     comm route is a CONFIGURATION fact: deterministic, fixed only by
+#     editing STAPEL_COMM (or co-mounting the module), never self-healing.
+#     Per env-address-class v2 §2 a configuration error degrades LOUDLY
+#     rather than posing as a transient outage, so this key is separate,
+#     names its own cause, and points at the only party who can act — an
+#     operator. It is joined by a startup check (checks.W001, modelled on
+#     stapel-core's CDN E002 route check) so the deployment hears about it
+#     before a user does. The status stays 503: from the caller's side this
+#     endpoint genuinely cannot be served here, and the adopting frontend's
+#     status handling must not shift under it.
 #   * 400 display_name_* → fix_input, verbatim from stapel-profiles'
 #     declarations. Same key, same hint, on purpose: a frontend that already
 #     highlights the name field on profiles' refusal must behave identically
@@ -197,6 +220,7 @@ WORKSPACES_REMEDIATION = {
     ERR_400_INVALID_PROVISION_USERNAME: "fix_input",
     ERR_403_ROLE_EXCEEDS_INVITER_RANK: "fix_input",
     ERR_503_PROFILES_UNAVAILABLE: "wait_and_retry",
+    ERR_503_PROFILES_NOT_CONFIGURED: "contact_support",
     ERR_400_DISPLAY_NAME_TOO_SHORT: "fix_input",
     ERR_400_DISPLAY_NAME_FORBIDDEN_CHARS: "fix_input",
     ERR_400_DISPLAY_NAME_EMOJI: "fix_input",

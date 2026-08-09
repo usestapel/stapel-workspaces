@@ -101,7 +101,6 @@ from .errors import (
     ERR_404_WORKSPACE_NOT_FOUND,
     ERR_409_EMAIL_ALREADY_REGISTERED,
     ERR_503_AUTH_UNAVAILABLE,
-    ERR_503_PROFILES_UNAVAILABLE,
 )
 from .events import (
     EVENT_WORKSPACE_MEMBER_REMOVED,
@@ -1573,9 +1572,14 @@ class MemberNameView(DisplayNameEditMixin, APIView):
     """``PATCH <ws>/members/<user_id>/name`` — correct a member's display name.
 
     Writes the CANONICAL name: stapel-profiles' ``Profile.display_name``,
-    reached through this module's existing in-process profiles seam
-    (``services.set_profile_display_name``), which also publishes
-    ``profile.changed`` so every consumer of that name follows.
+    through the named write that module publishes
+    (``profiles.set_display_name``, called by
+    ``services.set_profile_display_name``), which validates against its own
+    canon and publishes ``profile.changed`` so every consumer of that name
+    follows. Topology-independent: the same call runs in-process in a
+    monolith and over the configured route where profiles is its own
+    container. Until 0.21.0 it was dotted-path symbol resolution instead,
+    and this endpoint simply did not work in a split deployment.
 
     NOT ``WorkspaceMember.display_name_hint``: the hint is a pre-profile
     placeholder, copied once at creation and dark from the moment a real
@@ -1583,11 +1587,11 @@ class MemberNameView(DisplayNameEditMixin, APIView):
     produce a correction the roster shows and nothing else in the product
     ever does — including, eventually, the roster.
 
-    Where stapel-profiles does not run in this process there is nothing to
-    write and no remote operation to call for it (that module publishes no
-    write-somebody-else's-name endpoint and no comm Function), so the answer
-    is an honest ``error.503.profiles_unavailable`` — never a 200 over a
-    write that did not happen.
+    Where the write cannot be performed the answer is a 503 that names its
+    own cause — ``error.503.profiles_not_configured`` when this deployment
+    has neither a provider nor a route (an operator's job, and it will not
+    heal on its own), ``error.503.profiles_unavailable`` when the call was
+    made and failed — never a 200 over a write that did not happen.
 
     Only an owner may rename an owner — the same hardcoded owner protection
     that role changes, removals and password resets carry. Renaming is not
@@ -1621,8 +1625,13 @@ class MemberNameView(DisplayNameEditMixin, APIView):
         ):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
         display_name = self._clean_name(request)
-        if not services.set_profile_display_name(member.user_id, display_name):
-            return StapelErrorResponse(503, ERR_503_PROFILES_UNAVAILABLE)
+        # One structural result in, one keyed refusal out: profiles' own
+        # error.400.display_name_* keys pass through verbatim, and the two
+        # 503s are told apart (configuration vs outage) rather than being
+        # collapsed into one hint that tells an operator's problem to wait.
+        error_key = services.set_profile_display_name(member.user_id, display_name)
+        if error_key is not None:
+            return StapelErrorResponse(_status_of_error_key(error_key), error_key)
         return self._stored(display_name)
 
 

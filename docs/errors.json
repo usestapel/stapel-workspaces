@@ -491,6 +491,13 @@
     "en": "The authentication service is unavailable; try again later"
   },
   {
+    "code": "error.503.profiles_not_configured",
+    "status": 503,
+    "params": [],
+    "remediation": "contact_support",
+    "en": "This deployment has no profiles service configured, so a display name cannot be written here"
+  },
+  {
     "code": "error.503.profiles_unavailable",
     "status": 503,
     "params": [],

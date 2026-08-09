@@ -1,6 +1,6 @@
 # Errors — English
 
-`66` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`67` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -69,4 +69,5 @@
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Too many requests. Please try again later. |
 | `error.500.internal` | 500 | — | `contact_support` | Something went wrong |
 | `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | The authentication service is unavailable; try again later |
+| `error.503.profiles_not_configured` | 503 | — | `contact_support` | This deployment has no profiles service configured, so a display name cannot be written here |
 | `error.503.profiles_unavailable` | 503 | — | `wait_and_retry` | The profiles service is unavailable; try again later |

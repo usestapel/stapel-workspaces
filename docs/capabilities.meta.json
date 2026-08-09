@@ -221,17 +221,13 @@
       "kind": "factory",
       "intent": "Reverse deactivation suspensions on reactivation, leaving no_mfa ones alone."
     },
-    "profiles_in_process": {
-      "kind": "factory",
-      "intent": "Resolve a stapel-profiles symbol by dotted path, only while that module runs in THIS process — the module boundary's answer to \"how do I reach profiles\", since Stapel modules never import each other. None when it is absent, so the caller picks a fallback or an honest 503."
-    },
-    "display_name_canon": {
+    "check_display_name": {
       "kind": "gate_function",
-      "intent": "stapel-profiles' validate_display_name when reachable, else None — the ONE canon for what a display name may contain, raising that module's own error.400.display_name_* keys. Anything here that accepts or writes a name goes through it; a second, differently-strict rule is the drift this stops."
+      "intent": "Ask stapel-profiles' own name canon by name (profiles.validate_display_name) what a display name may contain; returns that module's error.400.display_name_* key or None. Anything here that accepts or writes a name goes through it, and this module keeps no second, differently-strict copy — that drift is what it exists to stop. Best-effort: no provider means no canon applied here, never a locally invented rule."
     },
     "set_profile_display_name": {
       "kind": "factory",
-      "intent": "Write a user's CANONICAL display name (stapel-profiles' Profile.display_name) and publish profile.changed, creating the row when absent. False when profiles is not in this process, so the caller answers 503; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this."
+      "intent": "Write a user's CANONICAL display name through profiles.set_display_name — the named comm write stapel-profiles publishes, which owns the canon, the swappable model, get-or-create and the profile.changed emission. Returns None on success or the error key to answer with (profiles' own 400 key, error.503.profiles_not_configured when nothing is wired, error.503.profiles_unavailable when the call failed). Topology-independent; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this."
     },
     "set_preferred_workspace": {
       "kind": "factory",

@@ -13,6 +13,13 @@ with profiles sitting next to it got ``{}`` every time, because both sides
 were only ever tested in isolation. Fakes cannot answer "does a real
 Profile row take this write" — a real row can.
 
+Since 0.21.0 the seam is comm: this session registers stapel-profiles'
+REAL providers (``profiles.set_display_name`` and friends, from its own
+``apps.ready()``) and the in-process transport routes to them, so what runs
+here is the monolith half of the same one mechanism a split deployment
+uses over the wire. Nothing in this file changed when the transport did,
+which is the point of a name-addressed seam.
+
 What is proved here and nowhere else:
 
 * the roster's write lands on ``stapel_profiles``' actual ``Profile``
@@ -21,7 +28,8 @@ What is proved here and nowhere else:
   and ``save(update_fields=...)`` names columns that exist;
 * ``profile.changed`` is really emitted, with the new name in the payload;
 * the read half sees the row the write half just made — the roster shows
-  the correction back.
+  the correction back;
+* the co-mounted deployment needs no route configuration to do any of it.
 """
 import uuid
 

@@ -1,5 +1,76 @@
 # Changelog
 
+## [0.21.0] — 2026-08-09
+
+### Changed — the roster's name write goes over comm, and the dotted-path seam is gone
+
+Same URLs, same request and response bodies, same error keys. Two things are
+different: the write now works where stapel-profiles is its own container, and
+a deployment that has not wired it up is told so in those words instead of
+being advised to wait.
+
+0.19.0 shipped `PATCH <ws>/members/<user_id>/name` writing stapel-profiles'
+`Profile.display_name` through an **in-process seam**: ask Django's app
+registry whether `stapel_profiles` runs here, then resolve
+`validate_display_name`, `get_profile_model` and `publish_profile_changed` by
+dotted path. That works in a monolith and nowhere else. In a split deployment —
+ironmemo's actual topology, where `iron-profiles` is its own container — the
+endpoint answered `error.503.profiles_unavailable` **permanently**, with a
+`wait_and_retry` hint for a module that was never coming. It was also the
+fleet's only cross-module symbol resolution; `stapel-tools` 0.32 minted a lint
+rule (SWAP003) for exactly this shape, and after this release this package has
+zero runtime hits.
+
+The verdict (`tasks/who-owns-the-name-write.md`) keeps the endpoint here —
+authority is a workspaces question, and "only an owner renames an owner" is
+rank semantics no other module can evaluate — and changes the transport:
+
+- **stapel-profiles >= 0.10 publishes `profiles.set_display_name`** and
+  workspaces calls it. Precedent, not invention: `billing.debit` is the same
+  shape (another module initiates a write the data owner performs, on the
+  caller's authority) and was itself promoted from an internal HTTP view to a
+  comm Function. Everything that belongs to profiles now runs *in* profiles —
+  the name canon, the swappable-model discipline, get-or-create, and the
+  `profile.changed` emission. This module reimplements none of it.
+- **Deleted, not deprecated:** `profiles_in_process`, `_profile_model` and
+  `display_name_canon` are gone. Keeping a dotted-path fallback beside the comm
+  call would have preserved exactly the topology-dependence being removed.
+  `services.py` loses more than it gains.
+- **The name canon is asked, not copied.** The serializer calls
+  `profiles.validate_display_name` instead of resolving that validator; both
+  name-edit endpoints keep the same `error.400.display_name_*` refusals they
+  had. Where no provider answers, no canon is applied here and nothing is
+  substituted for it — a locally invented rule is the drift this surface exists
+  to prevent, and a member rename cannot escape the canon anyway because the
+  write re-runs it inside profiles.
+- **The roster read moved too**, to `profiles.display_names`. One mechanism now
+  covers both topologies (in-process in a monolith, the configured route in a
+  split deployment); the `PROFILES_SERVICE_URL` HTTP batch stays as a fallback
+  for deployments wired that way before profiles published a read function.
+
+### Added — an unconfigured route fails loudly, as a configuration fact
+
+`error.503.profiles_not_configured`, remediation **`contact_support`**, raised
+when there is neither a provider nor a comm route for `profiles.set_display_name`.
+The pre-existing `error.503.profiles_unavailable` keeps `wait_and_retry` and now
+means what it says: the call was made and it failed.
+
+The split follows the env-address-class v2 canon — an environment error may
+self-heal and is worth retrying; a *configuration* error is deterministic, is
+fixed only by editing this deployment, and must degrade loudly rather than pose
+as a transient outage. The status stays 503 so a live consumer's status
+handling does not shift under it; what changes is the key, the remediation and
+an ERROR-level log line naming the fix.
+
+Paired with a startup check, `stapel_workspaces.W001`, modelled on
+stapel-core's CDN route check (E002) — the fleet's existing way to report a
+comm route that is needed and not configured. W and not E deliberately: this is
+one endpoint of many, and a dependency serving part of a process's surface
+degrades loudly rather than blocking the start of everything else.
+
+**Deployment floor: stapel-profiles >= 0.10** wherever the roster's member
+name-edit endpoint is served.
+
 ## [0.20.0] — 2026-08-09
 
 ### Added — the person says where home is, and the server remembers it

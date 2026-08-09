@@ -1,6 +1,6 @@
 {
   "module": "stapel-workspaces",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "provides": "Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.",
   "axes": [
     {
@@ -150,6 +150,12 @@
       "intent": "Demand an org's first-login steps of an account, failing closed."
     },
     {
+      "name": "check_display_name",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.services.check_display_name",
+      "intent": "Ask stapel-profiles' own name canon by name (profiles.validate_display_name) what a display name may contain; returns that module's error.400.display_name_* key or None. Anything here that accepts or writes a name goes through it, and this module keeps no second, differently-strict copy — that drift is what it exists to stop. Best-effort: no provider means no canon applied here, never a locally invented rule."
+    },
+    {
       "name": "create_invitation",
       "kind": "factory",
       "path": "stapel_workspaces.services.create_invitation",
@@ -166,12 +172,6 @@
       "kind": "factory",
       "path": "stapel_workspaces.services.decline_invitation",
       "intent": "The invitee's terminal \"no\" (≠ revoke), same row-lock as accept."
-    },
-    {
-      "name": "display_name_canon",
-      "kind": "gate_function",
-      "path": "stapel_workspaces.services.display_name_canon",
-      "intent": "stapel-profiles' validate_display_name when reachable, else None — the ONE canon for what a display name may contain, raising that module's own error.400.display_name_* keys. Anything here that accepts or writes a name goes through it; a second, differently-strict rule is the drift this stops."
     },
     {
       "name": "enforce_require_mfa",
@@ -214,12 +214,6 @@
       "kind": "factory",
       "path": "stapel_workspaces.services.preferred_workspace_id_for",
       "intent": "The caller's stated home workspace id, or '' — active-membership filtered, so it goes quiet during a suspension."
-    },
-    {
-      "name": "profiles_in_process",
-      "kind": "factory",
-      "path": "stapel_workspaces.services.profiles_in_process",
-      "intent": "Resolve a stapel-profiles symbol by dotted path, only while that module runs in THIS process — the module boundary's answer to \"how do I reach profiles\", since Stapel modules never import each other. None when it is absent, so the caller picks a fallback or an honest 503."
     },
     {
       "name": "provision_member",
@@ -267,7 +261,7 @@
       "name": "set_profile_display_name",
       "kind": "factory",
       "path": "stapel_workspaces.services.set_profile_display_name",
-      "intent": "Write a user's CANONICAL display name (stapel-profiles' Profile.display_name) and publish profile.changed, creating the row when absent. False when profiles is not in this process, so the caller answers 503; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this."
+      "intent": "Write a user's CANONICAL display name through profiles.set_display_name — the named comm write stapel-profiles publishes, which owns the canon, the swappable model, get-or-create and the profile.changed emission. Returns None on success or the error key to answer with (profiles' own 400 key, error.503.profiles_not_configured when nothing is wired, error.503.profiles_unavailable when the call failed). Topology-independent; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this."
     },
     {
       "name": "suspend_member",

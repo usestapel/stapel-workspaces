@@ -14,11 +14,13 @@ wrong in:
   ``error.400.display_name_*`` keys, produced by its own
   ``validate_display_name`` — the tests below call the real function
   through the real seam, they do not stand in a look-alike;
-* **the seam is in-process resolution, never an import.** ``services``
-  reaches profiles through :func:`stapel_workspaces.services.profiles_in_process`
-  (app registry + dotted path at call time), so these tests fake exactly
-  that one function. A run with the sibling genuinely mounted lives in
-  ``test_profiles_comounted.py``.
+* **the seam is a NAME on the comm plane, never a symbol.** ``services``
+  reaches profiles through ``call("profiles.set_display_name", ...)`` and
+  its two companions, so these tests register stand-in providers under
+  those names and nothing else — stapel_profiles is not in INSTALLED_APPS
+  here, which is exactly the split topology 0.19.0's dotted-path seam
+  could not serve. A run with the sibling genuinely mounted, real
+  providers and all, lives in ``test_profiles_comounted.py``.
 """
 import uuid
 
@@ -37,15 +39,13 @@ from stapel_workspaces.errors import (
     ERR_403_MISSING_CAPABILITY,
     ERR_404_INVITATION_NOT_FOUND,
     ERR_404_MEMBER_NOT_FOUND,
+    ERR_503_PROFILES_NOT_CONFIGURED,
     ERR_503_PROFILES_UNAVAILABLE,
 )
 from stapel_workspaces.models import Role, WorkspaceInvitation, WorkspaceMember
 
 BASE = "/workspaces/api/workspaces/v1"
 
-_CANON_PATH = "stapel_profiles.validators.validate_display_name"
-_MODEL_PATH = "stapel_profiles.models.get_profile_model"
-_PUBLISH_PATH = "stapel_profiles.events.publish_profile_changed"
 
 
 def _member_url(ws_id, user_id):
@@ -91,43 +91,14 @@ def _make_invitation(ws, email="invitee@example.com", **overrides):
 
 
 # --- the seam ------------------------------------------------------------
-
-
-class _FakeProfile:
-    """Stand-in for a profile ROW — not for the name canon.
-
-    Only the write target is faked. What a name may contain is never
-    decided here; that answer always comes from stapel-profiles itself.
-    """
-
-    _rows: dict = {}
-
-    def __init__(self, user_id, display_name=""):
-        self.user_id = user_id
-        self.display_name = display_name
-
-    class _Manager:
-        def get_or_create(self, user_id):
-            row = _FakeProfile._rows.get(str(user_id))
-            if row is None:
-                row = _FakeProfile(user_id)
-                _FakeProfile._rows[str(user_id)] = row
-                return row, True
-            return row, False
-
-    objects = _Manager()
-
-    def save(self, update_fields=None):
-        self.saved_fields = tuple(update_fields or ())
-
-    class _Meta:
-        @staticmethod
-        def get_field(name):
-            if name != "display_name":
-                raise LookupError(name)
-            return object()
-
-    _meta = _Meta()
+#
+# stapel_profiles is NOT in INSTALLED_APPS for this file. That is the point:
+# the only thing joining the two modules here is a function NAME on the comm
+# plane, which is what makes the endpoint work in a split deployment. The
+# stand-in providers below mirror stapel-profiles' real ones (0.10) — the
+# structural {ok, reason} contract, the reason vocabulary — and delegate the
+# one decision they must not fake, "what may a name contain", to that
+# module's own validator.
 
 
 @pytest.fixture(autouse=True)
@@ -168,36 +139,114 @@ def clean_error_registry():
     core_errors._REMEDIATION_REGISTRY.update(before_remediation)
 
 
-@pytest.fixture
-def profiles_seam(monkeypatch, clean_error_registry):
-    """Fake ``profiles_in_process`` — the ONE indirection to stapel-profiles.
+@pytest.fixture(autouse=True)
+def clean_function_registry():
+    """Leave the process-global comm registry exactly as it was found."""
+    from stapel_core.comm.registry import function_registry
 
-    Serves the real ``validate_display_name`` (the canon under test), a
-    fake profile row (the write target), and a recording publisher for
-    ``profile.changed``.
+    providers = dict(function_registry._providers)
+    schemas = dict(function_registry._schemas)
+    yield
+    function_registry._providers.clear()
+    function_registry._providers.update(providers)
+    function_registry._schemas.clear()
+    function_registry._schemas.update(schemas)
+
+
+def _drop_profiles_providers():
+    from stapel_core.comm.registry import function_registry
+
+    for name in (
+        services.SET_DISPLAY_NAME,
+        services.VALIDATE_DISPLAY_NAME,
+        services.DISPLAY_NAMES,
+    ):
+        function_registry._providers.pop(name, None)
+        function_registry._schemas.pop(name, None)
+
+
+@pytest.fixture
+def profiles_seam(clean_error_registry):
+    """A deployment where profiles answers — in another process or this one.
+
+    Registers the three providers stapel-profiles 0.10 publishes. The write
+    stand-in stores names in a dict instead of a table, but it runs the
+    REAL ``validate_display_name`` and returns the real structural contract,
+    because those are the two things this module's behaviour is derived
+    from. Where the row physically lands is that module's business and is
+    covered by its own tests.
     """
     pytest.importorskip(
         "stapel_profiles.validators",
         reason="stapel-profiles is not installed; the display-name canon "
         "cannot be exercised without the module that owns it",
     )
+    from stapel_core.comm.registry import function_registry
+    from stapel_core.django.api.errors import StapelValidationError
     from stapel_profiles.validators import validate_display_name
 
-    _FakeProfile._rows = {}
-    published = []
-    table = {
-        _CANON_PATH: validate_display_name,
-        _MODEL_PATH: lambda: _FakeProfile,
-        _PUBLISH_PATH: published.append,
-    }
-    monkeypatch.setattr(services, "profiles_in_process", table.get)
-    return {"rows": _FakeProfile._rows, "published": published}
+    rows: dict = {}
+    published: list = []
+    calls: list = []
+
+    def _reason(value):
+        try:
+            validate_display_name(value)
+        except StapelValidationError as exc:
+            return ".".join(exc.error_key.split(".")[2:])
+        return None
+
+    def _validate(payload):
+        reason = _reason(payload["display_name"])
+        return {"ok": reason is None, "reason": reason}
+
+    def _set(payload):
+        calls.append(payload)
+        reason = _reason(payload["display_name"])
+        if reason is not None:
+            return {"ok": False, "display_name": None, "reason": reason}
+        rows[str(payload["user_id"])] = payload["display_name"]
+        published.append(payload["user_id"])
+        return {"ok": True, "display_name": payload["display_name"], "reason": None}
+
+    def _names(payload):
+        return {
+            "display_names": {
+                uid: rows[uid]
+                for uid in payload["user_ids"]
+                if rows.get(uid)
+            }
+        }
+
+    _drop_profiles_providers()
+    function_registry.register(services.VALIDATE_DISPLAY_NAME, _validate)
+    function_registry.register(services.SET_DISPLAY_NAME, _set)
+    function_registry.register(services.DISPLAY_NAMES, _names)
+    return {"rows": rows, "published": published, "calls": calls}
 
 
 @pytest.fixture
-def profiles_absent(monkeypatch):
-    """A deployment where stapel-profiles does not run in this process."""
-    monkeypatch.setattr(services, "profiles_in_process", lambda path: None)
+def profiles_absent():
+    """A deployment with no provider and no route: profiles is nowhere.
+
+    Not "profiles is restarting" — nothing in this process or its
+    configuration knows where profiles is, and no amount of waiting changes
+    that. The endpoint must say so in those words.
+    """
+    _drop_profiles_providers()
+
+
+@pytest.fixture
+def profiles_unreachable():
+    """A deployment wired to profiles, whose call fails right now."""
+    from stapel_core.comm.registry import function_registry
+
+    def _boom(payload):
+        raise RuntimeError("connection reset by peer")
+
+    _drop_profiles_providers()
+    function_registry.register(services.SET_DISPLAY_NAME, _boom)
+    function_registry.register(services.VALIDATE_DISPLAY_NAME, _boom)
 
 
 # --- members/<user_id>/name ---------------------------------------------
@@ -217,7 +266,7 @@ class TestMemberNameEdit:
 
         assert resp.status_code == 200, resp.content
         assert resp.json() == {"display_name": "Ada Lovelace"}
-        assert profiles_seam["rows"][str(other_user.id)].display_name == "Ada Lovelace"
+        assert profiles_seam["rows"][str(other_user.id)] == "Ada Lovelace"
 
     def test_admin_renames_a_member(
         self, api_client, user, other_user, profiles_seam
@@ -235,18 +284,21 @@ class TestMemberNameEdit:
         )
 
         assert resp.status_code == 200, resp.content
-        assert profiles_seam["rows"][str(other_user.id)].display_name == "Grace Hopper"
+        assert profiles_seam["rows"][str(other_user.id)] == "Grace Hopper"
 
-    def test_the_write_publishes_profile_changed(
+    def test_the_write_goes_out_as_the_named_operation(
         self, authed_client, user, other_user, profiles_seam
     ):
-        """Any profile write outside profiles' own serializers must announce itself.
+        """One call, one name, one payload — and nothing else crosses.
 
-        stapel-profiles' llms.txt states it as a rule, not a nicety: every
-        consumer of the name (search projections, chat rosters, a host's
-        ``User.first_name`` mirror) desyncs silently otherwise — which is
-        precisely the workaround meettoday had already grown for the READ
-        side of this same seam.
+        This is the whole cutover in one assertion. Before 0.21.0 this
+        endpoint reached INTO stapel-profiles — its validator, its model
+        factory, its event publisher, three symbols by dotted path — which
+        only worked where that module happened to be co-mounted. What
+        crosses now is a name and two strings, and everything the name
+        implies (the canon, the swappable model, get-or-create,
+        ``profile.changed``) happens on the far side, in the module that
+        owns it, whichever process that is.
         """
         ws = _create_ws(user)
         _add_member(ws, other_user, Role.MEMBER)
@@ -257,22 +309,14 @@ class TestMemberNameEdit:
             format="json",
         )
 
-        assert [p.display_name for p in profiles_seam["published"]] == ["Ada Lovelace"]
-
-    def test_the_write_names_only_the_touched_columns(
-        self, authed_client, user, other_user, profiles_seam
-    ):
-        ws = _create_ws(user)
-        _add_member(ws, other_user, Role.MEMBER)
-
-        authed_client.patch(
-            _member_url(ws.id, other_user.id),
-            {"display_name": "Ada Lovelace"},
-            format="json",
-        )
-
-        row = profiles_seam["rows"][str(other_user.id)]
-        assert row.saved_fields == ("display_name", "updated_at")
+        assert profiles_seam["calls"] == [
+            {"user_id": str(other_user.id), "display_name": "Ada Lovelace"}
+        ]
+        # And the far side announced the change — the rule profiles' own
+        # llms.txt states for ANY write that skips its serializers. That it
+        # happens is asserted here; that it CANNOT be forgotten is asserted
+        # in stapel-profiles, where the emission now lives.
+        assert profiles_seam["published"] == [str(other_user.id)]
 
     def test_blank_clears_the_name(
         self, authed_client, user, other_user, profiles_seam
@@ -284,9 +328,7 @@ class TestMemberNameEdit:
         """
         ws = _create_ws(user)
         _add_member(ws, other_user, Role.MEMBER)
-        profiles_seam["rows"][str(other_user.id)] = _FakeProfile(
-            other_user.id, display_name="Old Name"
-        )
+        profiles_seam["rows"][str(other_user.id)] = "Old Name"
 
         resp = authed_client.patch(
             _member_url(ws.id, other_user.id), {"display_name": "   "}, format="json"
@@ -294,7 +336,7 @@ class TestMemberNameEdit:
 
         assert resp.status_code == 200, resp.content
         assert resp.json() == {"display_name": ""}
-        assert profiles_seam["rows"][str(other_user.id)].display_name == ""
+        assert profiles_seam["rows"][str(other_user.id)] == ""
 
     def test_missing_key_clears_the_name(
         self, authed_client, user, other_user, profiles_seam
@@ -441,16 +483,76 @@ class TestMemberNameEdit:
         assert resp.json()["localizable_error"] == "error.400.field.max_length"
         assert str(other_user.id) not in profiles_seam["rows"]
 
-    def test_profiles_absent_is_an_honest_503(
+    def test_the_split_deployment_that_used_to_be_broken_now_works(
+        self, authed_client, user, other_user, profiles_seam
+    ):
+        """The defect this release exists to remove.
+
+        stapel_profiles is not in this process — ``profiles_seam`` registers
+        nothing but three names on the comm plane, which is what a route to
+        another container looks like from here. 0.19.0 answered 503 forever
+        in exactly this shape, because its seam asked the app registry first
+        and gave up when the sibling was not local.
+        """
+        from django.apps import apps as django_apps
+
+        assert not django_apps.is_installed("stapel_profiles"), (
+            "this test is only meaningful when profiles runs elsewhere"
+        )
+        ws = _create_ws(user)
+        _add_member(ws, other_user, Role.MEMBER)
+
+        resp = authed_client.patch(
+            _member_url(ws.id, other_user.id), {"display_name": "Ada Lovelace"},
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        assert resp.json() == {"display_name": "Ada Lovelace"}
+        assert profiles_seam["rows"][str(other_user.id)] == "Ada Lovelace"
+
+    def test_no_provider_and_no_route_is_a_configuration_refusal(
         self, authed_client, user, other_user, profiles_absent
     ):
-        """No profiles in this process = no canonical name store to write.
+        """Nowhere to write = 503, and one that names its own cause.
 
         Never a 200 over a write that did not happen, and never a silent
         fallback onto ``WorkspaceMember.display_name_hint`` — that column
         goes dark the moment a profile exists, so a "correction" written
         there is one the renamed person never sees.
+
+        The key is ``profiles_not_configured``, whose remediation is
+        ``contact_support``. 0.19.0 answered ``profiles_unavailable`` /
+        ``wait_and_retry`` here — advising the caller to wait for a module
+        that was never coming. An unconfigured comm route is a
+        configuration fact: only an operator resolves it, and it never
+        resolves itself (env-address-class v2 §2).
         """
+        ws = _create_ws(user)
+        _add_member(ws, other_user, Role.MEMBER)
+
+        resp = authed_client.patch(
+            _member_url(ws.id, other_user.id), {"display_name": "Ada Lovelace"},
+            format="json",
+        )
+
+        assert resp.status_code == 503
+        assert resp.json()["localizable_error"] == ERR_503_PROFILES_NOT_CONFIGURED
+
+    def test_the_configuration_refusal_does_not_advise_waiting(self):
+        """The remediation split, asserted where it is declared."""
+        from stapel_workspaces.errors import WORKSPACES_REMEDIATION
+
+        assert WORKSPACES_REMEDIATION[ERR_503_PROFILES_NOT_CONFIGURED] == (
+            "contact_support"
+        )
+        # The transient sibling keeps the hint that is true for IT.
+        assert WORKSPACES_REMEDIATION[ERR_503_PROFILES_UNAVAILABLE] == "wait_and_retry"
+
+    def test_a_wired_but_failing_profiles_is_the_transient_503(
+        self, authed_client, user, other_user, profiles_unreachable
+    ):
+        """Routed, called, failed — this one really is "try again later"."""
         ws = _create_ws(user)
         _add_member(ws, other_user, Role.MEMBER)
 

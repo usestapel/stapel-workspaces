@@ -86,3 +86,52 @@ def check_capability_levels(app_configs, **kwargs):
                 id="stapel_workspaces.E008",
             ))
     return errors
+
+
+@checks.register(checks.Tags.compatibility)
+def check_profiles_name_write_wired(app_configs, **kwargs):
+    """W: the roster can edit a name, but nothing can perform the write.
+
+    ``PATCH <ws>/members/<id>/name`` writes stapel-profiles'
+    ``Profile.display_name`` through ``profiles.set_display_name`` — a comm
+    Function that module publishes from 0.10. If this deployment has neither
+    a provider (profiles not in this process) nor a route to one, that
+    endpoint answers ``error.503.profiles_not_configured`` on every request,
+    forever, and only an operator can change that.
+
+    Modelled on stapel-core's CDN route check
+    (``stapel_core.django.cdn.checks.check_cdn_module_wired``, E002), which
+    is the fleet's existing answer to "a comm route this code needs is not
+    configured". W and not E on purpose: this is one endpoint of many, and
+    env-address-class v2 §2 says a dependency that serves part of a
+    process's surface degrades LOUDLY rather than blocking the start of
+    everything else. Loud at deploy time beats loud at the first user.
+    """
+    from stapel_core.comm.config import comm_setting
+    from stapel_core.comm.exceptions import (
+        FunctionNotRegistered,
+        FunctionRouteNotConfigured,
+    )
+    from stapel_core.comm.functions import _route_for
+    from stapel_core.comm.registry import function_registry
+
+    from .services import SET_DISPLAY_NAME
+
+    transport = comm_setting("FUNCTION_TRANSPORT", "inprocess")
+    try:
+        if transport == "inprocess":
+            function_registry.get(SET_DISPLAY_NAME)
+        else:
+            _route_for(SET_DISPLAY_NAME)
+    except (FunctionNotRegistered, FunctionRouteNotConfigured):
+        return [checks.Warning(
+            f"{SET_DISPLAY_NAME} has no provider and no configured route — "
+            "PATCH <workspace>/members/<user_id>/name cannot write the "
+            "canonical display name in this deployment and will answer "
+            "error.503.profiles_not_configured on every request.",
+            hint="Add stapel_profiles (>= 0.10) to INSTALLED_APPS in this "
+                 "process, or add a STAPEL_COMM['FUNCTION_ROUTES'] entry for "
+                 "'profiles.' pointing at the service that runs it.",
+            id="stapel_workspaces.W001",
+        )]
+    return []

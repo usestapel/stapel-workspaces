@@ -260,6 +260,10 @@
       "hash": "c01407bc09695de1",
       "origin": "llm"
     },
+    "error.503.profiles_not_configured": {
+      "hash": "cfb307774d3fcea7",
+      "origin": "human"
+    },
     "error.503.profiles_unavailable": {
       "hash": "6e6b8bb24b8025cb",
       "origin": "llm"

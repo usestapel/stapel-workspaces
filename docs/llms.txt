@@ -1,8 +1,8 @@
-# stapel-workspaces 0.20.0
+# stapel-workspaces 0.21.0
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 41 · extension points 5 · operations 26 · error codes 66.
+Contract: axes 1 · surface 40 · extension points 5 · operations 26 · error codes 67.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -15,8 +15,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 ### gate_function
 - apply_first_login_policies — stapel_workspaces.services.apply_first_login_policies
   Demand an org's first-login steps of an account, failing closed.
-- display_name_canon — stapel_workspaces.services.display_name_canon
-  stapel-profiles' validate_display_name when reachable, else None — the ONE canon for what a display name may contain, raising that module's own error.400.display_name_* keys. Anything here that accepts or writes a name goes through it; a second, differently-strict rule is the drift this stops.
+- check_display_name — stapel_workspaces.services.check_display_name
+  Ask stapel-profiles' own name canon by name (profiles.validate_display_name) what a display name may contain; returns that module's error.400.display_name_* key or None. Anything here that accepts or writes a name goes through it, and this module keeps no second, differently-strict copy — that drift is what it exists to stop. Best-effort: no provider means no canon applied here, never a locally invented rule.
 - enforce_require_mfa — stapel_workspaces.services.enforce_require_mfa
   Sweep a workspace's members via auth.mfa_status, suspend the unenrolled, fail-open on an auth hiccup.
 - require_capability — stapel_workspaces.permissions.require_capability
@@ -73,8 +73,6 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled.
 - preferred_workspace_id_for — stapel_workspaces.services.preferred_workspace_id_for
   The caller's stated home workspace id, or '' — active-membership filtered, so it goes quiet during a suspension.
-- profiles_in_process — stapel_workspaces.services.profiles_in_process
-  Resolve a stapel-profiles symbol by dotted path, only while that module runs in THIS process — the module boundary's answer to "how do I reach profiles", since Stapel modules never import each other. None when it is absent, so the caller picks a fallback or an honest 503.
 - provision_member — stapel_workspaces.services.provision_member
   Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials).
 - resend_invitation — stapel_workspaces.services.resend_invitation
@@ -92,7 +90,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - set_preferred_workspace — stapel_workspaces.services.set_preferred_workspace
   Record (or clear) the person's explicit home workspace — the choice DEFAULT_WORKSPACE_ID yields to. Validated against active membership.
 - set_profile_display_name — stapel_workspaces.services.set_profile_display_name
-  Write a user's CANONICAL display name (stapel-profiles' Profile.display_name) and publish profile.changed, creating the row when absent. False when profiles is not in this process, so the caller answers 503; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this.
+  Write a user's CANONICAL display name through profiles.set_display_name — the named comm write stapel-profiles publishes, which owns the canon, the swappable model, get-or-create and the profile.changed emission. Returns None on success or the error key to answer with (profiles' own 400 key, error.503.profiles_not_configured when nothing is wired, error.503.profiles_unavailable when the call failed). Topology-independent; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this.
 - suspend_memberships_for_deactivated_user — stapel_workspaces.services.suspend_memberships_for_deactivated_user
   Suspend every membership of a deactivated account, wired to auth's user.deactivated.
 - suspend_memberships_without_mfa — stapel_workspaces.services.suspend_memberships_without_mfa
@@ -149,7 +147,7 @@ Paths are relative to `/workspaces/api/v1/`.
 - GET /{workspace_id} — workspaces_api_v1_retrieve_2
 - GET /roles — workspaces_api_v1_roles_retrieve
 
-## Error codes (66) — the StapelError envelope
+## Error codes (67) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.already_workspace_member [400] fix_input
 - error.400.bad_request [400] fix_input
@@ -216,4 +214,5 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.429.too_many_requests [429] wait_and_retry
 - error.500.internal [500] contact_support
 - error.503.auth_unavailable [503] wait_and_retry
+- error.503.profiles_not_configured [503] contact_support
 - error.503.profiles_unavailable [503] wait_and_retry

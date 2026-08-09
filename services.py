@@ -151,24 +151,51 @@ def resolve_landing_workspace(user, *, origin: str = "street") -> Workspace | No
 
 
 # ---------------------------------------------------------------------------
-# stapel-profiles integration (read-only, best-effort, HTTP — not an import)
+# stapel-profiles integration — by NAME over comm, never by symbol
 # ---------------------------------------------------------------------------
 #
 # This module's own convention (MODULE.md: "Stapel modules never import each
 # other; all cross-module communication goes through stapel-core") rules out
 # ``from stapel_profiles... import ...`` here — same as every other sibling
 # seam in this file (auth, notifications, billing), all of which go through
-# stapel-core instead of a direct import. stapel-profiles registers no comm
-# Function for this (its own docs/capabilities.json surface is HTTP-operation
-# only), so the mechanism is a plain HTTP call to its public, AllowAny
-# ``POST /profiles/api/v1/batch`` — built by that module for exactly this
-# "resolve many ids at once" shape — using stapel-core's own peer-client
-# discipline (``service_answered``: a routing 404 is never a verdict) rather
-# than reading a network hiccup as "nobody has a name".
+# stapel-core instead of a direct import.
 #
+# Until 0.21.0 that convention was honoured in the letter and broken in the
+# spirit: a helper asked Django's app registry whether ``stapel_profiles``
+# ran in THIS process and then resolved that module's internals by dotted
+# path (``validate_display_name``, ``get_profile_model``,
+# ``publish_profile_changed``). It was the fleet's only cross-module symbol
+# resolution, and it made a product feature a function of topology — where
+# profiles is its own container (ironmemo's actual deployment) the roster's
+# name-edit endpoint answered a PERMANENT ``error.503.profiles_unavailable``
+# whose remediation told the caller to wait for a module that was never
+# coming.
+#
+# The verdict (`tasks/who-owns-the-name-write.md`): authority decides, the
+# owner writes. The endpoint stays here — rank semantics ("only an owner
+# renames an owner") live nowhere else — and the write goes through named
+# comm operations stapel-profiles publishes, exactly as ``billing.debit``
+# lets this module move credits in billing's ledger. Comm Functions are
+# topology-independent by construction: in-process in a monolith, internal
+# HTTP/NATS in a split deployment, chosen by STAPEL_COMM, not by code here.
+#
+# Deployment floor: stapel-profiles >= 0.10 (the release that publishes
+# these three). ``checks.check_profiles_name_write_wired`` says so out loud
+# at startup when neither a provider nor a route can be found.
+SET_DISPLAY_NAME = "profiles.set_display_name"
+VALIDATE_DISPLAY_NAME = "profiles.validate_display_name"
+DISPLAY_NAMES = "profiles.display_names"
+
+#: Refusal reasons ``profiles.set_display_name`` answers with that are name
+#: verdicts: the wire form is the trailing name of stapel-profiles' own
+#: ``error.400.display_name_*`` keys, which this module re-declares, so the
+#: mapping back is a prefix and not a translation table that can drift.
+_DISPLAY_NAME_REASON_PREFIX = "display_name_"
+
+
 # PROFILES_SERVICE_URL follows the same flat-setting canon as FRONTEND_URL
 # above and stapel-core's WORKSPACES_SERVICE_URL: unset (the default) turns
-# the whole integration off, no network attempt is ever made, and every
+# the HTTP read fallback off, no network attempt is ever made, and every
 # caller falls back to WorkspaceMember.display_name_hint alone.
 def _profiles_service_url() -> str:
     return (
@@ -177,134 +204,131 @@ def _profiles_service_url() -> str:
     ).rstrip("/")
 
 
-#: Django app label of stapel-profiles, used only to ask the app registry
-#: whether that module runs in THIS process. A label, not an import.
-_PROFILES_APP_LABEL = "stapel_profiles"
-
-
-def profiles_in_process(dotted_path: str):
-    """Resolve a stapel-profiles symbol iff that module runs in this process.
-
-    The one seam this module has to stapel-profiles' internals, and it is
-    the SAME one ``_fetch_profile_display_names`` above already uses: ask
-    Django's app registry whether ``stapel_profiles`` is installed here, and
-    only then resolve the symbol by dotted path at call time. There is no
-    ``from stapel_profiles import ...`` anywhere in this package (MODULE.md:
-    "Stapel modules never import each other"), and there never can be —
-    stapel-profiles is not a dependency of this distribution, so a static
-    import would break every deployment that does not ship it.
-
-    Returns ``None`` — never raises — when profiles is absent or the symbol
-    has moved. Callers decide what that means: for a name the roster only
-    *displays* it means "fall back to the hint", for a name the roster is
-    being asked to *write* it means an honest 503.
-
-    Why not HTTP, like the batch read below: stapel-profiles publishes no
-    write-someone-else's-name operation and no comm Function at all (its
-    docs/capabilities.json surface is HTTP-operation only), so there is no
-    remote form of either the write or the name canon to call. A split
-    deployment therefore cannot serve the roster's name-edit endpoints at
-    all, and says so with ``error.503.profiles_unavailable`` rather than
-    quietly writing a name into a store nobody reads.
-    """
-    from django.apps import apps as _django_apps
-
-    if not _django_apps.is_installed(_PROFILES_APP_LABEL):
-        return None
-    from django.utils.module_loading import import_string
-
-    try:
-        return import_string(dotted_path)
-    except ImportError:
-        logger.warning(
-            "stapel-profiles is installed but %s did not resolve — version skew "
-            "between this module and the profiles package",
-            dotted_path,
-        )
-        return None
-
-
-def _profile_model():
-    """The active (possibly host-swapped) profile model, or ``None``.
-
-    Goes through stapel-profiles' own ``get_profile_model`` rather than
-    ``apps.get_model("stapel_profiles", "Profile")`` so a host that assembled
-    an extended Profile (``STAPEL_SWAP["PROFILES_PROFILE_MODEL"]``) is
-    honoured — the zero-field default is not where its names live, and
-    reading (or worse, writing) it would be a silent no-op. That is the
-    SWAP001 discipline stated in profiles' own docs/llms.txt.
-    """
-    get_profile_model = profiles_in_process("stapel_profiles.models.get_profile_model")
-    return get_profile_model() if get_profile_model is not None else None
-
-
-def display_name_canon():
-    """stapel-profiles' ``validate_display_name``, or ``None`` if it is absent.
+def check_display_name(value: str) -> str | None:
+    """stapel-profiles' name canon, asked by name. Error key, or ``None``.
 
     The single canon for what a display name may contain — minimum length,
-    control/invisible characters, emoji — raising ``StapelValidationError``
-    with that module's own error keys (``error.400.display_name_*``, all
-    four re-declared in this module's registry so they appear in its
-    contract). This module deliberately owns NO second copy of those rules:
-    profiles' llms.txt names re-deriving them as the mistake, and a weaker
-    duplicate inside the framework that canonizes the original is exactly
-    the drift the fleet keeps paying for.
+    control/invisible characters, emoji. This module deliberately owns NO
+    second copy of those rules: profiles' llms.txt names re-deriving them as
+    the mistake, and a weaker duplicate inside the framework that canonizes
+    the original is exactly the drift the fleet keeps paying for.
+
+    Returns one of the four ``error.400.display_name_*`` keys this module
+    re-declares, or ``None`` when the name is fine.
+
+    **Best-effort, and deliberately so.** When profiles publishes no
+    reachable provider the answer is ``None`` — the same "no canon here"
+    this module answered before 0.21.0 when the sibling was not in the
+    process. Nothing is substituted for it: a made-up local rule is the
+    drift above. The two callers cover the gap differently, and both are
+    honest about it — a member rename cannot silently skip the canon
+    because ``set_profile_display_name`` re-runs it INSIDE profiles and
+    fails loudly if that call cannot be made at all, while an invitation's
+    local name hint keeps exactly the rule this module already applied to
+    the same column at invite time (the storage ceiling).
 
     The length CEILING is not part of this: 35 characters is a storage fact
     that ``Profile.display_name`` and ``WorkspaceInvitation.display_name_hint``
-    both declare, enforced here as the serializer field's ``max_length``
+    both declare, enforced as the serializer field's ``max_length``
     (``error.400.field.max_length``).
     """
-    return profiles_in_process("stapel_profiles.validators.validate_display_name")
+    try:
+        result = call(VALIDATE_DISPLAY_NAME, {"display_name": value}) or {}
+    except (FunctionNotRegistered, FunctionRouteNotConfigured) as exc:
+        logger.debug(
+            "%s has no provider in this deployment (%s) — the name canon is "
+            "not applied here",
+            VALIDATE_DISPLAY_NAME,
+            exc,
+        )
+        return None
+    except FunctionCallError:
+        logger.warning("%s failed", VALIDATE_DISPLAY_NAME, exc_info=True)
+        return None
+    if result.get("ok"):
+        return None
+    return _error_key_for_reason(result.get("reason"))
 
 
-def set_profile_display_name(user_id, display_name: str) -> bool:
-    """Write *display_name* onto the profile of *user_id*. ``False`` if impossible.
+def _error_key_for_reason(reason) -> str | None:
+    """profiles' structural ``reason`` -> the error key to answer with.
+
+    ``display_name_emoji`` -> ``error.400.display_name_emoji``: the same
+    string key, the same English, the same remediation a frontend already
+    branches on when stapel-profiles itself refused the write. Any other
+    reason (today: ``no_display_name_field`` — this deployment's profile
+    model carries no name at all, §66) is not something the caller can edit,
+    so it collapses onto the 503 the absent-module case answers with.
+    """
+    if isinstance(reason, str) and reason.startswith(_DISPLAY_NAME_REASON_PREFIX):
+        return f"error.400.{reason}"
+    return None
+
+
+def set_profile_display_name(user_id, display_name: str) -> str | None:
+    """Write *display_name* as the canonical name of *user_id*.
+
+    Returns ``None`` on success, or the error key the caller must answer
+    with — so the endpoint's refusal vocabulary is decided here, in one
+    place, from one structural result.
 
     The canonical name lives in stapel-profiles and nowhere else — writing
     ``WorkspaceMember.display_name_hint`` instead would be writing a field
     that goes dark the moment a profile exists (see its docstring in
-    ``models.py``), i.e. a rename the person renamed never sees.
+    ``models.py``), i.e. a rename the person renamed never sees. So this is
+    a call to ``profiles.set_display_name``, the named write that module
+    publishes: it validates against its own canon, resolves the possibly
+    host-swapped profile model, creates the row when the person has never
+    opened the profile screen, and publishes ``profile.changed`` so every
+    downstream consumer of that name follows. None of those four things is
+    reimplemented here, and after 0.21.0 none of them CAN be — there is no
+    seam left to reach them through.
 
-    Creates the profile row when there is none: the target is a member of a
-    workspace, so the account exists, and "has not opened the profile screen
-    yet" must not make an admin's correction unwritable. ``False`` means
-    stapel-profiles does not run in this process (or ships no
-    ``display_name`` field at all) — the caller answers 503, never a
-    reported success.
+    The three failure keys, and why they are three:
 
-    Publishes ``profile.changed`` afterwards, as profiles' own llms.txt
-    demands of ANY write that does not go through its serializers: every
-    downstream consumer of that event (search projections, chat rosters, a
-    host's ``User.first_name`` mirror) desyncs silently otherwise.
+    * ``error.400.display_name_*`` — profiles refused the name. Verbatim
+      passthrough of its own keys; the frontend that highlights the field on
+      a refusal from ``PATCH /profiles/me`` behaves identically here.
+    * ``error.503.profiles_not_configured`` — no provider and no route.
+      A CONFIGURATION fact (env-address-class v2 §2): deterministic, fixed
+      by editing this deployment's STAPEL_COMM, and it will NOT heal on its
+      own. Telling the caller to wait would be the lie 0.19.0 told.
+    * ``error.503.profiles_unavailable`` — the call was made and failed, or
+      profiles answered a refusal that is not about the name. Genuinely
+      transient / genuinely someone else's outage: ``wait_and_retry`` is
+      true here and only here.
     """
-    Profile = _profile_model()
-    if Profile is None:
-        return False
-    from django.core.exceptions import FieldDoesNotExist
+    from .errors import ERR_503_PROFILES_NOT_CONFIGURED, ERR_503_PROFILES_UNAVAILABLE
 
     try:
-        Profile._meta.get_field("display_name")
-    except FieldDoesNotExist:
-        # A host-swapped profile model without a display name — there is no
-        # canonical name in this deployment to correct.
-        logger.warning(
-            "the active profile model %s has no display_name field", Profile.__name__
+        result = call(
+            SET_DISPLAY_NAME,
+            {"user_id": str(user_id), "display_name": display_name},
+        ) or {}
+    except (FunctionNotRegistered, FunctionRouteNotConfigured) as exc:
+        # Loud, and at ERROR: this is a deployment that ships the roster's
+        # name-edit endpoint with nothing behind it, and every request to it
+        # will fail the same way until somebody edits configuration.
+        logger.error(
+            "%s is not wired in this deployment (%s) — the roster cannot "
+            "write a canonical name here. Either co-mount stapel-profiles "
+            ">= 0.10 in this process or add a STAPEL_COMM FUNCTION_ROUTES "
+            "entry for 'profiles.' pointing at the service that runs it.",
+            SET_DISPLAY_NAME,
+            exc,
         )
-        return False
+        return ERR_503_PROFILES_NOT_CONFIGURED
+    except FunctionCallError:
+        logger.warning("%s failed", SET_DISPLAY_NAME, exc_info=True)
+        return ERR_503_PROFILES_UNAVAILABLE
 
-    profile, _created = Profile.objects.get_or_create(user_id=user_id)
-    profile.display_name = display_name
-    profile.save(update_fields=["display_name", "updated_at"])
-
-    publish_profile_changed = profiles_in_process(
-        "stapel_profiles.events.publish_profile_changed"
-    )
-    if publish_profile_changed is not None:
-        # Best-effort inside profiles' own publisher (it swallows and
-        # savepoint-isolates); the name is already saved either way.
-        publish_profile_changed(profile)
-    return True
+    if result.get("ok"):
+        return None
+    # A name verdict passes through keyed; anything else (a deployment whose
+    # profile model has no display_name at all) is not the caller's to fix
+    # and is not a transient outage either — but it IS "profiles cannot
+    # serve this", which is what the pre-existing 503 key already says.
+    return _error_key_for_reason(result.get("reason")) or ERR_503_PROFILES_UNAVAILABLE
 
 
 def _fetch_profile_display_names(user_ids) -> dict:
@@ -317,45 +341,48 @@ def _fetch_profile_display_names(user_ids) -> dict:
     ``WorkspaceMember.display_name_hint`` for anything absent here.
 
     Best-effort like every other optional cross-service seam this module
-    already has (auth/notifications/billing): ``PROFILES_SERVICE_URL``
-    unset, a transport error, a routing miss (this service and
-    stapel-profiles disagree about the path — see ``service_answered``), or
-    any non-200 all degrade to ``{}`` rather than raising. A member's name
-    is cosmetic; it is never worth failing a roster over.
+    already has (auth/notifications/billing): no provider, no route, a
+    transport error, a routing miss (this service and stapel-profiles
+    disagree about the path — see ``service_answered``), or any non-200 all
+    degrade to ``{}`` rather than raising. A member's name is cosmetic; it
+    is never worth failing a roster over.
     """
     ids = list(dict.fromkeys(str(uid) for uid in user_ids))
     if not ids:
         return {}
 
-    # In-process FIRST. This seam was written as if stapel-profiles were
-    # always a remote service, so a monolith that has `stapel_profiles` right
-    # there in INSTALLED_APPS still got `{}` — PROFILES_SERVICE_URL is unset
-    # (nobody points a service at itself), the HTTP branch bails on line one,
-    # and the caller silently degrades to an email address. Measured live on
-    # meettoday 2026-08-05: profiles installed in the same process, name
-    # never found, invitation emails addressed from a bare email — which is
-    # why the product had grown its own `profile.changed` subscriber copying
-    # display_name into `User.first_name` just to make `get_full_name()` fire.
-    # A cross-service seam that cannot see a module sitting next to it is
-    # half a seam.
+    # comm FIRST, and it covers both topologies: in a monolith the transport
+    # is in-process, so the sibling sitting right there in INSTALLED_APPS is
+    # found without any service URL (nobody points a service at itself —
+    # measured live on meettoday 2026-08-05: profiles installed in the same
+    # process, name never found, invitation emails addressed from a bare
+    # email address); in a split deployment the same call goes over the
+    # configured route. profiles.display_names is swap-aware on its side, so
+    # a host that put its names on its own extended Profile is honoured
+    # (SWAP001) without this module knowing that model exists.
     try:
-        # `_profile_model()` rather than a raw apps.get_model on the default
-        # class: a host that swapped in its own extended Profile keeps its
-        # names there, and the zero-field default would answer "nobody has a
-        # name" forever (SWAP001 discipline — see that helper).
-        Profile = _profile_model()
-        if Profile is not None:
-            rows = Profile.objects.filter(user_id__in=ids).values_list(
-                "user_id", "display_name"
-            )
-            local = {str(uid): name for uid, name in rows if (name or "").strip()}
-            if local:
-                return local
-    except Exception:
-        # Same best-effort contract as the HTTP branch below: a cosmetic name
-        # is never worth failing a roster over.
-        logger.warning("in-process stapel-profiles lookup errored", exc_info=True)
+        result = call(DISPLAY_NAMES, {"user_ids": ids}) or {}
+        names = {
+            str(uid): name
+            for uid, name in (result.get("display_names") or {}).items()
+            if (name or "").strip()
+        }
+        if names:
+            return names
+    except (FunctionNotRegistered, FunctionRouteNotConfigured) as exc:
+        # Not an error: a deployment may serve names over the HTTP batch
+        # below (stapel-profiles < 0.10, which published no functions), or
+        # may have no profiles at all.
+        logger.debug("%s unavailable (%s)", DISPLAY_NAMES, exc)
+    except FunctionCallError:
+        logger.warning("%s failed", DISPLAY_NAMES, exc_info=True)
 
+    # HTTP fallback: stapel-profiles' public, AllowAny
+    # ``POST /profiles/api/v1/batch`` — built by that module for exactly this
+    # "resolve many ids at once" shape — using stapel-core's own peer-client
+    # discipline (``service_answered``: a routing 404 is never a verdict)
+    # rather than reading a network hiccup as "nobody has a name". Kept for
+    # deployments wired that way before profiles published a read function.
     base = _profiles_service_url()
     if not base:
         return {}

@@ -224,11 +224,11 @@ class DisplayNameUpdateRequestSerializer(StapelDataclassSerializer):
       ``error.400.field.max_length`` carrying ``{field, max_length}``;
     * everything else a name may or may not contain — minimum length,
       control and invisible characters, emoji — belongs to stapel-profiles'
-      ``validate_display_name`` and is asked of it at call time
-      (``services.display_name_canon``). This module holds no copy of those
-      rules. A second, differently-strict name check living inside the
-      framework that canonizes the first is the drift this whole surface was
-      absorbed to avoid.
+      ``validate_display_name`` and is asked of it BY NAME over comm
+      (``services.check_display_name`` -> ``profiles.validate_display_name``).
+      This module holds no copy of those rules. A second, differently-strict
+      name check living inside the framework that canonizes the first is the
+      drift this whole surface was absorbed to avoid.
     """
 
     # Explicit override, same reason as MemberInviteRequestSerializer above:
@@ -254,21 +254,23 @@ class DisplayNameUpdateRequestSerializer(StapelDataclassSerializer):
         short-circuits on the empty string, so clearing a name never trips
         its two-character minimum.
 
-        When stapel-profiles does not run in this process the canon is simply
-        absent; nothing is substituted for it here. That case cannot reach a
-        write anyway for a member (the view answers 503 —
-        ``error.503.profiles_unavailable``), and for an invitation hint it
-        leaves exactly the rule this module already applied to the same field
-        at invite time: the column ceiling and nothing else.
+        Where stapel-profiles publishes no reachable provider the canon is
+        simply absent; nothing is substituted for it here. That case cannot
+        reach a member's canonical name unchecked — the write itself is
+        ``profiles.set_display_name``, which re-runs the canon INSIDE
+        profiles and, when it cannot be called at all, answers 503 rather
+        than storing anything. For an invitation's local name hint it leaves
+        exactly the rule this module already applied to the same column at
+        invite time: the storage ceiling and nothing else.
         """
         value = (value or "").strip()
-        canon = services.display_name_canon()
-        if canon is not None:
-            # Raises StapelValidationError with stapel-profiles' OWN error
-            # keys (error.400.display_name_*), which this module re-declares
-            # in its registry so they appear in its contract. Not caught, not
-            # re-keyed: one refusal vocabulary for one field.
-            canon(value)
+        error_key = services.check_display_name(value)
+        if error_key is not None:
+            # stapel-profiles' OWN error keys (error.400.display_name_*),
+            # which this module re-declares in its registry so they appear in
+            # its contract. Not re-keyed: one refusal vocabulary for one
+            # field, whichever service the refusal came from.
+            raise StapelValidationError(error_key)
         return value
 
 
