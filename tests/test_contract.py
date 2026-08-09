@@ -68,10 +68,11 @@ TRIAD = ("schema.json", "flows.json", "errors.json")
 # stapel-auth already takes: raise the ceiling for this module, do not
 # shorten intents to fit. Raised again in 0.19 (4500 -> 5000) when the
 # profiles seam behind the roster's name edit added three surface entries
-# and the profiles dependency line grew a write half. The budget stays
-# enforced, just at 5000 — keep it in step with the Makefile.
+# and the profiles dependency line grew a write half. Raised again in 0.20
+# (5000 -> 5500) for the two preferred-workspace surface entries. The budget
+# stays enforced, just at 5500 — keep it in step with the Makefile.
 ARTIFACTS = TRIAD + ("capabilities.json", "llms.txt")
-LLMS_TXT_BUDGET = "5000"
+LLMS_TXT_BUDGET = "5500"
 
 
 def _emit(out_dir: Path) -> None:

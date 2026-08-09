@@ -2,7 +2,7 @@
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 39 · extension points 5 · operations 24 · error codes 66.
+Contract: axes 1 · surface 41 · extension points 5 · operations 26 · error codes 66.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -71,6 +71,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Lift every no_mfa suspension in a workspace — call when require_mfa turns off.
 - lift_no_mfa_suspensions_for_user — stapel_workspaces.services.lift_no_mfa_suspensions_for_user
   Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled.
+- preferred_workspace_id_for — stapel_workspaces.services.preferred_workspace_id_for
+  The caller's stated home workspace id, or '' — active-membership filtered, so it goes quiet during a suspension.
 - profiles_in_process — stapel_workspaces.services.profiles_in_process
   Resolve a stapel-profiles symbol by dotted path, only while that module runs in THIS process — the module boundary's answer to "how do I reach profiles", since Stapel modules never import each other. None when it is absent, so the caller picks a fallback or an honest 503.
 - provision_member — stapel_workspaces.services.provision_member
@@ -87,6 +89,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Numeric rank of a role, or None — prefer role_at_least/role_exceeds_rank for yes/no.
 - security_settings_for — stapel_workspaces.services.security_settings_for
   Typed, defaulted view of Workspace.settings["security"] — instead of indexing the JSON bag directly.
+- set_preferred_workspace — stapel_workspaces.services.set_preferred_workspace
+  Record (or clear) the person's explicit home workspace — the choice DEFAULT_WORKSPACE_ID yields to. Validated against active membership.
 - set_profile_display_name — stapel_workspaces.services.set_profile_display_name
   Write a user's CANONICAL display name (stapel-profiles' Profile.display_name) and publish profile.changed, creating the row when absent. False when profiles is not in this process, so the caller answers 503; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this.
 - suspend_memberships_for_deactivated_user — stapel_workspaces.services.suspend_memberships_for_deactivated_user
@@ -113,7 +117,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - stapel-notifications (optional) — delivers the letters this module requests via request_notification: workspace.invitation (create), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error
 - stapel-profiles (optional) — the canonical source of a member's display name — this module stores only a name HINT typed at invite/provision time (WorkspaceMember.display_name_hint), never a second copy of the real field. Reads: MemberResponse.display_name resolves through the profiles seam (in-process Profile lookup first, then that module's public POST /batch over PROFILES_SERVICE_URL), falling back to the hint when profiles is absent, unreachable, or has no name yet. Writes (0.19): the roster's PATCH members/{id}/name sets Profile.display_name and publishes profile.changed, and both name-edit endpoints hold the value to that module's validate_display_name canon rather than a second rule of their own — profiles registers no comm Function and publishes no write-somebody-else's-name operation, so the write only exists in a process where profiles is mounted and answers error.503.profiles_unavailable where it is not. Never a hard import either way
 
-## HTTP operations (24) — call by operationId, never by a typed path
+## HTTP operations (26) — call by operationId, never by a typed path
 Paths are relative to `/workspaces/api/v1/`.
 ### Internal
 - GET /internal/{workspace_id}/members/{user_id} — workspaces_api_v1_internal_members_retrieve
@@ -138,6 +142,8 @@ Paths are relative to `/workspaces/api/v1/`.
 - POST / — workspaces_api_v1_create
 - DELETE /{workspace_id} — workspaces_api_v1_destroy
 - GET /instance — workspaces_api_v1_instance_retrieve
+- DELETE /me/preferred-workspace — workspaces_api_v1_me_preferred_workspace_destroy
+- PUT /me/preferred-workspace — workspaces_api_v1_me_preferred_workspace_update
 - PATCH /{workspace_id} — workspaces_api_v1_partial_update
 - GET / — workspaces_api_v1_retrieve
 - GET /{workspace_id} — workspaces_api_v1_retrieve_2

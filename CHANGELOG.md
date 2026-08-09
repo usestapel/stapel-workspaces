@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.20.0] — 2026-08-09
 
 ### Added — the person says where home is, and the server remembers it
 

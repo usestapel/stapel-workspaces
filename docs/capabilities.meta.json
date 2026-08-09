@@ -232,6 +232,14 @@
     "set_profile_display_name": {
       "kind": "factory",
       "intent": "Write a user's CANONICAL display name (stapel-profiles' Profile.display_name) and publish profile.changed, creating the row when absent. False when profiles is not in this process, so the caller answers 503; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this."
+    },
+    "set_preferred_workspace": {
+      "kind": "factory",
+      "intent": "Record (or clear) the person's explicit home workspace — the choice DEFAULT_WORKSPACE_ID yields to. Validated against active membership."
+    },
+    "preferred_workspace_id_for": {
+      "kind": "factory",
+      "intent": "The caller's stated home workspace id, or '' — active-membership filtered, so it goes quiet during a suspension."
     }
   }
 }

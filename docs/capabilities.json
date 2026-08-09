@@ -210,6 +210,12 @@
       "intent": "Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled."
     },
     {
+      "name": "preferred_workspace_id_for",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.preferred_workspace_id_for",
+      "intent": "The caller's stated home workspace id, or '' — active-membership filtered, so it goes quiet during a suspension."
+    },
+    {
       "name": "profiles_in_process",
       "kind": "factory",
       "path": "stapel_workspaces.services.profiles_in_process",
@@ -252,6 +258,12 @@
       "intent": "Typed, defaulted view of Workspace.settings[\"security\"] — instead of indexing the JSON bag directly."
     },
     {
+      "name": "set_preferred_workspace",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.set_preferred_workspace",
+      "intent": "Record (or clear) the person's explicit home workspace — the choice DEFAULT_WORKSPACE_ID yields to. Validated against active membership."
+    },
+    {
       "name": "set_profile_display_name",
       "kind": "factory",
       "path": "stapel_workspaces.services.set_profile_display_name",
@@ -282,7 +294,7 @@
       "intent": "Lift a membership suspension (idempotent) — counterpart of suspend_member."
     }
   ],
-  "operations_total": 24,
+  "operations_total": 26,
   "requires": [
     {
       "module": "stapel-core",
