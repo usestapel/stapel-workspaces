@@ -68,6 +68,7 @@ class TestGuestMayListWorkspaces:
             # A guest belongs nowhere, so the instance default is
             # withheld too — it is only echoed to a member of it.
             "default_workspace_id": "",
+            "preferred_workspace_id": "",
         }
 
     def test_guest_list_does_not_leak_other_peoples_workspaces(
@@ -226,6 +227,7 @@ def test_declarations_match_the_source():
         views.MemberInviteView,
         views.MemberProvisionView,
         views.MemberDetailView,
+        views.PreferredWorkspaceView,
         views.InvitationAcceptView,
         views.InvitationDeclineView,
     )

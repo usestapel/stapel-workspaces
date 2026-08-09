@@ -76,6 +76,7 @@ from .dto import (
     MemberInviteResponse,
     MemberPasswordResetResponse,
     MemberResponse,
+    PreferredWorkspaceResponse,
     ProvisionMemberResponse,
     RoleListResponse,
     RoleResponse,
@@ -130,6 +131,8 @@ from .serializers import (
     MemberPasswordResetResponseSerializer,
     MemberResponseSerializer,
     MemberUpdateRequestSerializer,
+    PreferredWorkspaceRequestSerializer,
+    PreferredWorkspaceResponseSerializer,
     ProvisionMemberRequestSerializer,
     ProvisionMemberResponseSerializer,
     RoleListResponseSerializer,
@@ -462,12 +465,23 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
             if configured and any(str(w.id) == configured for w in workspaces)
             else ""
         )
+        # The person's own stated choice, echoed on the same response the
+        # client already fetches — no second round trip to learn where home
+        # is, and no window in which the list has arrived but the choice has
+        # not. Guarded by the same rule as the instance default: active
+        # membership or "".
+        preferred_id = (
+            services.preferred_workspace_id_for(request.user)
+            if workspaces
+            else ""
+        )
         return StapelResponse(
             self.get_list_response_serializer_class()(
                 WorkspaceListResponse(
                     workspaces=workspaces,
                     is_guest=not workspaces,
                     default_workspace_id=default_id,
+                    preferred_workspace_id=preferred_id,
                 )
             )
         )
@@ -515,6 +529,73 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
                 _workspace_to_dto(ws, my_role=Role.OWNER)
             ),
             status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema(tags=["Workspaces"])
+class PreferredWorkspaceView(SerializerSeamsMixin, APIView):
+    """``PUT/DELETE me/preferred-workspace`` — the person states where home is.
+
+    ``STAPEL_WORKSPACES["DEFAULT_WORKSPACE_ID"]`` already describes itself as
+    "a DEFAULT, not a cage: a person still switches spaces, and their
+    explicit choice wins over it" — and until this endpoint there was nowhere
+    for that choice to be written down. Clients filled the hole by guessing,
+    and the guess (``workspaces[0]`` off a recency-ordered list) is #239.
+
+    The choice is stated, never inferred. ``last_accessed_at`` remains what
+    it has always been: telemetry written as a side effect of a GET, used to
+    sort the list and for nothing else.
+
+    Deliberately user-scoped rather than workspace-scoped
+    (``.../<workspace_id>/prefer``): there is exactly one answer per person,
+    and a route shaped per workspace would invite a second one.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    # A guest holds no WorkspaceMember row anywhere, so the active-membership
+    # lookup below finds nothing and answers the same 404 as any other
+    # non-member — before a row of anybody's is written. The declaration does
+    # not add the gate; it makes it readable from the class header.
+    stapel_anonymous_access = ANONYMOUS_DENIED
+    request_serializer_class = PreferredWorkspaceRequestSerializer
+    response_serializer_class = PreferredWorkspaceResponseSerializer
+
+    @extend_schema(
+        request=PreferredWorkspaceRequestSerializer,
+        responses={200: PreferredWorkspaceResponseSerializer},
+    )
+    def put(self, request):  # noqa: R007
+        ser = self.get_request_serializer_class()(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            member = services.set_preferred_workspace(
+                user=request.user, workspace_id=ser.validated_data.workspace_id
+            )
+        except WorkspaceMember.DoesNotExist:
+            # One identical answer for "does not exist", "you are not in it",
+            # "your invitation is still pending" and "you are suspended".
+            # Distinguishing them would let anyone probe the instance for
+            # which workspace ids are real.
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+        return StapelResponse(
+            self.get_response_serializer_class()(
+                PreferredWorkspaceResponse(
+                    preferred_workspace_id=str(member.workspace_id)
+                )
+            )
+        )
+
+    @extend_schema(responses={200: PreferredWorkspaceResponseSerializer})
+    def delete(self, request):  # noqa: R007
+        """Clear the choice — back to the instance default / the client's chain.
+
+        Answers 200 with an empty id rather than 204: the client's whole job
+        here is to re-resolve, and handing it the new state saves it from
+        guessing what "no content" left behind. Idempotent.
+        """
+        services.set_preferred_workspace(user=request.user, workspace_id=None)
+        return StapelResponse(
+            self.get_response_serializer_class()(PreferredWorkspaceResponse())
         )
 
 

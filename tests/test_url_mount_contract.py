@@ -39,6 +39,9 @@ ROUTES = [
     # Instance shape — public, unauthenticated: read by someone who is no
     # longer anyone to the workspace (kicked out or left on their own).
     ("instance-shape", {}, f"{MOUNT}/v1/instance"),
+    # The caller's own stated home workspace — user-scoped, so it is a
+    # literal route above the `<uuid:workspace_id>` block, not under one.
+    ("workspace-preferred", {}, f"{MOUNT}/v1/me/preferred-workspace"),
     ("workspace-detail", {"workspace_id": WS}, f"{MOUNT}/v1/{WS}"),
     ("workspace-members", {"workspace_id": WS}, f"{MOUNT}/v1/{WS}/members"),
     (

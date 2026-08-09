@@ -99,6 +99,7 @@ class TestWireExposure:
             # A guest belongs nowhere, so the instance default is
             # withheld too — it is only echoed to a member of it.
             "default_workspace_id": "",
+            "preferred_workspace_id": "",
         }
         assert is_guest(user) is True
 

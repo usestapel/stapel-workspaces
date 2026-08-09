@@ -23,6 +23,8 @@ from .dto import (
     MemberPasswordResetResponse,
     MemberResponse,
     MemberUpdateRequest,
+    PreferredWorkspaceRequest,
+    PreferredWorkspaceResponse,
     ProvisionMemberRequest,
     ProvisionMemberResponse,
     RoleListResponse,
@@ -51,6 +53,16 @@ class WorkspaceResponseSerializer(StapelDataclassSerializer):
 class WorkspaceListResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = WorkspaceListResponse
+
+
+class PreferredWorkspaceRequestSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = PreferredWorkspaceRequest
+
+
+class PreferredWorkspaceResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = PreferredWorkspaceResponse
 
 
 class WorkspaceCreateRequestSerializer(StapelDataclassSerializer):

@@ -1419,3 +1419,61 @@ def lift_deactivation_suspensions_for_user(user_id) -> int:
         if unsuspend_member(member, notify=False):
             lifted += 1
     return lifted
+
+
+def set_preferred_workspace(*, user, workspace_id) -> WorkspaceMember | None:
+    """Record the person's EXPLICIT choice of home workspace, or clear it.
+
+    ``workspace_id=None`` clears; otherwise the target must be a workspace
+    the caller ACTIVELY belongs to (``MembershipQuerySet.active`` — an
+    invitation not yet accepted and a suspended membership are both "cannot
+    open it", and pointing a client at a workspace it cannot open is the
+    defect this whole axis exists to remove). Returns the newly preferred
+    membership, or ``None`` when the choice was cleared.
+
+    Raises :class:`WorkspaceMember.DoesNotExist` when the target is not an
+    active membership of this user — deleted, never existed, and belongs to
+    somebody else are deliberately indistinguishable to the caller.
+
+    Clear-then-set inside one transaction, because the invariant is a
+    partial unique constraint ("at most one preferred row per user") and two
+    devices switching at the same moment would otherwise raise IntegrityError
+    at whichever landed second.
+    """
+    with transaction.atomic():
+        current = WorkspaceMember.objects.select_for_update().filter(
+            user=user, is_preferred=True
+        )
+        if workspace_id is None:
+            current.update(is_preferred=False)
+            return None
+        target = (
+            WorkspaceMember.objects.active()
+            .filter(user=user, workspace_id=workspace_id, workspace__deleted_at__isnull=True)
+            .select_related("workspace")
+            .first()
+        )
+        if target is None:
+            raise WorkspaceMember.DoesNotExist(workspace_id)
+        current.exclude(pk=target.pk).update(is_preferred=False)
+        if not target.is_preferred:
+            target.is_preferred = True
+            target.save(update_fields=["is_preferred"])
+        return target
+
+
+def preferred_workspace_id_for(user) -> str:
+    """The caller's stated home workspace as a string id, or "".
+
+    Filtered through :meth:`MembershipQuerySet.active` and the workspace's
+    own soft-delete, so a preference set before a suspension simply goes
+    quiet while the suspension lasts and returns when it lifts — the flag
+    itself is never touched by the lifecycle.
+    """
+    member = (
+        WorkspaceMember.objects.active()
+        .filter(user=user, is_preferred=True, workspace__deleted_at__isnull=True)
+        .only("workspace_id")
+        .first()
+    )
+    return str(member.workspace_id) if member else ""

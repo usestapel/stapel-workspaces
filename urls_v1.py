@@ -22,6 +22,7 @@ from .views import (
     MemberPasswordResetView,
     MemberListView,
     MemberProvisionView,
+    PreferredWorkspaceView,
     RoleListView,
     WorkspaceDetailView,
     WorkspaceInvitationListView,
@@ -33,6 +34,13 @@ urlpatterns = [
     path("roles", RoleListView.as_view(), name="workspace-roles"),
     # Instance shape — public: read by someone who is no longer anyone to the workspace.
     path("instance", InstanceShapeView.as_view(), name="instance-shape"),
+    # The caller's own stated home workspace — user-scoped, so it sits with
+    # the other non-workspace routes above the `<uuid:workspace_id>` block.
+    path(
+        "me/preferred-workspace",
+        PreferredWorkspaceView.as_view(),
+        name="workspace-preferred",
+    ),
     path("<uuid:workspace_id>", WorkspaceDetailView.as_view(), name="workspace-detail"),
     path(
         "<uuid:workspace_id>/members",

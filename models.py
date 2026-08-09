@@ -248,6 +248,26 @@ class WorkspaceMember(models.Model):
     #: ``Profile.display_name`` (35) so a hint is never silently truncated on
     #: the day it lands there for real.
     display_name_hint = models.CharField(max_length=35, blank=True, default="")
+    #: The person's EXPLICIT choice of home workspace — the choice
+    #: ``STAPEL_WORKSPACES["DEFAULT_WORKSPACE_ID"]`` already promises to yield
+    #: to ("a DEFAULT, not a cage: a person still switches spaces, and their
+    #: explicit choice wins over it") and which, until now, had nowhere to be
+    #: recorded. At most one row per user carries it; the partial unique
+    #: constraint below is the enforcement, not a convention.
+    #:
+    #: Deliberately a flag on the MEMBERSHIP rather than a column on a
+    #: user-level row, because that makes it self-healing: remove the member
+    #: and the preference leaves with the row — no cleanup job, no dangling
+    #: pointer at a workspace the person can no longer open. Suspension is
+    #: reversible and leaves the row, so the flag survives it while
+    #: :meth:`MembershipQuerySet.active` simply stops echoing it, and it
+    #: comes back when the suspension lifts.
+    #:
+    #: NOT :attr:`last_accessed_at`. That column is telemetry written as a
+    #: side effect of a GET; reading it as "the active workspace" is exactly
+    #: what produced "the owner cannot see his own invitations" (#239). A
+    #: choice is stated, never inferred from where somebody last clicked.
+    is_preferred = models.BooleanField(default=False)
 
     #: Carries the canonical lifecycle predicates (see
     #: :class:`MembershipQuerySet`) onto both ``WorkspaceMember.objects``
@@ -272,6 +292,15 @@ class WorkspaceMember(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["workspace", "user"], name="workspaces_member_unique"
+            ),
+            # "At most one preferred workspace per user" is an invariant of
+            # the data, so it is stated to the database. Two devices switching
+            # at the same moment would otherwise both write a flag and the
+            # answer to "where is home" would depend on row order.
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_preferred=True),
+                name="workspaces_member_one_preferred_per_user",
             ),
         ]
         indexes = [

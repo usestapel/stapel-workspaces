@@ -1,5 +1,58 @@
 # Changelog
 
+## [Unreleased]
+
+### Added — the person says where home is, and the server remembers it
+
+`STAPEL_WORKSPACES["DEFAULT_WORKSPACE_ID"]` shipped in 0.18 describing itself
+as "a DEFAULT, not a cage: a person still switches spaces, and their explicit
+choice wins over it" — and there was nowhere for that choice to be written
+down. So every client invented the rule instead, and the invention that
+shipped was `workspaces[0]` off a list ordered by `-last_accessed_at`: the
+owner's four pending invitations sat in the org workspace while his screen
+showed his personal one (#239).
+
+This is the missing half.
+
+- `PUT /workspaces/api/v1/me/preferred-workspace` records the choice;
+  `DELETE` clears it. Both answer with the resulting
+  `preferred_workspace_id`, because the client's whole job afterwards is to
+  re-resolve.
+- `WorkspaceListResponse.preferred_workspace_id` echoes it back on the
+  response the client already fetches — no second round trip to learn where
+  home is, and no window in which the list has arrived but the answer has
+  not. Echoed under exactly the rule `default_workspace_id` already follows:
+  only while the caller holds an ACTIVE membership in it, else `""`.
+- Stored as `WorkspaceMember.is_preferred` (migration 0006), with a partial
+  unique constraint "at most one preferred membership per user" — a database
+  invariant, not a convention, so two devices switching at the same moment
+  cannot both leave a flag set.
+
+A flag on the membership rather than a user-level column, and that choice is
+the feature: the preference dies with the membership row. Remove a member and
+the pointer leaves with them — no cleanup job, and no way to be sent on login
+to a workspace you can no longer open. Suspension is reversible and leaves the
+row, so the flag survives it while the echo goes quiet, and comes back when
+the suspension lifts.
+
+Deliberately NOT `last_accessed_at`. That column is telemetry written as a
+side effect of a GET; reading it as "the active workspace" is what produced
+#239 in the first place. A choice is stated, never inferred from where
+somebody last clicked.
+
+Deliberately NOT a field on stapel-profiles either, though that module is the
+fleet's user-scoped preference surface. Only this module can validate the
+preference against real membership (profiles may not import it), an
+unvalidated preference is exactly the stale-pointer defect being closed here,
+profiles' `field_defs` entries are opt-in per product so a framework-level fix
+riding one would not be present everywhere, and in a split topology it would
+make the workspace picker call a second service to persist a workspace choice.
+
+Refused: `error.404.workspace_not_found` for a workspace that does not exist,
+one the caller is not in, one whose invitation is still pending, and one where
+the membership is suspended — one identical answer, so the endpoint cannot be
+used to probe which workspace ids are real.
+
 ## [0.19.0] — 2026-08-09
 
 ### Added — the roster can fix a name, and there is still only one name canon

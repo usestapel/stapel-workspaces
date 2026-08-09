@@ -27,7 +27,8 @@
                 "examples": {
                   "WorkspaceListResponse": {
                     "value": {
-                      "default_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+                      "default_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3",
+                      "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
                     }
                   }
                 }
@@ -1320,6 +1321,90 @@
         }
       }
     },
+    "/workspaces/api/v1/me/preferred-workspace": {
+      "put": {
+        "operationId": "workspaces_api_v1_me_preferred_workspace_update",
+        "description": "``PUT/DELETE me/preferred-workspace`` — the person states where home is.\n\n``STAPEL_WORKSPACES[\"DEFAULT_WORKSPACE_ID\"]`` already describes itself as\n\"a DEFAULT, not a cage: a person still switches spaces, and their\nexplicit choice wins over it\" — and until this endpoint there was nowhere\nfor that choice to be written down. Clients filled the hole by guessing,\nand the guess (``workspaces[0]`` off a recency-ordered list) is #239.\n\nThe choice is stated, never inferred. ``last_accessed_at`` remains what\nit has always been: telemetry written as a side effect of a GET, used to\nsort the list and for nothing else.\n\nDeliberately user-scoped rather than workspace-scoped\n(``.../<workspace_id>/prefer``): there is exactly one answer per person,\nand a route shaped per workspace would invite a second one.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferredWorkspaceRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferredWorkspaceRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferredWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferredWorkspaceResponse"
+                },
+                "examples": {
+                  "PreferredWorkspaceResponse": {
+                    "value": {
+                      "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "workspaces_api_v1_me_preferred_workspace_destroy",
+        "description": "Clear the choice — back to the instance default / the client's chain.\n\nAnswers 200 with an empty id rather than 204: the client's whole job\nhere is to re-resolve, and handing it the new state saves it from\nguessing what \"no content\" left behind. Idempotent.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferredWorkspaceResponse"
+                },
+                "examples": {
+                  "PreferredWorkspaceResponse": {
+                    "value": {
+                      "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
     "/workspaces/api/v1/roles": {
       "get": {
         "operationId": "workspaces_api_v1_roles_retrieve",
@@ -1861,6 +1946,32 @@
           }
         }
       },
+      "PreferredWorkspaceRequest": {
+        "type": "object",
+        "description": "Which workspace the person is choosing as home.",
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of a workspace the caller actively belongs to",
+            "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+          }
+        },
+        "required": [
+          "workspace_id"
+        ]
+      },
+      "PreferredWorkspaceResponse": {
+        "type": "object",
+        "description": "The caller's stated home workspace after the write.",
+        "properties": {
+          "preferred_workspace_id": {
+            "type": "string",
+            "description": "The workspace now recorded as the caller's choice, or \"\" after a DELETE cleared it",
+            "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+          }
+        }
+      },
       "ProvisionMemberRequest": {
         "type": "object",
         "description": "Provision an org-created (synthetic) member (org-program spec §C1).",
@@ -2062,6 +2173,11 @@
           "default_workspace_id": {
             "type": "string",
             "description": "Which workspace a client should open when the person has expressed no choice — the instance's STAPEL_WORKSPACES[\"DEFAULT_WORKSPACE_ID\"], echoed back ONLY when the caller actually holds an active membership in it, else \"\". Exists because clients that had to guess guessed badly: meettoday took `workspaces[0]` off a list ordered by last access, so a person in two spaces landed wherever they happened to have been last (measured 2026-08-06 as \"the owner cannot see his own invitations\" — they were in the OTHER space). A default, not a cage: an explicit choice still wins",
+            "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+          },
+          "preferred_workspace_id": {
+            "type": "string",
+            "description": "The person's OWN stated choice of home workspace (PUT me/preferred-workspace), echoed back ONLY while the membership carrying it is active, else \"\". This is the \"explicit choice\" default_workspace_id documents itself as yielding to, so a client resolves preferred first and the instance default only after it. Never inferred from behaviour — where somebody last clicked is last_accessed_at, which is telemetry, and reading it as a choice is what produced #239",
             "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
           }
         }
