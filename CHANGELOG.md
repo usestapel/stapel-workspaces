@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.22.0] — 2026-08-09
+## [0.22.1] — 2026-08-09
 
 ### Added — Spanish ships as a language of the library, not as a host override
 
