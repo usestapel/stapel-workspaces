@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`61` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`66` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -8,6 +8,10 @@
 | `error.400.bad_request` | 400 | — | `fix_input` | Некорректный запрос |
 | `error.400.captcha_invalid` | 400 | — | `retry` | Проверка капчи не пройдена. Пожалуйста, попробуйте ещё раз. |
 | `error.400.captcha_required` | 400 | — | `retry` | Требуется токен капчи. |
+| `error.400.display_name_emoji` | 400 | — | `fix_input` | Отображаемое имя не может содержать эмодзи |
+| `error.400.display_name_forbidden_chars` | 400 | — | `fix_input` | Отображаемое имя содержит запрещённые символы |
+| `error.400.display_name_invisible_chars` | 400 | — | `fix_input` | Отображаемое имя содержит невидимые символы |
+| `error.400.display_name_too_short` | 400 | — | `fix_input` | Отображаемое имя должно содержать не менее 2 символов |
 | `error.400.expected_list` | 400 | — | `fix_input` | Ожидался список элементов |
 | `error.400.field.blank` | 400 | `field` | `fix_input` | Поле «{field}» не может быть пустым |
 | `error.400.field.does_not_exist` | 400 | `field` | `fix_input` | «{field}» не существует |
@@ -65,3 +69,4 @@
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Слишком много запросов. Пожалуйста, повторите попытку позже. |
 | `error.500.internal` | 500 | — | `contact_support` | Что-то пошло не так |
 | `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | Сервис аутентификации недоступен; повторите попытку позже |
+| `error.503.profiles_unavailable` | 503 | — | `wait_and_retry` | Сервис профилей недоступен; повторите попытку позже |

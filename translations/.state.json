@@ -16,6 +16,22 @@
       "hash": "b9e8e17f5f41d501",
       "origin": "seed:stapel-builtin"
     },
+    "error.400.display_name_emoji": {
+      "hash": "d00771abf4e49d74",
+      "origin": "seed:stapel-builtin"
+    },
+    "error.400.display_name_forbidden_chars": {
+      "hash": "06baeaf36c8f8fc5",
+      "origin": "seed:stapel-builtin"
+    },
+    "error.400.display_name_invisible_chars": {
+      "hash": "1c09772e86e83652",
+      "origin": "seed:stapel-builtin"
+    },
+    "error.400.display_name_too_short": {
+      "hash": "6bf1e2ac8003f842",
+      "origin": "seed:stapel-builtin"
+    },
     "error.400.expected_list": {
       "hash": "c3a54ef8b2668571",
       "origin": "seed:stapel-builtin"
@@ -242,6 +258,10 @@
     },
     "error.503.auth_unavailable": {
       "hash": "c01407bc09695de1",
+      "origin": "llm"
+    },
+    "error.503.profiles_unavailable": {
+      "hash": "6e6b8bb24b8025cb",
       "origin": "llm"
     }
   }

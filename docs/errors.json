@@ -28,6 +28,34 @@
     "en": "Captcha token is required."
   },
   {
+    "code": "error.400.display_name_emoji",
+    "status": 400,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "Display name cannot contain emoji"
+  },
+  {
+    "code": "error.400.display_name_forbidden_chars",
+    "status": 400,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "Display name contains forbidden characters"
+  },
+  {
+    "code": "error.400.display_name_invisible_chars",
+    "status": 400,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "Display name contains invisible characters"
+  },
+  {
+    "code": "error.400.display_name_too_short",
+    "status": 400,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "Display name must be at least 2 characters"
+  },
+  {
     "code": "error.400.expected_list",
     "status": 400,
     "params": [],
@@ -461,5 +489,12 @@
     "params": [],
     "remediation": "wait_and_retry",
     "en": "The authentication service is unavailable; try again later"
+  },
+  {
+    "code": "error.503.profiles_unavailable",
+    "status": 503,
+    "params": [],
+    "remediation": "wait_and_retry",
+    "en": "The profiles service is unavailable; try again later"
   }
 ]

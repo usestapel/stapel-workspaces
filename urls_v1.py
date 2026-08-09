@@ -14,9 +14,11 @@ from .views import (
     InvitationDeclineView,
     InvitationPreviewView,
     InvitationResendView,
+    InvitationNameView,
     InvitationRevokeView,
     MemberDetailView,
     MemberInviteView,
+    MemberNameView,
     MemberPasswordResetView,
     MemberListView,
     MemberProvisionView,
@@ -56,6 +58,16 @@ urlpatterns = [
     # the target is a member id in a workspace-scoped path, not a bare
     # user id: the endpoint acts on a MEMBERSHIP, and everything outside
     # that set answers with one identical 404.
+    # Roster-side name correction: an owner/admin fixes how a person is
+    # shown, without asking that person to do it. Suffix routes under the
+    # member/invitation they act on — the target is a MEMBERSHIP and a
+    # pending INVITATION of this workspace, never a bare user or invite id
+    # (same scoping discipline as the password reset below).
+    path(
+        "<uuid:workspace_id>/members/<uuid:user_id>/name",
+        MemberNameView.as_view(),
+        name="workspace-member-name",
+    ),
     path(
         "<uuid:workspace_id>/members/<uuid:user_id>/password/reset",
         MemberPasswordResetView.as_view(),
@@ -74,6 +86,11 @@ urlpatterns = [
         "<uuid:workspace_id>/invitations/<uuid:invitation_id>/revoke",
         InvitationRevokeView.as_view(),
         name="workspace-invitation-revoke",
+    ),
+    path(
+        "<uuid:workspace_id>/invitations/<uuid:invitation_id>/name",
+        InvitationNameView.as_view(),
+        name="workspace-invitation-name",
     ),
     path(
         "<uuid:workspace_id>/invitations/<uuid:invitation_id>/resend",

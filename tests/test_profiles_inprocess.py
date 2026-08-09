@@ -15,11 +15,15 @@ emails addressed from a bare email. The product had grown its own
 a workaround for this gap, in the product, where it does not belong.
 
 These tests pin the in-process branch. They are unit tests on purpose:
-installing stapel-profiles into this suite would couple two libraries'
-test environments to prove one branch.
+mounting stapel-profiles into the DEFAULT suite would register that
+module's ~50 error keys into the process-global service registry this
+module's own i18n catalog and error-key gates read — corrupting this
+module's contract artifacts to prove one branch. The genuinely co-mounted
+run is a second, opt-in session (``test_profiles_comounted.py``).
 """
 import pytest
 
+from stapel_workspaces import services
 from stapel_workspaces.services import _fetch_profile_display_names
 
 
@@ -53,13 +57,20 @@ def _no_service_url(monkeypatch):
 
 
 def _install_fake_profiles(monkeypatch, rows):
-    from django.apps import apps as django_apps
+    """Fake the ONE indirection to profiles: `services.profiles_in_process`.
 
+    The seam resolves stapel-profiles' own ``get_profile_model`` by dotted
+    path rather than reaching for ``apps.get_model("stapel_profiles",
+    "Profile")`` — a host that swapped in an extended Profile keeps its
+    names there, and the zero-field default would answer "nobody has a
+    name" forever (SWAP001).
+    """
     fake = _FakeProfile(rows)
     monkeypatch.setattr(
-        django_apps, "is_installed", lambda label: label == "stapel_profiles"
+        services,
+        "profiles_in_process",
+        {"stapel_profiles.models.get_profile_model": lambda: fake}.get,
     )
-    monkeypatch.setattr(django_apps, "get_model", lambda app, model: fake)
     return fake
 
 

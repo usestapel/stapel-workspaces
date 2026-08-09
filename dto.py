@@ -221,6 +221,28 @@ class MemberUpdateRequest:  # noqa: R004
     role: str
 
 
+@dataclass
+class DisplayNameUpdateRequest:  # noqa: R004
+    """Roster-side name correction (one field, both name-edit endpoints).
+
+    Attributes:
+        display_name: The name to show for this person. Held to stapel-profiles' display-name canon (validate_display_name) — this module never adds a second, differently-strict rule. Blank, whitespace-only, null and a missing key all mean the same thing: clear the name. Example: Ada Lovelace
+    """
+
+    display_name: Optional[str] = None
+
+
+@dataclass
+class DisplayNameResponse:
+    """What the name is after the write — the stored value, not the request.
+
+    Attributes:
+        display_name: The stored name, trimmed and canon-checked. Empty string when the name was cleared. Example: Ada Lovelace
+    """
+
+    display_name: str
+
+
 #: Allowed values of WorkspaceSecuritySettings.provisioned_user_policies —
 #: mirrors auth's first_login_policies enum (spec §C2, #90). INDEPENDENT
 #: checkboxes, not alternatives: an org may demand both.

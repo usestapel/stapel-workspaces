@@ -86,6 +86,11 @@ _MACHINE_RU = {
     # Rank-gard (mandate-model vardict 2026-08-03, org-program #85).
     "error.403.role_exceeds_inviter_rank":
         "Вы не можете выдать роль, которая превышает вашу собственную ({role})",
+    # 0.19 roster name edit — the display_name_* keys are borrowed from
+    # stapel-profiles and the builtin fixtures already carry their ru
+    # wording; only this module's own wiring-gap 503 needs one here.
+    "error.503.profiles_unavailable":
+        "Сервис профилей недоступен; повторите попытку позже",
 }
 
 

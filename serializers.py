@@ -6,9 +6,12 @@ from rest_framework import serializers
 from stapel_core.django.api.errors import StapelValidationError
 from stapel_core.django.api.serializers import StapelDataclassSerializer
 
+from . import services
 from .capabilities import effective_roles
 from .dto import (
     PROVISIONED_USER_POLICIES,
+    DisplayNameResponse,
+    DisplayNameUpdateRequest,
     InstanceShapeResponse,
     InvitationAcceptRequest,
     InvitationClaimResponse,
@@ -30,7 +33,7 @@ from .dto import (
     WorkspaceUpdateRequest,
 )
 from .errors import ERR_400_INVALID_PROVISION_USERNAME, ERR_400_INVALID_ROLE
-from .models import Role, WorkspaceType
+from .models import Role, WorkspaceInvitation, WorkspaceType
 
 #: Local (slash-free) username canon — mirrors stapel-auth's
 #: ``_LOCAL_USERNAME_RE`` (utils.py): the stock Django username alphabet.
@@ -187,6 +190,79 @@ class MemberUpdateRequestSerializer(StapelDataclassSerializer):
         if value not in effective_roles():
             raise StapelValidationError(ERR_400_INVALID_ROLE)
         return value
+
+
+#: Storage ceiling for a display name, read off the model rather than typed
+#: again: `WorkspaceInvitation.display_name_hint` and stapel-profiles'
+#: `Profile.display_name` are both CharField(max_length=35), and the roster's
+#: name-edit endpoints write one or the other. Sourcing it from the column
+#: means the serializer cannot drift from what the database will accept.
+DISPLAY_NAME_MAX_LENGTH = WorkspaceInvitation._meta.get_field(
+    "display_name_hint"
+).max_length
+
+
+class DisplayNameUpdateRequestSerializer(StapelDataclassSerializer):
+    """The one-field body of both roster name-edit PATCHes.
+
+    Two rules, from two different owners, and the split is the point:
+
+    * the **ceiling** (35) is a storage fact of the column being written and
+      is declared here, so an over-long name answers with the fleet-standard
+      ``error.400.field.max_length`` carrying ``{field, max_length}``;
+    * everything else a name may or may not contain — minimum length,
+      control and invisible characters, emoji — belongs to stapel-profiles'
+      ``validate_display_name`` and is asked of it at call time
+      (``services.display_name_canon``). This module holds no copy of those
+      rules. A second, differently-strict name check living inside the
+      framework that canonizes the first is the drift this whole surface was
+      absorbed to avoid.
+    """
+
+    # Explicit override, same reason as MemberInviteRequestSerializer above:
+    # the auto-generated field for `Optional[str] = None` allows null but not
+    # BLANK, and "" / "   " must be accepted — that is how a name is CLEARED.
+    display_name = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=DISPLAY_NAME_MAX_LENGTH,
+    )
+
+    class Meta:
+        dataclass = DisplayNameUpdateRequest
+
+    def validate_display_name(self, value):
+        """Trim, then hand the result to stapel-profiles' canon verbatim.
+
+        A missing key, ``null``, ``""`` and ``"   "`` all normalize to ``""``
+        — one PATCH field has no third state between "set it to this" and
+        "clear it", and a stray space in the roster's inline editor must not
+        read as a distinct choice from an empty box. The canon itself
+        short-circuits on the empty string, so clearing a name never trips
+        its two-character minimum.
+
+        When stapel-profiles does not run in this process the canon is simply
+        absent; nothing is substituted for it here. That case cannot reach a
+        write anyway for a member (the view answers 503 —
+        ``error.503.profiles_unavailable``), and for an invitation hint it
+        leaves exactly the rule this module already applied to the same field
+        at invite time: the column ceiling and nothing else.
+        """
+        value = (value or "").strip()
+        canon = services.display_name_canon()
+        if canon is not None:
+            # Raises StapelValidationError with stapel-profiles' OWN error
+            # keys (error.400.display_name_*), which this module re-declares
+            # in its registry so they appear in its contract. Not caught, not
+            # re-keyed: one refusal vocabulary for one field.
+            canon(value)
+        return value
+
+
+class DisplayNameResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = DisplayNameResponse
 
 
 class ProvisionMemberRequestSerializer(StapelDataclassSerializer):

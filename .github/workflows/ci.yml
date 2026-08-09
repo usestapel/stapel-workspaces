@@ -42,6 +42,15 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest pytest-django pytest-cov "stapel-tools>=0.9.1,<1"
 
+      # Test-only sibling, --no-deps so it cannot pull stapel-core from PyPI
+      # over the git-main core installed above. NOT a dependency of this
+      # distribution (Stapel modules never import each other) — the roster's
+      # name-edit endpoints write the display name stapel-profiles owns
+      # through an in-process seam, and no fake proves a real Profile row
+      # takes that write. Without it the display-name canon tests skip.
+      - name: Install stapel-profiles (test-only sibling for the profiles seam)
+        run: pip install --no-deps stapel-profiles
+
       - name: Tests with coverage
         run: |
           pytest tests/ \
@@ -51,6 +60,15 @@ jobs:
             --junitxml=junit.xml \
             -o junit_family=legacy \
             -v
+
+      # Second session, sibling actually mounted (see _codegen_settings
+      # .profiles_co_mounted). Separate because co-mounting registers
+      # profiles' error keys into the process-global registry this module's
+      # i18n and error-key gates read.
+      - name: Profiles seam co-mounted (in-process integration)
+        env:
+          STAPEL_WORKSPACES_TEST_PROFILES: "1"
+        run: pytest tests/test_profiles_comounted.py -v
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

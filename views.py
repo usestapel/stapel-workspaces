@@ -69,6 +69,7 @@ from .capabilities import (
     role_has_capability,
 )
 from .dto import (
+    DisplayNameResponse,
     InvitationClaimResponse,
     InvitationPreviewResponse,
     InvitationResponse,
@@ -99,6 +100,7 @@ from .errors import (
     ERR_404_WORKSPACE_NOT_FOUND,
     ERR_409_EMAIL_ALREADY_REGISTERED,
     ERR_503_AUTH_UNAVAILABLE,
+    ERR_503_PROFILES_UNAVAILABLE,
 )
 from .events import (
     EVENT_WORKSPACE_MEMBER_REMOVED,
@@ -114,6 +116,8 @@ from .models import (
 )
 from .permissions import get_membership, require_role, role_at_least
 from .serializers import (
+    DisplayNameResponseSerializer,
+    DisplayNameUpdateRequestSerializer,
     InstanceShapeResponseSerializer,
     InternalPersonalWorkspaceResponseSerializer,
     InvitationAcceptRequestSerializer,
@@ -907,10 +911,16 @@ class WorkspaceInvitationActionView(SerializerSeamsMixin, APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    # `members.invite` capability check in `_resolve`; a guest has no
-    # membership, so 403 before any invitation row is read.
+    # Capability check in `_resolve`; a guest has no membership, so 403
+    # before any invitation row is read.
     stapel_anonymous_access = ANONYMOUS_DENIED
     response_serializer_class = InvitationResponseSerializer
+
+    #: Which mandate this action demands. `members.invite` for the actions
+    #: that create or end an invitation (revoke, resend); the name-edit
+    #: PATCH overrides it — see InvitationNameView for why renaming is the
+    #: members mandate rather than the invite one.
+    capability = "members.invite"
 
     def _resolve(self, request, workspace_id, invitation_id):
         ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
@@ -918,7 +928,7 @@ class WorkspaceInvitationActionView(SerializerSeamsMixin, APIView):
             return None, None, StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         err = _capability_check(
             get_membership(ws.id, request.user.id, include_suspended=True),
-            "members.invite",
+            self.capability,
         )
         if err:
             return None, None, err
@@ -1422,6 +1432,165 @@ class MemberPasswordResetView(SerializerSeamsMixin, APIView):
                 )
             )
         )
+
+
+#: "May this actor manage this workspace's PEOPLE" — the capability the
+#: role-change PATCH already gates on (builtin: owner via "*", admin
+#: explicitly; member/viewer do not hold it). Both name-edit endpoints share
+#: it ON PURPOSE, and deliberately do not take the invitation surface's
+#: `members.invite`: the member's name and the pending invitation's name
+#: hint are the SAME name on either side of acceptance (the hint is copied
+#: onto the membership at accept). A registry that split the two would let a
+#: custom role fix a name that silently reverts the moment the person
+#: accepts — a distinction the product does not draw and cannot explain.
+CAPABILITY_MANAGE_PEOPLE = "members.role.change"
+
+
+class DisplayNameEditMixin(SerializerSeamsMixin):
+    """Shared body of the roster's two name-edit PATCHes.
+
+    An owner/admin fixes how a person is shown to the workspace — a typo in
+    the name an org admin typed at invite time, a legal-name change, a
+    provisioned account created as "user-4831" — without waiting for that
+    person to do it themselves. Deliberately NOT a self-service surface:
+    the person's own name editor is stapel-profiles' ``PATCH /me``, and this
+    one exists because a roster with wrong names on it is the org's problem,
+    not only the named person's.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    # A guest holds no WorkspaceMember row anywhere, so `_capability_check`
+    # answers 403 forbidden_workspace before any row of anybody's is read.
+    # The declaration does not add the gate; it makes it readable from the
+    # class header (see this module's docstring).
+    stapel_anonymous_access = ANONYMOUS_DENIED
+    request_serializer_class = DisplayNameUpdateRequestSerializer
+    response_serializer_class = DisplayNameResponseSerializer
+
+    def _clean_name(self, request) -> str:
+        """The trimmed, canon-checked name from the body.
+
+        Raises DRF's ValidationError (→ 400) carrying either the column
+        ceiling's ``error.400.field.max_length`` or one of
+        stapel-profiles' own ``error.400.display_name_*`` keys — see
+        ``DisplayNameUpdateRequestSerializer``.
+        """
+        ser = self.get_request_serializer_class()(data=request.data)
+        ser.is_valid(raise_exception=True)
+        return ser.validated_data.display_name or ""
+
+    def _stored(self, display_name: str):
+        return StapelResponse(
+            self.get_response_serializer_class()(
+                DisplayNameResponse(display_name=display_name)
+            )
+        )
+
+
+@extend_schema(tags=["Members"])
+class MemberNameView(DisplayNameEditMixin, APIView):
+    """``PATCH <ws>/members/<user_id>/name`` — correct a member's display name.
+
+    Writes the CANONICAL name: stapel-profiles' ``Profile.display_name``,
+    reached through this module's existing in-process profiles seam
+    (``services.set_profile_display_name``), which also publishes
+    ``profile.changed`` so every consumer of that name follows.
+
+    NOT ``WorkspaceMember.display_name_hint``: the hint is a pre-profile
+    placeholder, copied once at creation and dark from the moment a real
+    profile exists (see its docstring in ``models.py``). Writing it would
+    produce a correction the roster shows and nothing else in the product
+    ever does — including, eventually, the roster.
+
+    Where stapel-profiles does not run in this process there is nothing to
+    write and no remote operation to call for it (that module publishes no
+    write-somebody-else's-name endpoint and no comm Function), so the answer
+    is an honest ``error.503.profiles_unavailable`` — never a 200 over a
+    write that did not happen.
+
+    Only an owner may rename an owner — the same hardcoded owner protection
+    that role changes, removals and password resets carry. Renaming is not
+    escalation, but an admin relabelling the owner of the organization on
+    every screen in the product is close enough to the same act to answer
+    the same way.
+    """
+
+    @extend_schema(
+        request=DisplayNameUpdateRequestSerializer,
+        responses={200: DisplayNameResponseSerializer},
+    )
+    def patch(self, request, workspace_id, user_id):  # noqa: R007
+        err = _capability_check(
+            get_membership(workspace_id, request.user.id, include_suspended=True),
+            CAPABILITY_MANAGE_PEOPLE,
+        )
+        if err:
+            return err
+        # Scoped to THIS workspace: an admin of another org holds no
+        # capability here and never reaches this line, and a user who is a
+        # member somewhere else is simply not in this set — one 404, the
+        # same one an unknown UUID gets.
+        member = WorkspaceMember.objects.filter(
+            workspace_id=workspace_id, user_id=user_id
+        ).first()
+        if member is None:
+            return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
+        if member.role == Role.OWNER and not require_role(
+            workspace_id, request.user.id, Role.OWNER
+        ):
+            return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        display_name = self._clean_name(request)
+        if not services.set_profile_display_name(member.user_id, display_name):
+            return StapelErrorResponse(503, ERR_503_PROFILES_UNAVAILABLE)
+        return self._stored(display_name)
+
+
+@extend_schema(tags=["Members"])
+class InvitationNameView(DisplayNameEditMixin, WorkspaceInvitationActionView):
+    """``PATCH <ws>/invitations/<id>/name`` — fix a pending invite's name hint.
+
+    The same correction as :class:`MemberNameView`, one step earlier: the
+    invitee has not accepted, so there is no profile of theirs to write and
+    the name lives on the invitation as ``display_name_hint`` — the invite
+    modal's "Name" field, which ``accept_invitation`` copies onto the
+    membership at acceptance. Editing it after the fact is why this endpoint
+    exists: before #109's invitation surface the only fix for a typo in an
+    invitee's name was to revoke and re-invite, which re-mails the person.
+
+    Only a **pending** invitation is editable, with the same keyed refusals
+    revoke gives for each terminal state (``invitation_revoked`` /
+    ``already_used`` / ``declined`` / ``expired``): an accepted invitation's
+    name is the member's name now — use the member endpoint — and a dead
+    invitation is not a thing to relabel. Unknown and cross-workspace ids
+    collapse into one identical 404 (inherited resolution).
+
+    The value is still held to stapel-profiles' name canon even though the
+    column being written is local: this hint becomes a displayed name, and
+    the two endpoints must not disagree about what a name may contain.
+    """
+
+    capability = CAPABILITY_MANAGE_PEOPLE
+    request_serializer_class = DisplayNameUpdateRequestSerializer
+    response_serializer_class = DisplayNameResponseSerializer
+
+    @extend_schema(
+        request=DisplayNameUpdateRequestSerializer,
+        responses={200: DisplayNameResponseSerializer},
+    )
+    def patch(self, request, workspace_id, invitation_id):  # noqa: R007
+        _ws, inv, err = self._resolve(request, workspace_id, invitation_id)
+        if err:
+            return err
+        err = _invitation_state_error(inv)
+        if err:
+            return err
+        display_name = self._clean_name(request)
+        # `display_name_hint` is blank=True with default="" and no null=True
+        # — a cleared hint is stored as "", never None, mirroring what
+        # `create_invitation` stores for an invite sent without a name.
+        inv.display_name_hint = display_name
+        inv.save(update_fields=["display_name_hint"])
+        return self._stored(display_name)
 
 
 @extend_schema(tags=["Workspaces"])

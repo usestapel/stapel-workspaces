@@ -20,6 +20,44 @@ per-module contract pipeline etalon).
 from __future__ import annotations
 
 
+#: Env flag that co-installs stapel-profiles into the TEST harness.
+#:
+#: Off by default, and that default is load-bearing. stapel-profiles is not
+#: a dependency of this distribution and never will be (MODULE.md: modules
+#: do not import each other) — but the roster's two name-edit endpoints
+#: write the display name that module owns, through the in-process seam in
+#: ``services``, and no fake proves that a real ``Profile`` row takes the
+#: write. So the suite can be run a second time with the sibling actually
+#: mounted, the way a monolith deploys, and the handful of tests that need
+#: a real profile row run only then (they skip otherwise).
+#:
+#: Why not simply always: installing the sibling registers ITS error keys
+#: into the process-global service-error registry, which is what this
+#: module's i18n catalog gate and error-key tests read. A default-on
+#: co-mount would pull ~50 foreign keys into ``translations/errors.ru.json``
+#: — corrupting this module's own contract artifacts to test one seam.
+#: Two sessions keep both honest. CI runs both.
+PROFILES_TEST_APP_ENV = "STAPEL_WORKSPACES_TEST_PROFILES"
+
+
+def profiles_co_mounted() -> bool:
+    """Should the test harness mount stapel-profiles alongside this module?
+
+    True only when :data:`PROFILES_TEST_APP_ENV` is set AND the package is
+    actually importable, so a bare checkout with the flag set degrades to a
+    plain (skipping) run instead of an INSTALLED_APPS import error.
+    """
+    import os
+    from importlib.util import find_spec
+
+    if not os.environ.get(PROFILES_TEST_APP_ENV):
+        return False
+    try:
+        return find_spec("stapel_profiles") is not None
+    except (ImportError, ValueError):  # pragma: no cover - broken install
+        return False
+
+
 def settings_kwargs(
     *,
     root_urlconf: str = "stapel_workspaces.conftest_urls",
@@ -101,6 +139,14 @@ def settings_kwargs(
             "workspaces": None,
         },
     )
+    if not contract and profiles_co_mounted():
+        # Opt-in, test harness only, and deliberately never the contract
+        # harness: the emitted triad must stay the byte-identical
+        # {workspaces + core} slice of the monolith aggregate
+        # (contract-pipeline.md §2), and a co-mounted sibling would drag its
+        # paths and components into it.
+        kwargs["INSTALLED_APPS"] = [*kwargs["INSTALLED_APPS"], "stapel_profiles"]
+        kwargs["MIGRATION_MODULES"]["profiles"] = None
     if contract:
         # Mirror stapel_core.django.settings.REST_FRAMEWORK exactly (the config
         # the monolith emits under). Inlined, not imported, to dodge the

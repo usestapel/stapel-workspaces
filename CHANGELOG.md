@@ -1,5 +1,97 @@
 # Changelog
 
+## [0.19.0] — 2026-08-09
+
+### Added — the roster can fix a name, and there is still only one name canon
+
+Absorbed from meettoday, which had built it as a project-layer overlay mounted
+over this module's own URL prefix. Two PATCHes an owner/admin uses to correct
+how a person is shown, without waiting for that person to do it themselves —
+a typo in the name an admin typed at invite time, a legal-name change, a
+provisioned account created as `user-4831`:
+
+- `PATCH <ws>/members/<user_id>/name` writes the **canonical** name,
+  stapel-profiles' `Profile.display_name`. Deliberately not
+  `WorkspaceMember.display_name_hint`: that column is a pre-profile
+  placeholder which goes dark the moment a real profile exists, so a
+  "correction" written there is one the renamed person never sees.
+- `PATCH <ws>/invitations/<invitation_id>/name` writes the pending
+  invitation's `display_name_hint` — the same correction one step earlier,
+  for somebody who has not accepted and therefore has no profile row at all.
+  Before this, the only fix for a typo in an invitee's name was to revoke and
+  re-invite, which re-mails the person.
+
+Both are gated on `members.role.change`, and share it on purpose rather than
+taking the invitation surface's `members.invite`: the member's name and the
+pending invitation's hint are the same name on either side of acceptance (the
+hint is copied onto the membership at accept). A registry that split the two
+would let a custom role fix a name that silently reverts the moment the person
+accepts. Only an owner may rename an owner — the same hardcoded owner
+protection role changes, removals and password resets carry. Both views
+declare `ANONYMOUS_DENIED`; a guest holds no membership anywhere, so the
+capability check refuses before any row of anybody's is read.
+
+**The name canon stayed where it belongs.** The imported implementation
+hand-rolled its own validation — `strip()`, a 35-character ceiling and a
+freshly minted `error.400.display_name_too_long`. stapel-profiles already
+declares `validate_display_name` as the display-name canon and says, in its
+own `llms.txt`, that any host onboarding form, admin action or importer that
+writes a name must run it through there instead of inventing a second,
+differently-strict regex. So these endpoints call that validator and let its
+refusals out verbatim: `error.400.display_name_{too_short,forbidden_chars,`
+`invisible_chars,emoji}`, re-declared in this module's registry with the same
+English and the same remediation so the contract is honest about what the
+endpoints answer with — and with no fifth rule of our own behind them. The
+35-character ceiling is a storage fact both columns declare, enforced as the
+serializer field's `max_length` and reported as the fleet-standard
+`error.400.field.max_length`. Shipping a second, weaker name validation inside
+the framework that canonizes the first is the exact defect class this fleet
+keeps paying for.
+
+**The seam is the existing one, extended.** Stapel modules never import each
+other, and stapel-profiles registers no comm Function and publishes no
+write-somebody-else's-name operation — so the mechanism is the same in-process
+resolution `_fetch_profile_display_names` already used: `profiles_in_process()`
+asks Django's app registry whether stapel-profiles runs in this process and
+only then resolves the symbol by dotted path. Three new service helpers on
+that seam: `profiles_in_process()`, `display_name_canon()` and
+`set_profile_display_name()`. The write also publishes `profile.changed`,
+which profiles' own docs demand of any write that does not go through its
+serializers — the imported implementation did not, and every downstream
+consumer of the name would have desynced silently.
+
+Where stapel-profiles does not run in the process, the member endpoint answers
+`error.503.profiles_unavailable` (new key, `wait_and_retry`) instead of a 200
+over a write that did not happen. The invitation endpoint keeps working there:
+its column is local, and what it loses is the canon — leaving exactly the rule
+this module already applied to the same field at invite time, the column
+ceiling.
+
+### Changed
+
+- The profiles seam's in-process read now resolves the profile model through
+  stapel-profiles' own `get_profile_model` instead of
+  `apps.get_model("stapel_profiles", "Profile")`. A host that assembled an
+  extended Profile (`STAPEL_SWAP["PROFILES_PROFILE_MODEL"]`) keeps its names
+  there; the zero-field default would have answered "nobody has a name"
+  forever. Same SWAP001 discipline profiles states for itself.
+- `WorkspaceInvitationActionView` takes its capability from a class attribute
+  (`capability`, still `members.invite` for revoke/resend) so the name-edit
+  PATCH can reuse its workspace-scoped resolution — an unknown invitation id
+  and one belonging to another workspace stay one identical 404.
+
+### Testing
+
+The suite gained a second, opt-in session:
+`STAPEL_WORKSPACES_TEST_PROFILES=1 pytest tests/test_profiles_comounted.py`
+runs with stapel-profiles genuinely mounted next to this module, the way a
+monolith deploys, and proves the write lands on a real `Profile` row, that
+`profile.changed` really fires, and that the read half sees what the write
+half wrote. It is a separate session because co-mounting the sibling registers
+ITS error keys into the process-global registry this module's i18n catalog and
+error-key gates read — which would corrupt this module's own contract
+artifacts to test one seam. CI runs both sessions.
+
 ## [0.17.0] — 2026-08-07
 
 ### Added — `DEFAULT_WORKSPACE_ID`: the instance names its default, clients stop guessing

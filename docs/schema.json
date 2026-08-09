@@ -359,6 +359,78 @@
         }
       }
     },
+    "/workspaces/api/v1/{workspace_id}/invitations/{invitation_id}/name": {
+      "patch": {
+        "operationId": "workspaces_api_v1_invitations_name_partial_update",
+        "description": "``PATCH <ws>/invitations/<id>/name`` — fix a pending invite's name hint.\n\nThe same correction as :class:`MemberNameView`, one step earlier: the\ninvitee has not accepted, so there is no profile of theirs to write and\nthe name lives on the invitation as ``display_name_hint`` — the invite\nmodal's \"Name\" field, which ``accept_invitation`` copies onto the\nmembership at acceptance. Editing it after the fact is why this endpoint\nexists: before #109's invitation surface the only fix for a typo in an\ninvitee's name was to revoke and re-invite, which re-mails the person.\n\nOnly a **pending** invitation is editable, with the same keyed refusals\nrevoke gives for each terminal state (``invitation_revoked`` /\n``already_used`` / ``declined`` / ``expired``): an accepted invitation's\nname is the member's name now — use the member endpoint — and a dead\ninvitation is not a thing to relabel. Unknown and cross-workspace ids\ncollapse into one identical 404 (inherited resolution).\n\nThe value is still held to stapel-profiles' name canon even though the\ncolumn being written is local: this hint becomes a displayed name, and\nthe two endpoints must not disagree about what a name may contain.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayNameResponse"
+                },
+                "examples": {
+                  "DisplayNameResponse": {
+                    "value": {
+                      "display_name": "Ada Lovelace"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
     "/workspaces/api/v1/{workspace_id}/invitations/{invitation_id}/resend": {
       "post": {
         "operationId": "workspaces_api_v1_invitations_resend_create",
@@ -671,6 +743,78 @@
         "responses": {
           "204": {
             "description": "No response body"
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/members/{user_id}/name": {
+      "patch": {
+        "operationId": "workspaces_api_v1_members_name_partial_update",
+        "description": "``PATCH <ws>/members/<user_id>/name`` — correct a member's display name.\n\nWrites the CANONICAL name: stapel-profiles' ``Profile.display_name``,\nreached through this module's existing in-process profiles seam\n(``services.set_profile_display_name``), which also publishes\n``profile.changed`` so every consumer of that name follows.\n\nNOT ``WorkspaceMember.display_name_hint``: the hint is a pre-profile\nplaceholder, copied once at creation and dark from the moment a real\nprofile exists (see its docstring in ``models.py``). Writing it would\nproduce a correction the roster shows and nothing else in the product\never does — including, eventually, the roster.\n\nWhere stapel-profiles does not run in this process there is nothing to\nwrite and no remote operation to call for it (that module publishes no\nwrite-somebody-else's-name endpoint and no comm Function), so the answer\nis an honest ``error.503.profiles_unavailable`` — never a 200 over a\nwrite that did not happen.\n\nOnly an owner may rename an owner — the same hardcoded owner protection\nthat role changes, removals and password resets carry. Renaming is not\nescalation, but an admin relabelling the owner of the organization on\nevery screen in the product is close enough to the same act to answer\nthe same way.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayNameResponse"
+                },
+                "examples": {
+                  "DisplayNameResponse": {
+                    "value": {
+                      "display_name": "Ada Lovelace"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
           }
         }
       }
@@ -1214,6 +1358,20 @@
   },
   "components": {
     "schemas": {
+      "DisplayNameResponse": {
+        "type": "object",
+        "description": "What the name is after the write — the stored value, not the request.",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "The stored name, trimmed and canon-checked. Empty string when the name was cleared",
+            "example": "Ada Lovelace"
+          }
+        },
+        "required": [
+          "display_name"
+        ]
+      },
       "InstanceShapeResponse": {
         "type": "object",
         "description": "How THIS instance is deployed — what the client needs to know before\ndeciding what to show a person with no workspace.\n\nThe ``landing`` axis (``STREET_LANDING_MODE``) has existed since\n2026-08-03 but lived only in backend config, with nothing exposing it —\na client had no way to tell a closed deployment from a public cloud one.\n\nThis matters because the screen shown to someone who is no longer (or\nnever was) a workspace member differs by deployment:\n\n* ``none`` — closed deployment: the person has no workspace and none is\nobtainable. An honest screen says \"you're not a member, ask for an\ninvite\" and offers no path forward;\n* ``personal`` — public cloud: they have their own workspace, and the\nclient can route them there.\n\nOffering \"create a workspace\" to someone the instance will never let\ncreate one is a dead end drawn as a button.",
@@ -1661,6 +1819,19 @@
           "has_prev",
           "count"
         ]
+      },
+      "PatchedDisplayNameUpdateRequest": {
+        "type": "object",
+        "description": "Roster-side name correction (one field, both name-edit endpoints).",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "The name to show for this person. Held to stapel-profiles' display-name canon (validate_display_name) — this module never adds a second, differently-strict rule. Blank, whitespace-only, null and a missing key all mean the same thing: clear the name",
+            "example": "Ada Lovelace",
+            "maxLength": 35
+          }
+        }
       },
       "PatchedMemberUpdateRequest": {
         "type": "object",

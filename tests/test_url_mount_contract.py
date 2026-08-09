@@ -56,6 +56,13 @@ ROUTES = [
         {"workspace_id": WS, "user_id": UID},
         f"{MOUNT}/v1/{WS}/members/{UID}",
     ),
+    # Roster-side name correction (0.19) — a suffix route on the member,
+    # so the target is a membership of THIS workspace, never a bare user id.
+    (
+        "workspace-member-name",
+        {"workspace_id": WS, "user_id": UID},
+        f"{MOUNT}/v1/{WS}/members/{UID}/name",
+    ),
     # Administrative password reset (#110) — nested under the member, so
     # the target is a membership in a workspace-scoped path.
     (
@@ -74,6 +81,12 @@ ROUTES = [
         "workspace-invitation-revoke",
         {"workspace_id": WS, "invitation_id": INV},
         f"{MOUNT}/v1/{WS}/invitations/{INV}/revoke",
+    ),
+    # Same name correction, one step earlier: the pending invitation's hint.
+    (
+        "workspace-invitation-name",
+        {"workspace_id": WS, "invitation_id": INV},
+        f"{MOUNT}/v1/{WS}/invitations/{INV}/name",
     ),
     (
         "workspace-invitation-resend",

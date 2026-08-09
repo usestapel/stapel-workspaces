@@ -177,6 +177,136 @@ def _profiles_service_url() -> str:
     ).rstrip("/")
 
 
+#: Django app label of stapel-profiles, used only to ask the app registry
+#: whether that module runs in THIS process. A label, not an import.
+_PROFILES_APP_LABEL = "stapel_profiles"
+
+
+def profiles_in_process(dotted_path: str):
+    """Resolve a stapel-profiles symbol iff that module runs in this process.
+
+    The one seam this module has to stapel-profiles' internals, and it is
+    the SAME one ``_fetch_profile_display_names`` above already uses: ask
+    Django's app registry whether ``stapel_profiles`` is installed here, and
+    only then resolve the symbol by dotted path at call time. There is no
+    ``from stapel_profiles import ...`` anywhere in this package (MODULE.md:
+    "Stapel modules never import each other"), and there never can be —
+    stapel-profiles is not a dependency of this distribution, so a static
+    import would break every deployment that does not ship it.
+
+    Returns ``None`` — never raises — when profiles is absent or the symbol
+    has moved. Callers decide what that means: for a name the roster only
+    *displays* it means "fall back to the hint", for a name the roster is
+    being asked to *write* it means an honest 503.
+
+    Why not HTTP, like the batch read below: stapel-profiles publishes no
+    write-someone-else's-name operation and no comm Function at all (its
+    docs/capabilities.json surface is HTTP-operation only), so there is no
+    remote form of either the write or the name canon to call. A split
+    deployment therefore cannot serve the roster's name-edit endpoints at
+    all, and says so with ``error.503.profiles_unavailable`` rather than
+    quietly writing a name into a store nobody reads.
+    """
+    from django.apps import apps as _django_apps
+
+    if not _django_apps.is_installed(_PROFILES_APP_LABEL):
+        return None
+    from django.utils.module_loading import import_string
+
+    try:
+        return import_string(dotted_path)
+    except ImportError:
+        logger.warning(
+            "stapel-profiles is installed but %s did not resolve — version skew "
+            "between this module and the profiles package",
+            dotted_path,
+        )
+        return None
+
+
+def _profile_model():
+    """The active (possibly host-swapped) profile model, or ``None``.
+
+    Goes through stapel-profiles' own ``get_profile_model`` rather than
+    ``apps.get_model("stapel_profiles", "Profile")`` so a host that assembled
+    an extended Profile (``STAPEL_SWAP["PROFILES_PROFILE_MODEL"]``) is
+    honoured — the zero-field default is not where its names live, and
+    reading (or worse, writing) it would be a silent no-op. That is the
+    SWAP001 discipline stated in profiles' own docs/llms.txt.
+    """
+    get_profile_model = profiles_in_process("stapel_profiles.models.get_profile_model")
+    return get_profile_model() if get_profile_model is not None else None
+
+
+def display_name_canon():
+    """stapel-profiles' ``validate_display_name``, or ``None`` if it is absent.
+
+    The single canon for what a display name may contain — minimum length,
+    control/invisible characters, emoji — raising ``StapelValidationError``
+    with that module's own error keys (``error.400.display_name_*``, all
+    four re-declared in this module's registry so they appear in its
+    contract). This module deliberately owns NO second copy of those rules:
+    profiles' llms.txt names re-deriving them as the mistake, and a weaker
+    duplicate inside the framework that canonizes the original is exactly
+    the drift the fleet keeps paying for.
+
+    The length CEILING is not part of this: 35 characters is a storage fact
+    that ``Profile.display_name`` and ``WorkspaceInvitation.display_name_hint``
+    both declare, enforced here as the serializer field's ``max_length``
+    (``error.400.field.max_length``).
+    """
+    return profiles_in_process("stapel_profiles.validators.validate_display_name")
+
+
+def set_profile_display_name(user_id, display_name: str) -> bool:
+    """Write *display_name* onto the profile of *user_id*. ``False`` if impossible.
+
+    The canonical name lives in stapel-profiles and nowhere else — writing
+    ``WorkspaceMember.display_name_hint`` instead would be writing a field
+    that goes dark the moment a profile exists (see its docstring in
+    ``models.py``), i.e. a rename the person renamed never sees.
+
+    Creates the profile row when there is none: the target is a member of a
+    workspace, so the account exists, and "has not opened the profile screen
+    yet" must not make an admin's correction unwritable. ``False`` means
+    stapel-profiles does not run in this process (or ships no
+    ``display_name`` field at all) — the caller answers 503, never a
+    reported success.
+
+    Publishes ``profile.changed`` afterwards, as profiles' own llms.txt
+    demands of ANY write that does not go through its serializers: every
+    downstream consumer of that event (search projections, chat rosters, a
+    host's ``User.first_name`` mirror) desyncs silently otherwise.
+    """
+    Profile = _profile_model()
+    if Profile is None:
+        return False
+    from django.core.exceptions import FieldDoesNotExist
+
+    try:
+        Profile._meta.get_field("display_name")
+    except FieldDoesNotExist:
+        # A host-swapped profile model without a display name — there is no
+        # canonical name in this deployment to correct.
+        logger.warning(
+            "the active profile model %s has no display_name field", Profile.__name__
+        )
+        return False
+
+    profile, _created = Profile.objects.get_or_create(user_id=user_id)
+    profile.display_name = display_name
+    profile.save(update_fields=["display_name", "updated_at"])
+
+    publish_profile_changed = profiles_in_process(
+        "stapel_profiles.events.publish_profile_changed"
+    )
+    if publish_profile_changed is not None:
+        # Best-effort inside profiles' own publisher (it swallows and
+        # savepoint-isolates); the name is already saved either way.
+        publish_profile_changed(profile)
+    return True
+
+
 def _fetch_profile_display_names(user_ids) -> dict:
     """Best-effort ``{str(user_id): display_name}`` from stapel-profiles.
 
@@ -209,10 +339,12 @@ def _fetch_profile_display_names(user_ids) -> dict:
     # A cross-service seam that cannot see a module sitting next to it is
     # half a seam.
     try:
-        from django.apps import apps as _django_apps
-
-        if _django_apps.is_installed("stapel_profiles"):
-            Profile = _django_apps.get_model("stapel_profiles", "Profile")
+        # `_profile_model()` rather than a raw apps.get_model on the default
+        # class: a host that swapped in its own extended Profile keeps its
+        # names there, and the zero-field default would answer "nobody has a
+        # name" forever (SWAP001 discipline — see that helper).
+        Profile = _profile_model()
+        if Profile is not None:
             rows = Profile.objects.filter(user_id__in=ids).values_list(
                 "user_id", "display_name"
             )

@@ -22,6 +22,32 @@ ERR_503_AUTH_UNAVAILABLE = "error.503.auth_unavailable"
 ERR_403_MEMBERSHIP_SUSPENDED = "error.403.membership_suspended"
 ERR_400_INVALID_PROVISION_USERNAME = "error.400.invalid_provision_username"
 ERR_403_ROLE_EXCEEDS_INVITER_RANK = "error.403.role_exceeds_inviter_rank"
+ERR_503_PROFILES_UNAVAILABLE = "error.503.profiles_unavailable"
+
+# Display-name keys BORROWED from stapel-profiles, not minted here.
+#
+# The roster's two name-edit PATCHes write a name, and the canon for what a
+# name may contain belongs to stapel-profiles alone
+# (`validators.validate_display_name`, its docs/llms.txt: "any host
+# onboarding form, admin action or importer that writes a name must run it
+# through here instead of inventing a second, differently-strict regex").
+# This module calls that validator (services.display_name_canon) and lets
+# its refusals out verbatim — same string keys, same English, same
+# remediation — so a frontend branches on ONE set of display-name codes no
+# matter which service refused the write.
+#
+# They are re-declared here only so this module's contract artifact
+# (docs/errors.json) is honest about what its own endpoints can answer with:
+# the registry is a last-wins global dict, so a deployment running both
+# modules registers identical entries twice and nothing drifts. Adding a
+# fifth, workspaces-only display-name rule here would be the defect these
+# comments exist to prevent — the length ceiling is enforced as the
+# serializer field's `max_length` (error.400.field.max_length), which is a
+# storage fact both models already declare, not a second name canon.
+ERR_400_DISPLAY_NAME_TOO_SHORT = "error.400.display_name_too_short"
+ERR_400_DISPLAY_NAME_FORBIDDEN_CHARS = "error.400.display_name_forbidden_chars"
+ERR_400_DISPLAY_NAME_EMOJI = "error.400.display_name_emoji"
+ERR_400_DISPLAY_NAME_INVISIBLE_CHARS = "error.400.display_name_invisible_chars"
 
 WORKSPACES_ERRORS = {
     ERR_404_WORKSPACE_NOT_FOUND: "Workspace not found",
@@ -44,6 +70,12 @@ WORKSPACES_ERRORS = {
     ERR_403_MEMBERSHIP_SUSPENDED: "Your membership in this workspace is suspended ({reason})",
     ERR_400_INVALID_PROVISION_USERNAME: "Invalid username for a provisioned account",
     ERR_403_ROLE_EXCEEDS_INVITER_RANK: "You cannot grant a role that outranks your own ({role})",
+    ERR_503_PROFILES_UNAVAILABLE: "The profiles service is unavailable; try again later",
+    # Verbatim from stapel-profiles' own registry — see the note above.
+    ERR_400_DISPLAY_NAME_TOO_SHORT: "Display name must be at least 2 characters",
+    ERR_400_DISPLAY_NAME_FORBIDDEN_CHARS: "Display name contains forbidden characters",
+    ERR_400_DISPLAY_NAME_EMOJI: "Display name cannot contain emoji",
+    ERR_400_DISPLAY_NAME_INVISIBLE_CHARS: "Display name contains invisible characters",
 }
 
 # Machine-readable recovery hints (remediation) — the canonical "what to do"
@@ -134,6 +166,15 @@ WORKSPACES_ERRORS = {
 #     Retrying the identical request loops; no other party need be involved
 #     (matches the last_owner_cannot_be_removed precedent, not
 #     forbidden_workspace/missing_capability's contact_support).
+#   * 503 profiles_unavailable → wait_and_retry, the same shape as
+#     auth_unavailable: the request itself is fine and succeeds once the
+#     module that OWNS display names is reachable in this deployment. It is
+#     a wiring gap (stapel-profiles not installed in this process), not
+#     anything the caller can edit.
+#   * 400 display_name_* → fix_input, verbatim from stapel-profiles'
+#     declarations. Same key, same hint, on purpose: a frontend that already
+#     highlights the name field on profiles' refusal must behave identically
+#     when the refusal came from the roster instead.
 WORKSPACES_REMEDIATION = {
     ERR_404_WORKSPACE_NOT_FOUND: "fix_input",
     ERR_404_MEMBER_NOT_FOUND: "fix_input",
@@ -155,6 +196,11 @@ WORKSPACES_REMEDIATION = {
     ERR_403_MEMBERSHIP_SUSPENDED: "fix_input",
     ERR_400_INVALID_PROVISION_USERNAME: "fix_input",
     ERR_403_ROLE_EXCEEDS_INVITER_RANK: "fix_input",
+    ERR_503_PROFILES_UNAVAILABLE: "wait_and_retry",
+    ERR_400_DISPLAY_NAME_TOO_SHORT: "fix_input",
+    ERR_400_DISPLAY_NAME_FORBIDDEN_CHARS: "fix_input",
+    ERR_400_DISPLAY_NAME_EMOJI: "fix_input",
+    ERR_400_DISPLAY_NAME_INVISIBLE_CHARS: "fix_input",
 }
 
 register_service_errors(WORKSPACES_ERRORS, remediation=WORKSPACES_REMEDIATION)

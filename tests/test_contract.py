@@ -65,10 +65,13 @@ TRIAD = ("schema.json", "flows.json", "errors.json")
 # The mandate-model surface (permissions.py + capabilities.py + services.py —
 # guest predicate, rank-guard, invitation/provision/suspension primitives)
 # does not fit the generator's default 4000-token budget. Same exception
-# stapel-auth already takes: raise the ceiling to 4500 for this module, do
-# not shorten intents to fit. The budget stays enforced, just at 4500.
+# stapel-auth already takes: raise the ceiling for this module, do not
+# shorten intents to fit. Raised again in 0.19 (4500 -> 5000) when the
+# profiles seam behind the roster's name edit added three surface entries
+# and the profiles dependency line grew a write half. The budget stays
+# enforced, just at 5000 — keep it in step with the Makefile.
 ARTIFACTS = TRIAD + ("capabilities.json", "llms.txt")
-LLMS_TXT_BUDGET = "4500"
+LLMS_TXT_BUDGET = "5000"
 
 
 def _emit(out_dir: Path) -> None:

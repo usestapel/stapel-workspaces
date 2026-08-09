@@ -25,7 +25,7 @@
     {
       "module": "stapel-profiles",
       "optional": true,
-      "reason": "the canonical source of a member's display name — this module stores only a name HINT typed at invite/provision time (WorkspaceMember.display_name_hint), never a second copy of the real field; MemberResponse.display_name reads stapel-profiles' public POST /batch over HTTP (PROFILES_SERVICE_URL) and falls back to the hint when profiles is absent, unreachable, or has no name yet for the user; no comm Function either way (profiles registers none for this), so this is a plain best-effort HTTP read, never a hard import — degrades to hint-only behavior with zero configuration"
+      "reason": "the canonical source of a member's display name — this module stores only a name HINT typed at invite/provision time (WorkspaceMember.display_name_hint), never a second copy of the real field. Reads: MemberResponse.display_name resolves through the profiles seam (in-process Profile lookup first, then that module's public POST /batch over PROFILES_SERVICE_URL), falling back to the hint when profiles is absent, unreachable, or has no name yet. Writes (0.19): the roster's PATCH members/{id}/name sets Profile.display_name and publishes profile.changed, and both name-edit endpoints hold the value to that module's validate_display_name canon rather than a second rule of their own — profiles registers no comm Function and publishes no write-somebody-else's-name operation, so the write only exists in a process where profiles is mounted and answers error.503.profiles_unavailable where it is not. Never a hard import either way"
     }
   ],
   "extension_points": [
@@ -220,6 +220,18 @@
     "lift_deactivation_suspensions_for_user": {
       "kind": "factory",
       "intent": "Reverse deactivation suspensions on reactivation, leaving no_mfa ones alone."
+    },
+    "profiles_in_process": {
+      "kind": "factory",
+      "intent": "Resolve a stapel-profiles symbol by dotted path, only while that module runs in THIS process — the module boundary's answer to \"how do I reach profiles\", since Stapel modules never import each other. None when it is absent, so the caller picks a fallback or an honest 503."
+    },
+    "display_name_canon": {
+      "kind": "gate_function",
+      "intent": "stapel-profiles' validate_display_name when reachable, else None — the ONE canon for what a display name may contain, raising that module's own error.400.display_name_* keys. Anything here that accepts or writes a name goes through it; a second, differently-strict rule is the drift this stops."
+    },
+    "set_profile_display_name": {
+      "kind": "factory",
+      "intent": "Write a user's CANONICAL display name (stapel-profiles' Profile.display_name) and publish profile.changed, creating the row when absent. False when profiles is not in this process, so the caller answers 503; WorkspaceMember.display_name_hint is only a pre-profile placeholder, not this."
     }
   }
 }
