@@ -1,8 +1,8 @@
-# stapel-workspaces 0.22.1
+# stapel-workspaces 0.23.0
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 40 · extension points 5 · operations 26 · error codes 67.
+Contract: axes 1 · surface 41 · extension points 5 · operations 26 · error codes 68.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -36,6 +36,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   True if the user's active membership grants a capability — the everyday authorization check.
 - is_guest — stapel_workspaces.permissions.is_guest
   THE canonical guest predicate (mandate-model vardict 2026-08-03): true for an authenticated user with no active mandate anywhere — an anonymous session qualifies by construction. Branch dashboards/onboarding on this, never on request.user.is_authenticated.
+- resend_cooldown_remaining — stapel_workspaces.services.resend_cooldown_remaining
+  Seconds before the invited address may be mailed about this invitation again (0 = now) — ask before offering a resend affordance, rather than discovering the 429.
 - role_at_least — stapel_workspaces.permissions.role_at_least
   Role-ordering check — instead of hardcoding a role order.
 - role_exceeds_rank — stapel_workspaces.capabilities.role_exceeds_rank
@@ -50,7 +52,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - capability_level — stapel_workspaces.capabilities.capability_level
   "standard"/"high" step-up level of a capability — check before gating on step-up.
 - create_invitation — stapel_workspaces.services.create_invitation
-  Create a single-use, TTL'd invitation and best-effort deliver it.
+  Create a single-use, TTL'd invitation and deliver it best-effort — as workspace.invitation.new_user when the address has no account yet, workspace.invitation when it does.
 - create_workspace — stapel_workspaces.services.create_workspace
   Create a workspace and atomically seed its owner membership — instead of a bare, ownerless row.
 - decline_invitation — stapel_workspaces.services.decline_invitation
@@ -76,13 +78,13 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - provision_member — stapel_workspaces.services.provision_member
   Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials).
 - resend_invitation — stapel_workspaces.services.resend_invitation
-  Rotate an invitation's token, extend its TTL and re-deliver — instead of editing fields by hand.
+  Re-deliver an invitation and extend its TTL — instead of editing fields by hand. Refuses with InvitationResendCooldown inside the per-address cooldown; keeps the invitee's existing token unless the deployment asked for rotation.
 - reset_member_password — stapel_workspaces.services.reset_member_password
   Reset a member's password on the org's order, with the audit emit and security-signal letter.
 - resolve_landing_workspace — stapel_workspaces.services.resolve_landing_workspace
   The canon landing-mandate policy (mandate-model vardict 2026-08-03) for a freshly (re)appearing account — call this from a user.registered subscriber instead of unconditionally minting a personal workspace; reads STREET_LANDING_MODE and is a deliberate no-op for an invited origin, so a subscriber cannot double-mint or race the invite's own membership.
 - revoke_invitation — stapel_workspaces.services.revoke_invitation
-  Withdraw a live invitation under the same compare-and-set lock as accept/decline.
+  Withdraw a live invitation under the same compare-and-set lock as accept/decline, recording WHO withdrew it (revoked_by).
 - role_rank — stapel_workspaces.capabilities.role_rank
   Numeric rank of a role, or None — prefer role_at_least/role_exceeds_rank for yes/no.
 - security_settings_for — stapel_workspaces.services.security_settings_for
@@ -112,7 +114,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - stapel-auth (optional) — emits the user.registered event that triggers personal-workspace creation and issues the authenticated sessions the workspace endpoints require; answers auth.issue_login_grant for the invitation claim step and auth.provision_user / auth.mfa_status for org provisioning and the require_mfa sweep; answers auth.admin_reset_password (>= 0.18) for the administrative password reset — which is where the credential work, the session revocation, the audit row and the refusal to touch a staff account live, because the caller knows who administers a workspace and nothing about who administers the deployment; answers auth.apply_first_login_policies (>= 0.17) when an organization has CONFIGURED first-login policies — that seam alone is fail-closed: an acceptance that cannot raise a demanded policy is refused (503) rather than admitting an unhardened member, while an organization that configured nothing never calls it at all; every other auth seam either degrades to an honest 503 (claim) or is never reached; decoupled via the comm bus
 - stapel-billing (optional) — answers billing.check_entitlement for org creation and member-seat ceilings; without it every entitlement check degrades to allow (OSS default), decoupled via the comm bus
 - stapel-core (required) — comm bus (workspace.* emits, workspaces.check_membership Function, user.registered consumer), JWT authentication, GDPR provider registry
-- stapel-notifications (optional) — delivers the letters this module requests via request_notification: workspace.invitation (create), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error
+- stapel-notifications (optional) — delivers the letters this module requests via request_notification: workspace.invitation (create, address with an account), workspace.invitation.new_user (create, address with none — >= 0.6.1, selected from 0.23), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error
 - stapel-profiles (optional) — the canonical source of a member's display name — this module stores only a name HINT typed at invite/provision time (WorkspaceMember.display_name_hint), never a second copy of the real field. Reads: MemberResponse.display_name resolves through the profiles seam (in-process Profile lookup first, then that module's public POST /batch over PROFILES_SERVICE_URL), falling back to the hint when profiles is absent, unreachable, or has no name yet. Writes (0.19): the roster's PATCH members/{id}/name sets Profile.display_name and publishes profile.changed, and both name-edit endpoints hold the value to that module's validate_display_name canon rather than a second rule of their own — profiles registers no comm Function and publishes no write-somebody-else's-name operation, so the write only exists in a process where profiles is mounted and answers error.503.profiles_unavailable where it is not. Never a hard import either way
 
 ## HTTP operations (26) — call by operationId, never by a typed path
@@ -147,7 +149,7 @@ Paths are relative to `/workspaces/api/v1/`.
 - GET /{workspace_id} — workspaces_api_v1_retrieve_2
 - GET /roles — workspaces_api_v1_roles_retrieve
 
-## Error codes (67) — the StapelError envelope
+## Error codes (68) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.already_workspace_member [400] fix_input
 - error.400.bad_request [400] fix_input
@@ -210,6 +212,7 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.422.unprocessable_entity [422] wait_and_retry
 - error.423.locked [423] wait_and_retry
 - error.423.verification_locked [423] wait_and_retry
+- error.429.invitation_resend_cooldown [429] wait_and_retry {retry_after}
 - error.429.rate_limit [429] wait_and_retry {retry_after_minutes}
 - error.429.too_many_requests [429] wait_and_retry
 - error.500.internal [500] contact_support

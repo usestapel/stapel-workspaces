@@ -22,7 +22,11 @@ from stapel_core.django.peers import service_answered
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 
-from .conf import workspaces_settings
+from .conf import (
+    resend_cooldown_seconds,
+    rotate_token_on_resend,
+    workspaces_settings,
+)
 from .dto import WorkspaceSecuritySettings
 from .entitlements import (
     ENT_MEMBERS_MAX,
@@ -452,21 +456,57 @@ def _frontend_url(path: str) -> str:
     return f"{frontend_url}{path}" if frontend_url else path
 
 
+#: Notification type of the FIRST invitation letter to an address that
+#: already has an account here.
+NOTIFICATION_INVITATION = "workspace.invitation"
+#: Notification type of the first invitation letter to an address with NO
+#: account yet: the same link both creates the account and joins the
+#: workspace, and that letter has to say so. Its own type in the
+#: notifications catalog (>= 0.6.1) with its own template and copy.
+NOTIFICATION_INVITATION_NEW_USER = "workspace.invitation.new_user"
+#: Notification type of a re-delivery (admin "resend").
+NOTIFICATION_INVITATION_REMINDER = "workspace.invitation.reminder"
+
+
 def _send_invitation_notification(
     invitation: WorkspaceInvitation,
     *,
-    notification_type: str = "workspace.invitation",
+    notification_type: str | None = None,
 ) -> None:
     """Ask stapel-notifications to deliver the invite email.
 
     Best-effort: a delivery hiccup must never break invitation creation —
     the invite stays listable/resendable either way.
 
-    ``notification_type`` distinguishes the first letter from a re-delivery:
-    the resend path passes ``workspace.invitation.reminder`` (its own type
-    in the notifications catalog, >= 0.6.1), because "you are being
-    reminded — and the earlier link no longer works" is a different message
-    from "you are being invited". Same variables either way.
+    ``notification_type`` distinguishes the first letter from a
+    re-delivery: the resend path passes
+    :data:`NOTIFICATION_INVITATION_REMINDER` (its own type in the
+    notifications catalog, >= 0.6.1), because "you are being reminded" is a
+    different message from "you are being invited". Same variables either
+    way.
+
+    Left unset (the create path), the type is CHOSEN here, between
+    :data:`NOTIFICATION_INVITATION` and
+    :data:`NOTIFICATION_INVITATION_NEW_USER`, on whether the invited address
+    already has an account. That branch is the whole reason the second type
+    exists: its letter says "the button below creates your account and
+    joins you", which is a lie to somebody who already has one and the only
+    honest sentence for somebody who does not. The type, its template, its
+    translation keys and its routing entry all shipped in stapel-
+    notifications 0.6.1 — and for two minor versions nothing ever selected
+    it, so every invitee got the has-an-account copy. ``tests/
+    test_invitation_letter.py`` now fails if any ``workspace.*`` type in the
+    catalog is unreachable from this module again.
+
+    The branch deliberately changes NOTHING an outsider can observe. It is
+    the same ``invitee`` row already fetched for ``user_id`` below, and:
+    the create endpoint has no duplicate/exists branch, its 201 body is the
+    same DTO either way, no event is emitted, and neither branch logs. The
+    only difference is which of two letters lands in the invited address's
+    OWN mailbox — the holder of that address learning a fact about their
+    own address. Account existence stays answerable from outside only where
+    this module deliberately answers it: ``email_registered`` on the
+    token-gated, email-masked, throttled invitation preview.
     """
     try:
         from django.contrib.auth import get_user_model
@@ -521,6 +561,15 @@ def _send_invitation_notification(
         target = {"email": invitation.email}
         if invitee is not None:
             target["user_id"] = str(invitee.pk)
+        # The branch the second template was built for, off the row that was
+        # fetched one line up anyway (see this function's docstring for why
+        # it is not an account-existence oracle).
+        if notification_type is None:
+            notification_type = (
+                NOTIFICATION_INVITATION
+                if invitee is not None
+                else NOTIFICATION_INVITATION_NEW_USER
+            )
         request_notification(
             notification_type,
             variables={
@@ -531,6 +580,18 @@ def _send_invitation_notification(
             source_service="workspaces",
             **target,
         )
+        # The letter is with the mailer: start the cooldown clock. Written
+        # here, on the ONE path that requests an invitation letter, so
+        # "when was this address last mailed about this invitation" cannot
+        # drift from "when did we last mail it" the way a caller-side stamp
+        # would. A request that never got this far (no notifications module,
+        # a transport error — the except below) leaves the clock alone: no
+        # letter was sent, so nothing is owed a cooldown.
+        stamped = timezone.now()
+        WorkspaceInvitation.objects.filter(pk=invitation.pk).update(
+            last_sent_at=stamped
+        )
+        invitation.last_sent_at = stamped
     except Exception:
         logger.exception(
             "failed to request invitation notification for %s", invitation.pk
@@ -623,7 +684,13 @@ def revoke_invitation(
     if locked is None:
         raise ValueError("invitation is not pending")
     locked.revoked_at = timezone.now()
-    locked.save(update_fields=["revoked_at"])
+    # WHO, not only when. Same provenance shape as `invited_by` on the
+    # opposite transition; see WorkspaceInvitation.revoked_by. The emit
+    # below carried the actor from the start, but a bus message is not a
+    # record this service can be asked a question about afterwards, so
+    # "who withdrew that invite" had no answer at all in the API.
+    locked.revoked_by = revoked_by
+    locked.save(update_fields=["revoked_at", "revoked_by"])
     emit(
         EVENT_WORKSPACE_INVITATION_REVOKED,
         {
@@ -636,8 +703,57 @@ def revoke_invitation(
     return locked
 
 
+class InvitationResendCooldown(Exception):
+    """A resend was refused because the address was mailed too recently.
+
+    Carries ``retry_after`` — whole seconds until the next letter is
+    allowed, always at least 1 — so the caller can answer with a number the
+    admin can act on instead of a bare "no".
+    """
+
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
+        super().__init__(f"resend cooldown: {retry_after}s remaining")
+
+
+def resend_cooldown_remaining(invitation: WorkspaceInvitation) -> int:
+    """Seconds before this invitation's address may be mailed again (0 = now).
+
+    The clock is the most recent ``last_sent_at`` of ANY invitation to the
+    same address in the same workspace, not just this row's. Both readings
+    stop the same loop, but the address-wide one is the honest unit: the
+    thing a resend loop damages is one person's inbox, and re-inviting the
+    same address produces another row that would otherwise start with a
+    fresh, empty clock.
+
+    Returns 0 when the cooldown is disabled
+    (``INVITATION_RESEND_COOLDOWN_SECONDS`` of 0 or None), when nothing was
+    ever sent (rows predating the column; a deployment with no notifications
+    service, where no letter exists to be repeated), or when the window has
+    passed.
+    """
+    cooldown = resend_cooldown_seconds()
+    if cooldown <= 0:
+        return 0
+    last_sent = (
+        WorkspaceInvitation.objects.filter(
+            workspace_id=invitation.workspace_id,
+            email__iexact=invitation.email,
+            last_sent_at__isnull=False,
+        )
+        .order_by("-last_sent_at")
+        .values_list("last_sent_at", flat=True)
+        .first()
+    )
+    if last_sent is None:
+        return 0
+    elapsed = (timezone.now() - last_sent).total_seconds()
+    remaining = cooldown - elapsed
+    return max(1, int(remaining + 0.999)) if remaining > 0 else 0
+
+
 def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation:
-    """Re-deliver an invitation: rotate the token, extend the TTL, mail it (#109).
+    """Re-deliver an invitation: extend the TTL, mail it again (#109).
 
     The reason an admin resends is almost always that the first letter
     never arrived or the TTL ran out, so this deliberately accepts an
@@ -646,10 +762,21 @@ def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation
     and nothing else. An accepted, declined or revoked invitation is never
     resendable — those are decisions, not delivery failures.
 
-    The token is **rotated**, not reused. It is a bearer secret whose only
-    protection is that it stayed in one mailbox; a resend usually means
-    nobody knows where the first copy ended up. The fresh letter carries
-    the fresh link, and the old one dies with the row it no longer matches.
+    **Cooldown.** Raises :class:`InvitationResendCooldown` when the invited
+    address was mailed less than
+    ``STAPEL_WORKSPACES["INVITATION_RESEND_COOLDOWN_SECONDS"]`` ago (10
+    minutes by default; see that key for why it is a per-address duration
+    and not a per-caller DRF rate). The check is inside the row lock —
+    two admins pressing "resend" at the same instant are the case a
+    read-then-write check outside it would let through, and the whole point
+    is that only ONE letter leaves.
+
+    **The token is reused, not rotated**, unless the deployment sets
+    ``INVITATION_ROTATE_TOKEN_ON_RESEND``. The reasoning is written out at
+    that key in :mod:`stapel_workspaces.conf`; the short form is that the
+    resend goes to the same mailbox as the original, so rotation buys no
+    containment and costs the invitee a dead link in the letter they are
+    most likely to click. Reversed from the pre-0.23 hardcoded rotation.
 
     ``expires_at`` restarts from now (``INVITATION_TTL_DAYS``) — a resent
     invitation the invitee cannot use before it expires again is not a
@@ -666,17 +793,30 @@ def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation
         )
         if locked is None:
             raise ValueError("invitation is not pending")
-        locked.token = token_urlsafe(32)
+        remaining = resend_cooldown_remaining(locked)
+        if remaining:
+            raise InvitationResendCooldown(remaining)
+        updated = ["expires_at", "last_sent_at"]
+        if rotate_token_on_resend():
+            locked.token = token_urlsafe(32)
+            updated.append("token")
         locked.expires_at = timezone.now() + timedelta(
             days=workspaces_settings.INVITATION_TTL_DAYS
         )
-        locked.save(update_fields=["token", "expires_at"])
+        # Claim the window HERE, under the lock, not when the letter comes
+        # back from the mailer: the send happens after this transaction
+        # commits, and two admins pressing "resend" together would otherwise
+        # both pass a check that reads a stamp neither has written yet. A
+        # letter that never reaches the mailer still spends the window —
+        # fail-closed is the only safe direction for a rate limit.
+        locked.last_sent_at = timezone.now()
+        locked.save(update_fields=updated)
     # Outside the row lock: delivery is best-effort and must not hold a
     # write lock open across a cross-service notification call. A resend is
     # a reminder, not a first invitation — its own notification type, so
-    # the letter can say "the earlier link no longer works" honestly.
+    # the letter can say "you are being reminded" honestly.
     _send_invitation_notification(
-        locked, notification_type="workspace.invitation.reminder"
+        locked, notification_type=NOTIFICATION_INVITATION_REMINDER
     )
     return locked
 

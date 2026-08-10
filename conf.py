@@ -20,6 +20,12 @@ Everything a host project previously had to fork is an override here::
         # DRF throttle rate for the AllowAny invitation endpoints
         # (None disables throttling)
         "INVITATION_THROTTLE": "30/min",
+        # seconds one invited address must wait between letters
+        # (0 or None disables the cooldown)
+        "INVITATION_RESEND_COOLDOWN_SECONDS": 600,
+        # mint a fresh token on resend, killing the link already in the
+        # invitee's mailbox (off by default — see the key's note below)
+        "INVITATION_ROTATE_TOKEN_ON_RESEND": False,
         # credits debited per provisioned org user (0 = free)
         "PROVISION_USER_CREDITS": 0,
         # landing-mandate policy for an un-invited ("street") registration —
@@ -52,6 +58,55 @@ DEFAULTS = {
     # public endpoint still needs an enumeration backstop (spec §B2).
     # None disables throttling.
     "INVITATION_THROTTLE": "30/min",
+    # Seconds that must pass before an invited address can be mailed about
+    # its invitation again. 0 or None disables the cooldown.
+    #
+    # NOT a DRF rate like INVITATION_THROTTLE above, and the difference is
+    # the point: a scoped DRF throttle counts requests per CALLER (user or
+    # IP), which is the right shape for the AllowAny claim/preview endpoints
+    # and the wrong shape here. The thing being protected on resend is not
+    # this service's capacity — it is somebody else's INBOX. Ten admins
+    # holding `members.invite`, or one admin on ten sessions, are ten
+    # separate throttle buckets and one mailbox. So the clock lives on the
+    # invited address (WorkspaceInvitation.last_sent_at, read across every
+    # invitation for that address in the workspace), where the harm is.
+    #
+    # Before 0.23 there was neither a cooldown nor a record of the previous
+    # send: POST invitations/<id>/resend could be driven in a loop, and each
+    # pass mailed the address again (and, with rotation still on, churned
+    # the credential). The default is 10 minutes, matching the cooldown the
+    # room-invite path in the meettoday product already carries — one number
+    # for "how often may we mail the same person about the same thing".
+    "INVITATION_RESEND_COOLDOWN_SECONDS": 600,
+    # Whether a resend mints a NEW token and kills the old link.
+    #
+    # Default False, reversing the pre-0.23 hardcoded behaviour, and the
+    # reason belongs here rather than in a commit message:
+    #
+    # * A resend goes to the SAME address as the original letter. Rotation
+    #   therefore does not narrow the credential's exposure at all — it
+    #   moves it from one letter in that mailbox to another letter in the
+    #   same mailbox. The old argument ("a resend means nobody knows where
+    #   the first copy went") does not survive contact with the fact that
+    #   the second copy goes exactly where the first one did.
+    # * It has a real cost the other way round. The overwhelmingly common
+    #   resend is "they say it never arrived" — and then the invitee finds
+    #   the first letter (spam folder, threaded client, a colleague's
+    #   forward) and clicks it. With rotation that link answers
+    #   `error.404.invitation_not_found`, which reads to the person as "the
+    #   invitation was cancelled" rather than "you clicked the older of two
+    #   identical letters".
+    # * When a token IS believed to have leaked, the answer is not a resend:
+    #   it is revoke + invite again, which already exists, mints a genuinely
+    #   new invitation and leaves a `revoked_by` audit trail.
+    #
+    # Deployments that want the old behaviour (a strict org where every
+    # resend must invalidate its predecessor) set this True; nothing else
+    # changes, and the cooldown above bounds how often it can happen either
+    # way. The invite token never appears in any API response, so this key
+    # changes no response body — only whether a link already in somebody's
+    # mailbox keeps working.
+    "INVITATION_ROTATE_TOKEN_ON_RESEND": False,
     # Credits debited per provisioned org user (0 = free).
     "PROVISION_USER_CREDITS": 0,
     # Mandate axis for an un-invited ("street") registration — the policy
@@ -92,4 +147,44 @@ workspaces_settings = AppSettings(
     defaults=DEFAULTS,
 )
 
-__all__ = ["workspaces_settings"]
+#: Values an environment variable may spell "yes" with. AppSettings resolves
+#: env vars as raw strings (it has no per-key type), and ``bool("false")`` is
+#: True — a deployment that set ``INVITATION_ROTATE_TOKEN_ON_RESEND=false``
+#: would get rotation. Anything not in this set is False.
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def resend_cooldown_seconds() -> int:
+    """``INVITATION_RESEND_COOLDOWN_SECONDS`` as an int; 0 when disabled.
+
+    Accepts the int a settings dict carries and the string an environment
+    variable carries (AppSettings does no coercion — see
+    :data:`_TRUTHY`). A value that is neither is 0 here and an E009 from
+    ``checks.check_invitation_resend_cooldown``, which is the loud half:
+    silently defaulting a broken rate limit to "off" is how a deployment
+    ends up believing it has one.
+    """
+    value = workspaces_settings.INVITATION_RESEND_COOLDOWN_SECONDS
+    if isinstance(value, bool) or value is None:
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    try:
+        return max(0, int(str(value).strip()))
+    except (TypeError, ValueError):
+        return 0
+
+
+def rotate_token_on_resend() -> bool:
+    """``INVITATION_ROTATE_TOKEN_ON_RESEND`` as a bool (see that key)."""
+    value = workspaces_settings.INVITATION_ROTATE_TOKEN_ON_RESEND
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY
+    return bool(value)
+
+
+__all__ = [
+    "workspaces_settings",
+    "resend_cooldown_seconds",
+    "rotate_token_on_resend",
+]

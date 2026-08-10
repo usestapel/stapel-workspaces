@@ -181,6 +181,8 @@ class InvitationResponse:
         created_at: ISO 8601 creation time.
         invited_by_id: UUID of the admin who sent it; null when that account is gone. Example: 0192a...
         display_name: Name hint typed for this invitee at invite time, if any; null otherwise. Example: Ada Lovelace
+        revoked_by_id: UUID of the admin who withdrew it; null unless revoked, or when that account is gone. Example: 0192a...
+        last_sent_at: ISO 8601 time the invitation was last emailed; null if no letter was ever sent. Example: 2026-07-24T10:00:00Z
     """
 
     id: UUID
@@ -195,6 +197,14 @@ class InvitationResponse:
     created_at: str
     invited_by_id: Optional[UUID] = None
     display_name: Optional[str] = None
+    #: The actor behind ``revoked_at``. Paired with it deliberately: a
+    #: screen that can say WHEN an invitation was withdrawn and not BY WHOM
+    #: is the audit gap this field closes.
+    revoked_by_id: Optional[UUID] = None
+    #: When the invitee was last emailed about this invitation. The resend
+    #: cooldown's clock, exposed so a client can disable its own resend
+    #: affordance instead of discovering the 429 by pressing the button.
+    last_sent_at: Optional[str] = None
 
 
 @dataclass

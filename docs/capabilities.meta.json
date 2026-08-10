@@ -15,7 +15,7 @@
     {
       "module": "stapel-notifications",
       "optional": true,
-      "reason": "delivers the letters this module requests via request_notification: workspace.invitation (create), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error"
+      "reason": "delivers the letters this module requests via request_notification: workspace.invitation (create, address with an account), workspace.invitation.new_user (create, address with none — >= 0.6.1, selected from 0.23), workspace.invitation.reminder (admin resend, >= 0.6.1), workspace.member_password_reset (>= 0.6.1) and the workspace.provisioned_account / workspace.mfa_* family; every one is best-effort — the workspace operation succeeds regardless, and an older notifications catalog drops the unknown type with a logged error"
     },
     {
       "module": "stapel-billing",
@@ -151,7 +151,7 @@
     },
     "create_invitation": {
       "kind": "factory",
-      "intent": "Create a single-use, TTL'd invitation and best-effort deliver it."
+      "intent": "Create a single-use, TTL'd invitation and deliver it best-effort — as workspace.invitation.new_user when the address has no account yet, workspace.invitation when it does."
     },
     "issue_invitation_login_grant": {
       "kind": "factory",
@@ -159,11 +159,15 @@
     },
     "revoke_invitation": {
       "kind": "factory",
-      "intent": "Withdraw a live invitation under the same compare-and-set lock as accept/decline."
+      "intent": "Withdraw a live invitation under the same compare-and-set lock as accept/decline, recording WHO withdrew it (revoked_by)."
     },
     "resend_invitation": {
       "kind": "factory",
-      "intent": "Rotate an invitation's token, extend its TTL and re-deliver — instead of editing fields by hand."
+      "intent": "Re-deliver an invitation and extend its TTL — instead of editing fields by hand. Refuses with InvitationResendCooldown inside the per-address cooldown; keeps the invitee's existing token unless the deployment asked for rotation."
+    },
+    "resend_cooldown_remaining": {
+      "kind": "predicate",
+      "intent": "Seconds before the invited address may be mailed about this invitation again (0 = now) — ask before offering a resend affordance, rather than discovering the 429."
     },
     "decline_invitation": {
       "kind": "factory",

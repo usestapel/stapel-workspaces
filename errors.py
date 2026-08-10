@@ -14,6 +14,15 @@ ERR_400_INVITATION_ALREADY_USED = "error.400.invitation_already_used"
 ERR_400_INVITATION_REVOKED = "error.400.invitation_revoked"
 ERR_400_INVALID_ROLE = "error.400.invalid_role"
 ERR_400_INVITATION_DECLINED = "error.400.invitation_declined"
+#: A resend was refused because the invited address was mailed about this
+#: invitation less than ``INVITATION_RESEND_COOLDOWN_SECONDS`` ago. Its own
+#: key rather than core's generic ``error.429.rate_limit`` (and rather than
+#: a re-declaration of it — a module never re-registers a key core owns),
+#: for the same reason stapel-auth mints ``error.429.magic_link_rate``: the
+#: screen showing it has one specific affordance to disable and one
+#: specific countdown to render next to it, and "we already emailed them a
+#: minute ago" is a different sentence from "you are calling us too often".
+ERR_429_INVITATION_RESEND_COOLDOWN = "error.429.invitation_resend_cooldown"
 ERR_403_MISSING_CAPABILITY = "error.403.missing_capability"
 ERR_402_ENTITLEMENT_REQUIRED = "error.402.entitlement_required"
 ERR_402_MEMBER_LIMIT_REACHED = "error.402.member_limit_reached"
@@ -68,6 +77,10 @@ WORKSPACES_ERRORS = {
     ERR_400_INVITATION_ALREADY_USED: "Invitation has already been used",
     ERR_400_INVITATION_REVOKED: "Invitation has been revoked",
     ERR_400_INVITATION_DECLINED: "Invitation has been declined",
+    ERR_429_INVITATION_RESEND_COOLDOWN: (
+        "This invitation was emailed recently; you can send it again in "
+        "{retry_after} seconds"
+    ),
     ERR_400_INVALID_ROLE: "Invalid role",
     ERR_403_MISSING_CAPABILITY: "Your role does not include the {capability} capability in this workspace",
     ERR_402_ENTITLEMENT_REQUIRED: "The workspace owner's plan does not include this feature",
@@ -152,6 +165,11 @@ WORKSPACES_ERRORS = {
 #     expired/revoked: the token is terminally dead (the invitee said no);
 #     the only recovery is a fresh invitation from the workspace — an
 #     external party. No field to fix, retrying loops.
+#   * 429 invitation_resend_cooldown → wait_and_retry, and the wait is a
+#     number, not a shrug: the response carries `retry_after` (whole
+#     seconds) and a `Retry-After` header, so the screen can disable the
+#     resend button and count down on it instead of letting an admin
+#     rediscover the limit by pressing again.
 #   * 409 email_already_registered → reauthenticate. The claim path is for
 #     unregistered emails only; an existing account means the honest
 #     recovery is logging into it (the frontend switches to the login
@@ -216,6 +234,7 @@ WORKSPACES_REMEDIATION = {
     ERR_402_ENTITLEMENT_REQUIRED: "fix_input",
     ERR_402_MEMBER_LIMIT_REACHED: "fix_input",
     ERR_400_INVITATION_DECLINED: "contact_support",
+    ERR_429_INVITATION_RESEND_COOLDOWN: "wait_and_retry",
     ERR_409_EMAIL_ALREADY_REGISTERED: "reauthenticate",
     ERR_503_AUTH_UNAVAILABLE: "wait_and_retry",
     ERR_403_MEMBERSHIP_SUSPENDED: "fix_input",

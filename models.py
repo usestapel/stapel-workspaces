@@ -418,7 +418,38 @@ class WorkspaceInvitation(models.Model):
     accepted_at = models.DateTimeField(null=True, blank=True)
     declined_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
+    #: WHO withdrew it — the other half of ``revoked_at``, and the same
+    #: provenance shape :attr:`invited_by` already uses for the opposite
+    #: transition (FK, ``SET_NULL``, never a copied name string): the actor
+    #: is a row this service can join to, and the record survives that
+    #: account being deleted as an honest "somebody, no longer known".
+    #:
+    #: Until 0.23 the actor existed ONLY in the ``workspace.invitation_revoked``
+    #: event payload, so a workspace could show *when* an invitation was
+    #: withdrawn and never *by whom* — an audit gap on a permissioned action,
+    #: since the emitted event is a fire-and-forget message on a bus, not a
+    #: record this service can answer a question from. The event still
+    #: carries it; this column is what the API can read back.
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="revoked_workspace_invitations",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+    #: When a letter for this invitation was last handed to the mailer —
+    #: written by ``services._send_invitation_notification`` on every
+    #: successful ``request_notification``, i.e. on creation AND on every
+    #: resend. NULL means "no letter was ever sent" (rows predating 0.23, and
+    #: any deployment with no notifications service at all).
+    #:
+    #: This is the resend cooldown's clock
+    #: (``STAPEL_WORKSPACES["INVITATION_RESEND_COOLDOWN_SECONDS"]``). Before
+    #: it, resend had no cooldown and no record of the previous send at all:
+    #: one admin holding ``members.invite`` could drive an unbounded number
+    #: of letters at one address through this fleet's mail infrastructure.
+    last_sent_at = models.DateTimeField(null=True, blank=True)
     #: The invite modal's "Name" field (a NAME HINT, not the canonical name —
     #: see ``WorkspaceMember.display_name_hint``, which this is copied onto at
     #: accept time). Optional: an invite without one behaves exactly as

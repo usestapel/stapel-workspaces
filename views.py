@@ -100,6 +100,7 @@ from .errors import (
     ERR_404_MEMBER_NOT_FOUND,
     ERR_404_WORKSPACE_NOT_FOUND,
     ERR_409_EMAIL_ALREADY_REGISTERED,
+    ERR_429_INVITATION_RESEND_COOLDOWN,
     ERR_503_AUTH_UNAVAILABLE,
 )
 from .events import (
@@ -386,7 +387,26 @@ def _invitation_to_dto(inv: WorkspaceInvitation) -> InvitationResponse:
         created_at=inv.created_at.isoformat(),
         invited_by_id=inv.invited_by_id,
         display_name=inv.display_name_hint or None,
+        revoked_by_id=inv.revoked_by_id,
+        last_sent_at=inv.last_sent_at.isoformat() if inv.last_sent_at else None,
     )
+
+
+def _resend_cooldown_response(retry_after: int):
+    """429 for a resend inside the cooldown window.
+
+    ``retry_after`` travels twice on purpose: as an error param (so the
+    localized sentence can name the wait, and a client can count down) and
+    as the standard ``Retry-After`` header, which is what generic HTTP
+    clients, proxies and retry middleware already know how to read.
+    """
+    resp = StapelErrorResponse(
+        429,
+        ERR_429_INVITATION_RESEND_COOLDOWN,
+        params={"retry_after": retry_after},
+    )
+    resp["Retry-After"] = str(retry_after)
+    return resp
 
 
 def _invitation_terminal_error(inv: WorkspaceInvitation):
@@ -1069,15 +1089,26 @@ class InvitationResendView(WorkspaceInvitationActionView):
 
     Accepts an **expired** invitation on purpose — a dead TTL is the most
     common reason to resend — and refuses the three stored terminal states,
-    which are decisions rather than delivery failures. The token is
-    rotated and the TTL restarts, so the fresh letter carries a fresh link
-    and any stale copy of the old one stops working.
+    which are decisions rather than delivery failures. The TTL restarts, so
+    the invitee has the full window again from the letter that just went
+    out.
 
     Reviving an expired invitation re-reserves a seat, so the plan ceiling
     is re-checked here exactly as it is on invite: capability first ("may
     YOU", 403), then the org's plan ("may the ORG", 402). An invitation
     that is already pending costs no additional seat and is never blocked
     by that check.
+
+    Then the cooldown ("may we mail this PERSON again yet", 429). It is
+    read here and enforced again inside the service's row lock, the same
+    two-level shape the state check already has: the view answers a number
+    the admin can read, the lock is what actually makes two simultaneous
+    presses send one letter.
+
+    The token is NOT rotated by default from 0.23 — the invitee's existing
+    link keeps working, because the resend goes to the same mailbox that
+    link is already sitting in. See
+    ``STAPEL_WORKSPACES["INVITATION_ROTATE_TOKEN_ON_RESEND"]``.
     """
 
     @extend_schema(request=None, responses={200: InvitationResponseSerializer})
@@ -1102,8 +1133,15 @@ class InvitationResendView(WorkspaceInvitationActionView):
                 ERR_402_MEMBER_LIMIT_REACHED,
                 params={"limit": verdict.limit if verdict.limit is not None else 0},
             )
+        remaining = services.resend_cooldown_remaining(inv)
+        if remaining:
+            return _resend_cooldown_response(remaining)
         try:
             inv = services.resend_invitation(invitation=inv)
+        except services.InvitationResendCooldown as exc:
+            # Lost the other race the lock guards: a concurrent resend
+            # claimed the window between the read above and the lock.
+            return _resend_cooldown_response(exc.retry_after)
         except ValueError:
             inv.refresh_from_db()
             return _invitation_terminal_error(inv) or StapelErrorResponse(

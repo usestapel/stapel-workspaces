@@ -349,7 +349,9 @@
                       "status": "pending",
                       "expires_at": "2026-07-31T10:00:00Z",
                       "invited_by_id": "0192a...",
-                      "display_name": "Ada Lovelace"
+                      "display_name": "Ada Lovelace",
+                      "revoked_by_id": "0192a...",
+                      "last_sent_at": "2026-07-24T10:00:00Z"
                     }
                   }
                 }
@@ -435,7 +437,7 @@
     "/workspaces/api/v1/{workspace_id}/invitations/{invitation_id}/resend": {
       "post": {
         "operationId": "workspaces_api_v1_invitations_resend_create",
-        "description": "Send the invitation email again (#109).\n\nAccepts an **expired** invitation on purpose — a dead TTL is the most\ncommon reason to resend — and refuses the three stored terminal states,\nwhich are decisions rather than delivery failures. The token is\nrotated and the TTL restarts, so the fresh letter carries a fresh link\nand any stale copy of the old one stops working.\n\nReviving an expired invitation re-reserves a seat, so the plan ceiling\nis re-checked here exactly as it is on invite: capability first (\"may\nYOU\", 403), then the org's plan (\"may the ORG\", 402). An invitation\nthat is already pending costs no additional seat and is never blocked\nby that check.\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Send the invitation email again (#109).\n\nAccepts an **expired** invitation on purpose — a dead TTL is the most\ncommon reason to resend — and refuses the three stored terminal states,\nwhich are decisions rather than delivery failures. The TTL restarts, so\nthe invitee has the full window again from the letter that just went\nout.\n\nReviving an expired invitation re-reserves a seat, so the plan ceiling\nis re-checked here exactly as it is on invite: capability first (\"may\nYOU\", 403), then the org's plan (\"may the ORG\", 402). An invitation\nthat is already pending costs no additional seat and is never blocked\nby that check.\n\nThen the cooldown (\"may we mail this PERSON again yet\", 429). It is\nread here and enforced again inside the service's row lock, the same\ntwo-level shape the state check already has: the view answers a number\nthe admin can read, the lock is what actually makes two simultaneous\npresses send one letter.\n\nThe token is NOT rotated by default from 0.23 — the invitee's existing\nlink keeps working, because the resend goes to the same mailbox that\nlink is already sitting in. See\n``STAPEL_WORKSPACES[\"INVITATION_ROTATE_TOKEN_ON_RESEND\"]``.\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
             "in": "path",
@@ -480,7 +482,9 @@
                       "status": "pending",
                       "expires_at": "2026-07-31T10:00:00Z",
                       "invited_by_id": "0192a...",
-                      "display_name": "Ada Lovelace"
+                      "display_name": "Ada Lovelace",
+                      "revoked_by_id": "0192a...",
+                      "last_sent_at": "2026-07-24T10:00:00Z"
                     }
                   }
                 }
@@ -539,7 +543,9 @@
                       "status": "pending",
                       "expires_at": "2026-07-31T10:00:00Z",
                       "invited_by_id": "0192a...",
-                      "display_name": "Ada Lovelace"
+                      "display_name": "Ada Lovelace",
+                      "revoked_by_id": "0192a...",
+                      "last_sent_at": "2026-07-24T10:00:00Z"
                     }
                   }
                 }
@@ -1626,6 +1632,19 @@
             "nullable": true,
             "description": "Name hint typed for this invitee at invite time, if any; null otherwise",
             "example": "Ada Lovelace"
+          },
+          "revoked_by_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "UUID of the admin who withdrew it; null unless revoked, or when that account is gone",
+            "example": "0192a..."
+          },
+          "last_sent_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 time the invitation was last emailed; null if no letter was ever sent",
+            "example": "2026-07-24T10:00:00Z"
           }
         },
         "required": [

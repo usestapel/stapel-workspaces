@@ -461,6 +461,15 @@
     "en": "Too many failed attempts — verification locked"
   },
   {
+    "code": "error.429.invitation_resend_cooldown",
+    "status": 429,
+    "params": [
+      "retry_after"
+    ],
+    "remediation": "wait_and_retry",
+    "en": "This invitation was emailed recently; you can send it again in {retry_after} seconds"
+  },
+  {
     "code": "error.429.rate_limit",
     "status": 429,
     "params": [

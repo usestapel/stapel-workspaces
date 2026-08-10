@@ -101,6 +101,10 @@ _MACHINE_RU = {
     # wording; only this module's own wiring-gap 503 needs one here.
     "error.503.profiles_unavailable":
         "Сервис профилей недоступен; повторите попытку позже",
+    # 0.23 invitation resend cooldown.
+    "error.429.invitation_resend_cooldown":
+        "Это приглашение недавно отправлялось; отправить снова можно через "
+        "{retry_after} с",
 }
 
 _MACHINE_ES = {
@@ -139,6 +143,10 @@ _MACHINE_ES = {
     "error.503.profiles_not_configured":
         "Este despliegue no tiene configurado un servicio de perfiles, por lo "
         "que aquí no se puede escribir un nombre para mostrar",
+    # 0.23 invitation resend cooldown.
+    "error.429.invitation_resend_cooldown":
+        "Esta invitación se envió por correo hace poco; puedes volver a "
+        "enviarla en {retry_after} segundos",
 }
 
 #: language -> machine-translation table, consulted for the keys the

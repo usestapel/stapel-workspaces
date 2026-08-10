@@ -51,6 +51,17 @@ jobs:
       - name: Install stapel-profiles (test-only sibling for the profiles seam)
         run: pip install --no-deps stapel-profiles
 
+      # Same shape, same reason, different seam: this module REQUESTS letters
+      # and stapel-notifications owns the catalog of them. A copy of that
+      # catalog kept here would rot exactly the way the real one did —
+      # workspace.invitation.new_user sat in it, complete and unreachable,
+      # for two minor versions. tests/test_invitation_letter.py reads the
+      # installed catalog and fails when a workspace.* type is unreachable
+      # from this package (or requested but absent there). Without this the
+      # gate skips, which is the failure mode it exists to end.
+      - name: Install stapel-notifications (test-only sibling for the letter catalog)
+        run: pip install --no-deps "stapel-notifications>=0.6.1"
+
       - name: Tests with coverage
         run: |
           pytest tests/ \

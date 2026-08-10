@@ -13,8 +13,9 @@ Three endpoints, one mandate (``members.invite``):
   ``all`` on request. Anchor-paginated on ``created_at``.
 * ``POST {ws}/invitations/{id}/revoke`` — the workspace's terminal "no",
   the mirror of the invitee's decline; frees the seat.
-* ``POST {ws}/invitations/{id}/resend`` — rotates the token, restarts the
-  TTL, re-mails. Deliberately accepts an EXPIRED invitation.
+* ``POST {ws}/invitations/{id}/resend`` — restarts the TTL and re-mails,
+  no more often than the cooldown allows. Deliberately accepts an EXPIRED
+  invitation; deliberately keeps the token the invitee already has.
 
 What the tests below are actually defending, beyond "the route answers":
 
@@ -44,6 +45,7 @@ from pathlib import Path
 
 import jsonschema
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 from stapel_core.comm import subscribe_action
 
@@ -57,6 +59,7 @@ from stapel_workspaces.errors import (
     ERR_403_MISSING_CAPABILITY,
     ERR_404_INVITATION_NOT_FOUND,
     ERR_404_WORKSPACE_NOT_FOUND,
+    ERR_429_INVITATION_RESEND_COOLDOWN,
 )
 from stapel_workspaces.models import (
     InvitationStatus,
@@ -83,6 +86,19 @@ def _invite(ws, email, inviter, role=Role.MEMBER, **overrides):
         for key, value in overrides.items():
             setattr(inv, key, value)
         inv.save(update_fields=list(overrides))
+    return inv
+
+
+def _time_passes(inv, seconds=3600):
+    """Move this invitation's last-sent clock into the past.
+
+    Creating an invitation mails it, which starts the resend cooldown — so
+    "an admin resends" is, in every realistic case, "an admin resends
+    LATER". Tests that are about resend rather than about the cooldown say
+    so with this instead of quietly running with the limiter disabled.
+    """
+    inv.last_sent_at = timezone.now() - timedelta(seconds=seconds)
+    inv.save(update_fields=["last_sent_at"])
     return inv
 
 
@@ -331,13 +347,68 @@ class TestRevoke:
             workspace=org.ws, user=invitee
         ).exists()
 
-    def test_revoke_emits_who_did_it(self, admin_client, org, revocations):
-        """The row stores ``revoked_at`` but no ``revoked_by``.
+    def test_the_actor_is_readable_afterwards(self, admin_client, org, other_user):
+        """Who withdrew it — answerable from the API, not only from a bus.
 
-        The outbox event is the only record of the actor, so it is part of
-        the feature, not decoration. The payload is validated against the
-        committed contract in ``schemas/emits/``, like every other emit of
-        this module.
+        Until 0.23 the actor existed ONLY inside the emitted event, so a
+        workspace could show WHEN a permissioned action happened and never
+        BY WHOM: an audit gap on exactly the kind of act an audit is for.
+        The question is asked here the way a screen asks it — read the
+        invitation back and look.
+        """
+        admin = WorkspaceMember.objects.create(
+            workspace=org.ws,
+            user=other_user,
+            role=Role.ADMIN,
+            accepted_at=timezone.now(),
+        ).user
+        admin_client.force_authenticate(user=admin)
+
+        body = self._revoke(admin_client, org.ws, org.pending).json()
+        assert body["revoked_by_id"] == str(admin.id)
+
+        listed = admin_client.get(_invitations_url(org.ws, status="all")).json()
+        row = next(
+            i for i in listed["items"] if i["email"] == "pending@example.com"
+        )
+        assert row["revoked_by_id"] == str(admin.id)
+        assert row["revoked_at"] is not None
+        org.pending.refresh_from_db()
+        assert org.pending.revoked_by_id == admin.id
+
+    def test_an_unrevoked_invitation_names_nobody(self, admin_client, org):
+        """The field is the answer to "who", not a default-filled column: a
+        live invitation has no revoker and must not appear to have one."""
+        body = admin_client.get(_invitations_url(org.ws)).json()
+        assert body["items"][0]["revoked_by_id"] is None
+
+    def test_the_actor_survives_their_account_being_deleted(
+        self, admin_client, org, other_user
+    ):
+        """``SET_NULL``, like ``invited_by``: the record degrades to an
+        honest "somebody, no longer known here" instead of taking the
+        invitation's whole history down with the account."""
+        WorkspaceMember.objects.create(
+            workspace=org.ws,
+            user=other_user,
+            role=Role.ADMIN,
+            accepted_at=timezone.now(),
+        )
+        admin_client.force_authenticate(user=other_user)
+        self._revoke(admin_client, org.ws, org.pending)
+
+        other_user.delete()
+        org.pending.refresh_from_db()
+        assert org.pending.revoked_by_id is None
+        assert org.pending.revoked_at is not None
+
+    def test_revoke_emits_who_did_it(self, admin_client, org, revocations):
+        """The event keeps carrying the actor too.
+
+        The persisted column answers "who withdrew this invitation"; the
+        event tells everyone else it happened. Both, not either. The
+        payload is validated against the committed contract in
+        ``schemas/emits/``, like every other emit of this module.
         """
         self._revoke(admin_client, org.ws, org.pending)
         assert len(revocations) == 1
@@ -500,18 +571,17 @@ class TestResend:
     def _resend(self, client, ws, inv):
         return client.post(f"{BASE}/{ws.id}/invitations/{inv.id}/resend")
 
-    def test_resend_rotates_the_token(self, admin_client, org):
-        """The token is a bearer secret whose only protection is that it
-        stayed in one mailbox — and a resend means nobody knows where the
-        first copy went."""
-        old = org.pending.token
-        resp = self._resend(admin_client, org.ws, org.pending)
-        assert resp.status_code == 200, resp.content
-        org.pending.refresh_from_db()
-        assert org.pending.token != old
-        assert old.encode() not in resp.content
+    def test_the_link_already_in_the_invitees_mailbox_keeps_working(
+        self, admin_client, org, db
+    ):
+        """The reversal of the pre-0.23 rotation, stated as what a person does.
 
-    def test_old_link_stops_working(self, admin_client, org, db):
+        The overwhelmingly common resend is "they say it never arrived" —
+        and then the invitee finds the first letter and clicks THAT one.
+        Rotating bought nothing (the second letter goes to the same
+        mailbox as the first) and cost exactly this: a live invitation
+        answering "not found" to the person holding it.
+        """
         from stapel_core.django.users.models import User
 
         invitee = User.objects.create_user(
@@ -519,8 +589,41 @@ class TestResend:
             email="pending@example.com",
             password="testpass-1234",
         )
-        old = org.pending.token
-        self._resend(admin_client, org.ws, org.pending)
+        old = _time_passes(org.pending).token
+        resp = self._resend(admin_client, org.ws, org.pending)
+        assert resp.status_code == 200, resp.content
+        org.pending.refresh_from_db()
+        assert org.pending.token == old
+        assert old.encode() not in resp.content
+
+        admin_client.force_authenticate(user=invitee)
+        accepted = admin_client.post(
+            f"{BASE}/invitations/accept", {"token": old}, format="json"
+        )
+        assert accepted.status_code == 200, accepted.content
+
+    def test_a_deployment_can_still_ask_for_rotation(self, admin_client, org, db):
+        """The switch, and what turning it on actually does.
+
+        A strict org may want every resend to invalidate its predecessor.
+        That is a deployment's decision, so it is a setting rather than a
+        fork — and with it on, the old link dies exactly as it used to.
+        """
+        from stapel_core.django.users.models import User
+
+        invitee = User.objects.create_user(
+            username="rotate-invitee",
+            email="pending@example.com",
+            password="testpass-1234",
+        )
+        old = _time_passes(org.pending).token
+        with override_settings(
+            STAPEL_WORKSPACES={"INVITATION_ROTATE_TOKEN_ON_RESEND": True}
+        ):
+            assert self._resend(admin_client, org.ws, org.pending).status_code == 200
+        org.pending.refresh_from_db()
+        assert org.pending.token != old
+
         admin_client.force_authenticate(user=invitee)
         resp = admin_client.post(
             f"{BASE}/invitations/accept", {"token": old}, format="json"
@@ -529,7 +632,7 @@ class TestResend:
         assert resp.json()["localizable_error"] == ERR_404_INVITATION_NOT_FOUND
 
     def test_resend_restarts_the_ttl(self, admin_client, org):
-        old_expiry = org.pending.expires_at
+        old_expiry = _time_passes(org.pending).expires_at
         self._resend(admin_client, org.ws, org.pending)
         org.pending.refresh_from_db()
         assert org.pending.expires_at > old_expiry
@@ -541,24 +644,26 @@ class TestResend:
         stored terminal timestamps are the decisions, and they are what
         ``unresolved()`` excludes.
         """
+        _time_passes(org.expired)
         resp = self._resend(admin_client, org.ws, org.expired)
         assert resp.status_code == 200, resp.content
         assert resp.json()["status"] == InvitationStatus.PENDING
         org.expired.refresh_from_db()
         assert org.expired.expires_at > timezone.now()
 
-    def test_resend_mails_the_new_link_as_a_reminder(
+    def test_resend_mails_the_same_link_as_a_reminder(
         self, admin_client, org, monkeypatch
     ):
-        """The letter carries the rotated token AND is the reminder type —
-        a resend says "you are being reminded, the earlier link is dead",
-        not "you are being invited" (notifications catalog >= 0.6.1)."""
+        """The letter is the reminder type — a resend says "you are being
+        reminded", not "you are being invited" (notifications catalog
+        >= 0.6.1) — and it carries the link the invitee already has."""
         sent = []
         monkeypatch.setattr(
             services,
             "_send_invitation_notification",
             lambda inv, **kw: sent.append((inv, kw.get("notification_type"))),
         )
+        _time_passes(org.pending)
         self._resend(admin_client, org.ws, org.pending)
         org.pending.refresh_from_db()
         assert [(i.token, t) for i, t in sent] == [
@@ -596,6 +701,170 @@ class TestResend:
         assert self._resend(api_client, org.ws, org.pending).status_code == 403
         org.pending.refresh_from_db()
         assert org.pending.token == before
+
+
+# ---------------------------------------------------------------------------
+# The resend cooldown: how often may we mail the same person?
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestResendCooldown:
+    """Resend used to have no limit of any kind.
+
+    Not a rate limit that was too generous — none at all, and no record of
+    the previous send to build one from. One admin holding `members.invite`
+    could sit on the endpoint and drive an unbounded number of letters at
+    one address through this fleet's mail infrastructure; with the old
+    unconditional rotation, each pass also churned the credential.
+
+    The window belongs to the invited ADDRESS, not to the calling admin —
+    ten admins are ten DRF throttle buckets and one mailbox — so these
+    tests are written from the mailbox's side.
+    """
+
+    def _resend(self, client, ws, inv):
+        return client.post(f"{BASE}/{ws.id}/invitations/{inv.id}/resend")
+
+    def test_the_second_send_inside_the_window_is_refused(self, admin_client, org):
+        _time_passes(org.pending)
+        assert self._resend(admin_client, org.ws, org.pending).status_code == 200
+
+        again = self._resend(admin_client, org.ws, org.pending)
+        assert again.status_code == 429
+        body = again.json()
+        assert body["localizable_error"] == ERR_429_INVITATION_RESEND_COOLDOWN
+        assert 0 < body["params"]["retry_after"] <= 600
+        assert again["Retry-After"] == str(body["params"]["retry_after"])
+
+    def test_the_refusal_sends_no_letter(self, admin_client, org, monkeypatch):
+        """The whole point: refusing has to mean the mail does not go out."""
+        sent = []
+        monkeypatch.setattr(
+            services,
+            "_send_invitation_notification",
+            lambda inv, **kw: sent.append(kw.get("notification_type")),
+        )
+        _time_passes(org.pending)
+        self._resend(admin_client, org.ws, org.pending)
+        for _ in range(5):
+            assert self._resend(admin_client, org.ws, org.pending).status_code == 429
+        assert sent == ["workspace.invitation.reminder"]
+
+    def test_the_refusal_changes_nothing_on_the_row(self, admin_client, org):
+        """A refused resend is a no-op, not a partial one: the TTL is not
+        restarted and the token is not touched."""
+        _time_passes(org.pending)
+        self._resend(admin_client, org.ws, org.pending)
+        org.pending.refresh_from_db()
+        token, expiry = org.pending.token, org.pending.expires_at
+
+        assert self._resend(admin_client, org.ws, org.pending).status_code == 429
+        org.pending.refresh_from_db()
+        assert (org.pending.token, org.pending.expires_at) == (token, expiry)
+
+    def test_the_letter_that_created_the_invitation_starts_the_clock(
+        self, admin_client, org
+    ):
+        """An invitation was just mailed. Resending it one second later
+        mails the same person the same thing twice — the clock counts
+        letters, not resends."""
+        assert org.pending.last_sent_at is not None
+        resp = self._resend(admin_client, org.ws, org.pending)
+        assert resp.status_code == 429
+
+    def test_after_the_window_it_goes_through(self, admin_client, org):
+        _time_passes(org.pending, seconds=601)
+        assert self._resend(admin_client, org.ws, org.pending).status_code == 200
+
+    def test_the_window_is_the_addresss_not_the_rows(self, admin_client, org):
+        """Re-inviting the same address makes a NEW row — and a per-row
+        clock would start it empty, handing the loop back its letters."""
+        _time_passes(org.pending, seconds=601)
+        assert self._resend(admin_client, org.ws, org.pending).status_code == 200
+
+        twin = _invite(org.ws, "pending@example.com", org.owner)
+        twin.last_sent_at = None
+        twin.save(update_fields=["last_sent_at"])
+        assert self._resend(admin_client, org.ws, twin).status_code == 429
+
+    def test_a_deployment_can_choose_the_window(self, admin_client, org):
+        _time_passes(org.pending, seconds=601)
+        with override_settings(
+            STAPEL_WORKSPACES={"INVITATION_RESEND_COOLDOWN_SECONDS": 30}
+        ):
+            assert self._resend(admin_client, org.ws, org.pending).status_code == 200
+            _time_passes(org.pending, seconds=31)
+            assert self._resend(admin_client, org.ws, org.pending).status_code == 200
+
+    def test_a_deployment_can_switch_it_off(self, admin_client, org):
+        with override_settings(
+            STAPEL_WORKSPACES={"INVITATION_RESEND_COOLDOWN_SECONDS": 0}
+        ):
+            for _ in range(3):
+                assert (
+                    self._resend(admin_client, org.ws, org.pending).status_code == 200
+                )
+
+    def test_an_environment_variable_configures_it_too(self, admin_client, org):
+        """AppSettings hands env values back as raw strings and coerces
+        nothing; a limiter that quietly read "600" as garbage (and so as
+        "off") is the exact failure this key must not have."""
+        _time_passes(org.pending, seconds=601)
+        with override_settings(
+            STAPEL_WORKSPACES={"INVITATION_RESEND_COOLDOWN_SECONDS": "600"}
+        ):
+            assert self._resend(admin_client, org.ws, org.pending).status_code == 200
+            assert self._resend(admin_client, org.ws, org.pending).status_code == 429
+
+    def test_a_malformed_window_is_a_deploy_error_not_a_silent_off_switch(self):
+        """``"10m"`` is the shape of the neighbouring INVITATION_THROTTLE
+        and is meaningless here. A deployment that writes it must find out
+        at ``manage.py check`` rather than from a mailbox."""
+        from stapel_workspaces.checks import check_invitation_resend_cooldown
+
+        with override_settings(
+            STAPEL_WORKSPACES={"INVITATION_RESEND_COOLDOWN_SECONDS": "10m"}
+        ):
+            errors = check_invitation_resend_cooldown(None)
+        assert [e.id for e in errors] == ["stapel_workspaces.E009"]
+
+    def test_an_invitation_from_before_the_column_is_resendable(
+        self, admin_client, org
+    ):
+        """NULL means "no letter recorded", which owes no cooldown — rows
+        that predate the migration must not be frozen by it."""
+        org.pending.last_sent_at = None
+        org.pending.save(update_fields=["last_sent_at"])
+        assert self._resend(admin_client, org.ws, org.pending).status_code == 200
+
+    def test_the_clock_is_visible_to_the_client(self, admin_client, org):
+        """A screen that can see the last send can disable its own resend
+        button instead of teaching the admin about the limit with a 429."""
+        row = admin_client.get(_invitations_url(org.ws)).json()["items"][0]
+        assert row["last_sent_at"] is not None
+
+    def test_a_letter_that_never_reached_the_mailer_spends_the_window(
+        self, admin_client, org, monkeypatch
+    ):
+        """Fail-closed, deliberately.
+
+        The send happens after the row lock commits, so the window has to
+        be claimed under the lock — before anyone knows whether the mailer
+        took the letter. The alternative (claim it only on success) leaves
+        two simultaneous presses both passing a check neither has written
+        to yet, which is the loop this exists to stop.
+        """
+        _time_passes(org.pending)
+        monkeypatch.setattr(
+            services,
+            "_send_invitation_notification",
+            lambda inv, **kw: (_ for _ in ()).throw(RuntimeError("mailer down")),
+        )
+        with pytest.raises(RuntimeError):
+            self._resend(admin_client, org.ws, org.pending)
+        monkeypatch.undo()
+        assert self._resend(admin_client, org.ws, org.pending).status_code == 429
 
 
 # ---------------------------------------------------------------------------

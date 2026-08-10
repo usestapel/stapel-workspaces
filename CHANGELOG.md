@@ -1,5 +1,122 @@
 # Changelog
 
+## [0.23.0] — 2026-08-10
+
+Three defects on the workspace-invitation path, all found by review of a live
+product, all library-side: the product consuming this has no code on this path
+and no seam through which it could have fixed any of them.
+
+### Fixed — the invitation letter for someone with no account was written, shipped, and never sent
+
+`workspace.invitation.new_user` has existed in stapel-notifications since
+0.6.1 with its own routing entry, its own template and six translation keys.
+Its copy says the button below **creates your account** and joins you to the
+workspace — the only honest sentence for a stranger, and a lie to somebody who
+already has a login. Nothing in this module ever selected it. Every invitation
+went out as the base type, so for two minor versions a person with no account
+received a letter written for someone who had one.
+
+`_send_invitation_notification` now chooses between the two on the value it was
+already computing one line above the send (`invitee`, fetched to attach
+`user_id`). Nothing else about the two requests differs: same variables, same
+recipient address, and the pre-existing `user_id`-when-known targeting.
+
+**This is not an account-enumeration oracle**, and that was checked against the
+code rather than assumed: `create_invitation` has no duplicate/exists branch,
+the 201 body is the same DTO either way, no event is emitted, neither branch
+logs, and the only difference an outsider could observe is which of two letters
+lands in the invited address's **own** mailbox. Account existence remains
+answerable from outside only where this module deliberately answers it —
+`email_registered` on the invitation preview, which is token-gated,
+email-masked and throttled.
+
+### Added — a gate on the whole class, not only this instance
+
+The defect is the fleet's most-repeated shape: a mechanism was built, its
+consumer never picked it up, and nothing noticed, because every test asserted
+what the code does rather than what the catalog offers.
+
+`tests/test_invitation_letter.py::TestEveryWorkspaceLetterIsReachable` reads
+the notification catalog stapel-notifications actually ships, extracts the
+notification types this package can actually request (statically, from the
+AST — resolving literals, module constants, conditional expressions and the
+`notification_type` parameter through its default, its in-body assignment and
+every call site), and fails when the two sets differ **in either direction**:
+
+* a `workspace.*` type in the catalog nothing here requests is a letter nobody
+  can receive — run against the pre-fix source, the gate names
+  `workspace.invitation.new_user`, i.e. it would have failed the day the type
+  landed;
+* a type this module requests that the catalog does not carry is the same bug
+  mirrored — `request_notification` logs the unknown type and drops it, so the
+  caller sees success and the recipient sees nothing.
+
+The catalog is read from the installed sibling, never copied here; CI installs
+stapel-notifications `--no-deps` as a test-only sibling, the shape already used
+for stapel-profiles.
+
+### Added — a resend cooldown, because there was no limit of any kind
+
+`POST <ws>/invitations/<id>/resend` had no cooldown and no record of the
+previous send to build one from. One admin holding `members.invite` could sit
+on the endpoint and drive an unbounded number of letters at one address through
+this fleet's mail infrastructure — and, with the old unconditional rotation,
+churn the invitation credential on every pass.
+
+`WorkspaceInvitation.last_sent_at` (new nullable column, migration 0007) is
+written whenever a letter is handed to the mailer.
+`STAPEL_WORKSPACES["INVITATION_RESEND_COOLDOWN_SECONDS"]` (default `600`, the
+same ten minutes the product's room-invite path already carries) refuses a
+resend inside the window with `429 error.429.invitation_resend_cooldown`,
+carrying `retry_after` as an error param and as a `Retry-After` header so a
+screen can disable its own button and count down instead of teaching the admin
+about the limit by failing.
+
+It is a **duration, not a DRF rate** like the neighbouring
+`INVITATION_THROTTLE`, and the window belongs to the invited **address**, not
+to the calling admin: ten admins are ten scoped-throttle buckets and one
+mailbox, so the clock is read across every invitation for that address in the
+workspace. It is claimed **inside the row lock**, before the send — two
+simultaneous presses would otherwise both pass a check neither had written to
+yet. A malformed value is `stapel_workspaces.E009` at `manage.py check` rather
+than a limiter that silently turns itself off.
+
+### Changed — a resend no longer kills the link already in the invitee's mailbox
+
+Token rotation on resend is now off by default, behind
+`STAPEL_WORKSPACES["INVITATION_ROTATE_TOKEN_ON_RESEND"]`. The reasoning is
+written out at that key in `conf.py`; the short form is that a resend goes to
+the **same address** as the original letter, so rotation moves the credential
+from one letter in that mailbox to another letter in the same mailbox and
+narrows nothing — while costing the invitee a dead link in exactly the letter
+they are most likely to click ("they say it never arrived" → they then find the
+first one). When a token is believed leaked the answer is revoke + re-invite,
+which already exists and now leaves a `revoked_by` trail.
+
+No response body changes: the invite token has never appeared in any API
+response. A deployment that wants the old behaviour sets the key to `True`.
+
+### Fixed — an invitation can now say who revoked it
+
+`revoked_by` existed only in the emitted `workspace.invitation_revoked` event,
+so any UI could show *when* a permissioned action happened and never *by whom*
+— a bus message is not a record this service can be asked a question about
+afterwards. `WorkspaceInvitation.revoked_by` (new nullable FK, `SET_NULL`,
+migration 0007) follows `invited_by`'s existing provenance shape on the
+opposite transition, and `InvitationResponse` carries `revoked_by_id` alongside
+`revoked_at`. The event still carries the actor too; the two are meant to agree.
+
+### Notes for upgraders
+
+Migration `0007_invitation_revoked_by_and_last_sent_at` is expand-only: two
+nullable columns, no backfill. `last_sent_at` is NULL on every pre-existing
+row, which reads as "no letter recorded" and therefore "no cooldown owed" — an
+invitation created before the upgrade is resendable immediately, exactly as it
+was.
+
+`InvitationResponse` gains `revoked_by_id` and `last_sent_at`; both are
+additive.
+
 ## [0.22.1] — 2026-08-09
 
 ### Added — Spanish ships as a language of the library, not as a host override

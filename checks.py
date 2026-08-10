@@ -89,6 +89,41 @@ def check_capability_levels(app_configs, **kwargs):
 
 
 @checks.register(checks.Tags.compatibility)
+def check_invitation_resend_cooldown(app_configs, **kwargs):
+    """E: the resend cooldown must be a number of seconds, or nothing.
+
+    A rate limit that a typo turns off is worse than no rate limit, because
+    the deployment believes it has one. ``"10m"`` (the DRF-rate shape the
+    neighbouring INVITATION_THROTTLE uses) or ``True`` would otherwise
+    sail through, and the first evidence would be a mailbox.
+    """
+    from .conf import workspaces_settings
+
+    value = workspaces_settings.INVITATION_RESEND_COOLDOWN_SECONDS
+    if value is None:
+        return []
+    ok = False
+    if not isinstance(value, bool):
+        if isinstance(value, int):
+            ok = value >= 0
+        elif isinstance(value, str):
+            # An environment variable arrives as a string; AppSettings does
+            # no coercion. "300" is a legitimate way to configure this.
+            ok = value.strip().isdigit()
+    if not ok:
+        return [checks.Error(
+            "STAPEL_WORKSPACES['INVITATION_RESEND_COOLDOWN_SECONDS'] must be "
+            f"a non-negative number of SECONDS (or None/0 to disable), got "
+            f"{value!r}.",
+            hint="This key is a duration, not a DRF rate string like "
+                 "INVITATION_THROTTLE: the window belongs to the invited "
+                 "address, not to the calling admin.",
+            id="stapel_workspaces.E009",
+        )]
+    return []
+
+
+@checks.register(checks.Tags.compatibility)
 def check_profiles_name_write_wired(app_configs, **kwargs):
     """W: the roster can edit a name, but nothing can perform the write.
 

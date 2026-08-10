@@ -244,6 +244,10 @@
       "hash": "b842ece80255e06f",
       "origin": "seed:stapel-builtin"
     },
+    "error.429.invitation_resend_cooldown": {
+      "hash": "7dda645b6f6944ca",
+      "origin": "llm"
+    },
     "error.429.rate_limit": {
       "hash": "4c27e391f537df96",
       "origin": "seed:stapel-builtin"
@@ -513,6 +517,10 @@
     "error.423.verification_locked": {
       "hash": "b842ece80255e06f",
       "origin": "seed:stapel-builtin"
+    },
+    "error.429.invitation_resend_cooldown": {
+      "hash": "7dda645b6f6944ca",
+      "origin": "llm"
     },
     "error.429.rate_limit": {
       "hash": "4c27e391f537df96",

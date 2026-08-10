@@ -60,6 +60,7 @@
   "error.422.unprocessable_entity": "Entidad no procesable",
   "error.423.locked": "El recurso está bloqueado",
   "error.423.verification_locked": "Demasiados intentos fallidos — verificación bloqueada",
+  "error.429.invitation_resend_cooldown": "Esta invitación se envió por correo hace poco; puedes volver a enviarla en {retry_after} segundos",
   "error.429.rate_limit": "Demasiados intentos. Inténtalo de nuevo en {retry_after_minutes} minutos.",
   "error.429.too_many_requests": "Demasiadas solicitudes. Inténtalo de nuevo más tarde.",
   "error.500.internal": "Algo salió mal",
