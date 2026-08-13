@@ -260,6 +260,76 @@
         }
       }
     },
+    "/workspaces/api/v1/{workspace_id}/audit": {
+      "get": {
+        "operationId": "workspaces_api_v1_audit_list",
+        "description": "``GET <workspace_id>/audit`` — the workspace's membership history.\n\nTHE QUESTION THIS ANSWERS is \"who let this person in, who took them out,\nand when\" — which nothing in this module could answer before. Half the\ntransitions the owner listed emit no comm event at all (an invitation\ncreated, an invitation accepted, an account born from one), and the ones\nthat do emit are fire-and-forget notifications to other services: nothing\nkeeps them, so there was no record to ask.\n\nGATED ON ``members.view``, not on a new capability of its own. An audit of\nwho is in the workspace is the same class of fact as the member list —\nevery role that may see who is in the room may see how they got there. A\nseparate mandate would mean a deployment could grant one without the\nother, which describes no real product.\n\nRead-only by construction: this view has no write method, and the model\nhas no update or delete path.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Narrow to one action (models.AuditAction). An unknown value matches nothing rather than being ignored — a filter that silently does not apply is worse than an empty page."
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Narrow to one person's history (as the SUBJECT)."
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEventResponse"
+                  }
+                },
+                "examples": {
+                  "AuditEventResponse": {
+                    "value": [
+                      {
+                        "action": "member_removed",
+                        "actor_id": "0192a...",
+                        "subject_id": "0192b...",
+                        "subject_email": "new@acme.test",
+                        "role": "member",
+                        "created_at": "2026-08-13T10:00:00Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
     "/workspaces/api/v1/{workspace_id}/invitations": {
       "get": {
         "operationId": "workspaces_api_v1_invitations_list",
@@ -1453,6 +1523,76 @@
   },
   "components": {
     "schemas": {
+      "AuditEventResponse": {
+        "type": "object",
+        "description": "One line of a workspace's membership history.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Audit event UUID"
+          },
+          "action": {
+            "type": "string",
+            "description": "What happened — a CLOSED vocabulary (models.AuditAction): invitation_created, invitation_accepted, invitation_revoked, invitation_declined, account_created_by_invitation, member_joined, member_provisioned, member_removed, member_role_changed, member_suspended, member_unsuspended",
+            "example": "member_removed"
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Who performed it; null for a transition nobody performed (a policy sweep)",
+            "example": "0192a..."
+          },
+          "actor_display_name": {
+            "type": "string",
+            "description": "Best-effort name of the actor, resolved like every other name in this module (stapel-profiles first); \"\" when unknown"
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Whom it happened to; null for an invitation to an address with no account yet",
+            "example": "0192b..."
+          },
+          "subject_display_name": {
+            "type": "string",
+            "description": "Best-effort name of the subject; \"\" when unknown"
+          },
+          "subject_email": {
+            "type": "string",
+            "description": "The invited address, when the row is about an invitation",
+            "example": "new@acme.test"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role involved, when the action carries one",
+            "example": "member"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Action-specific extras — old_role/new_role for a role change, reason for a suspension"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "ISO 8601 timestamp",
+            "example": "2026-08-13T10:00:00Z"
+          }
+        },
+        "required": [
+          "action",
+          "actor_display_name",
+          "actor_id",
+          "created_at",
+          "id",
+          "metadata",
+          "role",
+          "subject_display_name",
+          "subject_email",
+          "subject_id"
+        ]
+      },
       "DisplayNameResponse": {
         "type": "object",
         "description": "What the name is after the write — the stored value, not the request.",

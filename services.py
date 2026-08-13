@@ -49,14 +49,70 @@ from .events import (
 from .models import (
     SUSPENSION_ACCOUNT_DEACTIVATED,
     SUSPENSION_NO_MFA,
+    AuditAction,
     Role,
     Workspace,
+    WorkspaceAuditEvent,
     WorkspaceInvitation,
     WorkspaceMember,
     WorkspaceType,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def record_audit(
+    *,
+    workspace,
+    action: str,
+    actor=None,
+    subject=None,
+    subject_email: str = "",
+    role: str = "",
+    **metadata,
+) -> WorkspaceAuditEvent:
+    """Append one line to a workspace's membership history.
+
+    THE ONE WRITE PATH, and it is called from the SERVICE that owns each
+    transition rather than from the views — the same rule the emits already
+    follow, for the same reason: a second door into a transition would come
+    with a second chance to forget the record. ``tests/test_audit.py`` pins
+    that every emitted membership event has a matching audit action, so a
+    future transition cannot ship emitting-but-not-recording.
+
+    *actor* and *subject* accept a user object or a bare id — call sites hold
+    one or the other and normalising here beats `getattr(x, "pk", x)` at ten
+    of them.
+
+    Never raises into the caller: an audit line is a record OF the change, not
+    a precondition FOR it, and failing a removal because history could not be
+    written would be the tail wagging the dog. A failure is logged loudly —
+    silence here would make the history quietly incomplete, which is worse
+    than a gap somebody can see.
+    """
+
+    def _id(value):
+        if value is None:
+            return None
+        return getattr(value, "pk", value)
+
+    try:
+        return WorkspaceAuditEvent.objects.create(
+            workspace_id=getattr(workspace, "pk", workspace),
+            action=action,
+            actor_id=_id(actor),
+            subject_id=_id(subject),
+            subject_email=(subject_email or "").lower().strip(),
+            role=role or "",
+            metadata={k: v for k, v in metadata.items() if v is not None},
+        )
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.exception(
+            "workspaces: could not record audit action %s for workspace %s",
+            action,
+            getattr(workspace, "pk", workspace),
+        )
+        return None
 
 
 def _make_unique_slug(name: str) -> str:
@@ -449,6 +505,13 @@ def create_invitation(
         # module stores it at all despite the name living in stapel-profiles.
         display_name_hint=(display_name or "").strip(),
     )
+    record_audit(
+        workspace=workspace,
+        action=AuditAction.INVITATION_CREATED,
+        actor=invited_by,
+        subject_email=invitation.email,
+        role=role,
+    )
     _send_invitation_notification(invitation)
     return invitation
 
@@ -649,6 +712,19 @@ def issue_invitation_login_grant(
     if language:
         payload["language"] = language
     result = call(ISSUE_LOGIN_GRANT, payload) or {}
+    # "A NEW PERSON APPEARED IN THE WORLD", recorded separately from "a known
+    # person joined us" (INVITATION_ACCEPTED, which an existing account also
+    # performs). The owner asked for both, and they genuinely differ: the claim
+    # path is the only one where the account itself did not exist before.
+    # `created` is auth's own answer — it knows whether it minted one; absent
+    # (an older auth), no line rather than a guessed one.
+    if result.get("created"):
+        record_audit(
+            workspace=invitation.workspace_id,
+            action=AuditAction.ACCOUNT_CREATED_BY_INVITATION,
+            subject_email=invitation.email,
+            role=invitation.role,
+        )
     return result["grant_token"]
 
 
@@ -694,6 +770,13 @@ def revoke_invitation(
     # "who withdrew that invite" had no answer at all in the API.
     locked.revoked_by = revoked_by
     locked.save(update_fields=["revoked_at", "revoked_by"])
+    record_audit(
+        workspace=locked.workspace_id,
+        action=AuditAction.INVITATION_REVOKED,
+        actor=revoked_by,
+        subject_email=locked.email,
+        role=locked.role,
+    )
     emit(
         EVENT_WORKSPACE_INVITATION_REVOKED,
         {
@@ -842,6 +925,14 @@ def decline_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceInv
         raise ValueError("invitation is not pending")
     locked.declined_at = timezone.now()
     locked.save(update_fields=["declined_at"])
+    record_audit(
+        workspace=locked.workspace_id,
+        action=AuditAction.INVITATION_DECLINED,
+        actor=user,
+        subject=user,
+        subject_email=locked.email,
+        role=locked.role,
+    )
     return locked
 
 
@@ -905,6 +996,29 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
             locked.workspace
         ).policies_for_invited_members(),
     )
+    # TWO lines, not one: "this invitation was taken up" and "this person is
+    # now in the organization" are separate facts the owner asked to track
+    # separately, and they can come apart — a re-accept of an existing
+    # membership is an acceptance that joins nobody.
+    record_audit(
+        workspace=locked.workspace,
+        action=AuditAction.INVITATION_ACCEPTED,
+        # The recipient is the actor here: nobody else can accept for them.
+        actor=user,
+        subject=user,
+        subject_email=locked.email,
+        role=locked.role,
+    )
+    if not already_member:
+        record_audit(
+            workspace=locked.workspace,
+            action=AuditAction.MEMBER_JOINED,
+            actor=user,
+            subject=user,
+            subject_email=locked.email,
+            role=member.role,
+            invited_by=str(locked.invited_by_id) if locked.invited_by_id else None,
+        )
     # Subscribers must be idempotent (at-least-once delivery), so emitting
     # again for an already-existing membership is safe.
     emit(
@@ -1106,6 +1220,13 @@ def provision_member(
                 "role": str(role),
                 "provisioned_by": str(provisioned_by.pk),
             },
+        )
+        record_audit(
+            workspace=workspace,
+            action=AuditAction.MEMBER_PROVISIONED,
+            actor=provisioned_by,
+            subject=user_id,
+            role=role,
         )
     # A negative membership lookup may be cached cross-service; drop it.
     invalidate_membership_cache(workspace.id, user_id)
@@ -1334,6 +1455,16 @@ def suspend_member(
                 "reason": reason,
             },
         )
+        # No actor: a suspension is applied by a POLICY (the require-MFA
+        # sweep, the deactivation consumer), not by a person clicking. A
+        # named actor here would be an invention.
+        record_audit(
+            workspace=member.workspace_id,
+            action=AuditAction.MEMBER_SUSPENDED,
+            subject=member.user_id,
+            role=member.role,
+            reason=reason,
+        )
     # Other services cache membership lookups — drop the now-stale entry.
     invalidate_membership_cache(member.workspace_id, member.user_id)
     workspace_member_changed.send(
@@ -1371,6 +1502,13 @@ def unsuspend_member(member: WorkspaceMember, *, notify: bool = True) -> bool:
     member.suspension_reason = ""
     with transaction.atomic():
         member.save(update_fields=["suspended_at", "suspension_reason"])
+        record_audit(
+            workspace=member.workspace_id,
+            action=AuditAction.MEMBER_UNSUSPENDED,
+            subject=member.user_id,
+            role=member.role,
+            reason=lifted_reason,
+        )
         emit(
             EVENT_WORKSPACE_MEMBER_UNSUSPENDED,
             {

@@ -484,3 +484,89 @@ class WorkspaceInvitation(models.Model):
         if self.expires_at and self.expires_at < timezone.now():
             return InvitationStatus.EXPIRED
         return InvitationStatus.PENDING
+
+
+class AuditAction(models.TextChoices):
+    """What happened to a workspace's membership.
+
+    A CLOSED vocabulary on purpose. An audit whose action is a free string is
+    a log: nobody can filter it, translate it, or notice that a new lifecycle
+    transition shipped without a line. ``tests/test_audit.py`` fails the build
+    if this list and the module's emitted events ever disagree.
+    """
+
+    INVITATION_CREATED = "invitation_created", "Invitation created"
+    INVITATION_ACCEPTED = "invitation_accepted", "Invitation accepted"
+    INVITATION_REVOKED = "invitation_revoked", "Invitation revoked"
+    INVITATION_DECLINED = "invitation_declined", "Invitation declined"
+    #: The account itself came into existence through this invitation — the
+    #: claim path, where somebody with no account at all joins. Distinct from
+    #: INVITATION_ACCEPTED, which an existing account also performs: "a new
+    #: person appeared in the world" and "a known person joined us" are
+    #: different facts and the owner asked to track both.
+    ACCOUNT_CREATED_BY_INVITATION = "account_created_by_invitation", "Account created by invitation"
+    MEMBER_JOINED = "member_joined", "Member joined the organization"
+    MEMBER_PROVISIONED = "member_provisioned", "Member provisioned by an admin"
+    MEMBER_REMOVED = "member_removed", "Member removed"
+    MEMBER_ROLE_CHANGED = "member_role_changed", "Member role changed"
+    MEMBER_SUSPENDED = "member_suspended", "Member suspended"
+    MEMBER_UNSUSPENDED = "member_unsuspended", "Member reinstated"
+
+
+class WorkspaceAuditEvent(models.Model):
+    """One line of a workspace's membership history.
+
+    WHY A TABLE AND NOT THE COMM EVENTS THIS MODULE ALREADY EMITS. Those are
+    fire-and-forget notifications to other services: nothing keeps them, and
+    half the transitions the owner asked to track (an invitation created, an
+    invitation accepted, an account born from one) emit nothing at all. An
+    admin asking "who let this person in, and when" needs a record that
+    outlives the delivery.
+
+    APPEND-ONLY BY CONSTRUCTION: no update path, no delete path, no editable
+    surface. A history somebody can edit answers a different question from the
+    one it is asked.
+
+    ``actor`` is who DID it and ``subject`` is who it happened TO, and they are
+    genuinely different columns — "Anna removed Boris" and "Boris left" are the
+    same row shape with the two swapped. ``actor`` is null for a transition
+    nobody performed (an invitation accepted by its own recipient records them
+    as the actor; a suspension applied by a policy sweep has none).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="audit_events"
+    )
+    action = models.CharField(max_length=40, choices=AuditAction.choices)
+    #: Who performed it. A bare UUID like every other cross-service user
+    #: reference in this module — never an FK into the auth service's table.
+    actor_id = models.UUIDField(null=True, blank=True)
+    #: Whom it happened to. Null for an invitation to an address that has no
+    #: account yet — that is what `subject_email` is for.
+    subject_id = models.UUIDField(null=True, blank=True)
+    #: The invited address, when the row is about an invitation. Kept even
+    #: after the account exists: it is what the invitation was SENT to, which
+    #: is the fact an admin is auditing.
+    subject_email = models.EmailField(blank=True, default="")
+    #: Role involved, when the action carries one (invited-as, provisioned-as,
+    #: the role held at removal). Free-form: the role registry is a deployment
+    #: setting, not a fixed enum.
+    role = models.CharField(max_length=40, blank=True, default="")
+    #: Anything else the action needs, named per action rather than smeared
+    #: into one text column: `old_role`/`new_role` for a role change,
+    #: `reason` for a suspension.
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workspaces_audit_event"
+        # Newest first is the only order this is ever read in.
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["workspace", "-created_at"]),
+            models.Index(fields=["subject_id"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - admin/debug convenience
+        return f"{self.action} @ {self.workspace_id}"

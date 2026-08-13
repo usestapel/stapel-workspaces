@@ -9,6 +9,7 @@ from stapel_core.django.api.serializers import StapelDataclassSerializer
 from . import services
 from .capabilities import effective_roles
 from .dto import (
+    AuditEventResponse,
     PROVISIONED_USER_POLICIES,
     DisplayNameResponse,
     DisplayNameUpdateRequest,
@@ -352,3 +353,8 @@ class InternalPersonalWorkspaceResponseSerializer(serializers.Serializer):
 class InstanceShapeResponseSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = InstanceShapeResponse
+
+
+class AuditEventResponseSerializer(StapelDataclassSerializer):
+    class Meta:
+        dataclass = AuditEventResponse

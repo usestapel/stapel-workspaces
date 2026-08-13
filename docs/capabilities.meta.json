@@ -248,6 +248,10 @@
     "instance_owner_ids": {
       "kind": "factory",
       "intent": "User ids that own the instance — the OWNERs of DEFAULT_WORKSPACE_ID; empty when the deployment never declared one."
+    },
+    "record_audit": {
+      "kind": "factory",
+      "intent": "Append one line to a workspace's membership history — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
     }
   }
 }

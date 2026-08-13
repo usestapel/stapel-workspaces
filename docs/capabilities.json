@@ -234,6 +234,12 @@
       "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
     },
     {
+      "name": "record_audit",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.record_audit",
+      "intent": "Append one line to a workspace's membership history — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
+    },
+    {
       "name": "resend_cooldown_remaining",
       "kind": "predicate",
       "path": "stapel_workspaces.services.resend_cooldown_remaining",
@@ -306,7 +312,7 @@
       "intent": "Lift a membership suspension (idempotent) — counterpart of suspend_member."
     }
   ],
-  "operations_total": 26,
+  "operations_total": 27,
   "requires": [
     {
       "module": "stapel-core",

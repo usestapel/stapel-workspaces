@@ -44,6 +44,7 @@ ROUTES = [
     ("workspace-preferred", {}, f"{MOUNT}/v1/me/preferred-workspace"),
     ("workspace-detail", {"workspace_id": WS}, f"{MOUNT}/v1/{WS}"),
     ("workspace-members", {"workspace_id": WS}, f"{MOUNT}/v1/{WS}/members"),
+    ("workspace-audit", {"workspace_id": WS}, f"{MOUNT}/v1/{WS}/audit"),
     (
         "workspace-member-invite",
         {"workspace_id": WS},

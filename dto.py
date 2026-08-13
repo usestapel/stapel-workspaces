@@ -494,3 +494,32 @@ class InstanceShapeResponse:
 
     landing: str
     registration_open: bool
+
+
+@dataclass
+class AuditEventResponse:
+    """One line of a workspace's membership history.
+
+    Attributes:
+        id: Audit event UUID.
+        action: What happened — a CLOSED vocabulary (models.AuditAction): invitation_created, invitation_accepted, invitation_revoked, invitation_declined, account_created_by_invitation, member_joined, member_provisioned, member_removed, member_role_changed, member_suspended, member_unsuspended. Example: member_removed
+        actor_id: Who performed it; null for a transition nobody performed (a policy sweep). Example: 0192a...
+        actor_display_name: Best-effort name of the actor, resolved like every other name in this module (stapel-profiles first); "" when unknown.
+        subject_id: Whom it happened to; null for an invitation to an address with no account yet. Example: 0192b...
+        subject_display_name: Best-effort name of the subject; "" when unknown.
+        subject_email: The invited address, when the row is about an invitation. Example: new@acme.test
+        role: Role involved, when the action carries one. Example: member
+        metadata: Action-specific extras — old_role/new_role for a role change, reason for a suspension.
+        created_at: ISO 8601 timestamp. Example: 2026-08-13T10:00:00Z
+    """
+
+    id: UUID
+    action: str
+    actor_id: Optional[UUID]
+    actor_display_name: str
+    subject_id: Optional[UUID]
+    subject_display_name: str
+    subject_email: str
+    role: str
+    metadata: dict
+    created_at: str

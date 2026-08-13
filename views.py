@@ -27,6 +27,8 @@ and the shape of the answer follows from what this module is:
   nothing and could only break a frontend.
 """
 
+from uuid import UUID
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import CharField, F, Q, Value
@@ -69,6 +71,7 @@ from .capabilities import (
     role_has_capability,
 )
 from .dto import (
+    AuditEventResponse,
     DisplayNameResponse,
     InvitationClaimResponse,
     InvitationPreviewResponse,
@@ -109,15 +112,18 @@ from .events import (
     EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
 )
 from .models import (
+    AuditAction,
     InvitationStatus,
     Role,
     Workspace,
+    WorkspaceAuditEvent,
     WorkspaceInvitation,
     WorkspaceMember,
     WorkspaceType,
 )
 from .permissions import get_membership, require_role, role_at_least
 from .serializers import (
+    AuditEventResponseSerializer,
     DisplayNameResponseSerializer,
     DisplayNameUpdateRequestSerializer,
     InstanceShapeResponseSerializer,
@@ -1386,6 +1392,15 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
                     "capabilities": capabilities_for(member.role),
                 },
             )
+            services.record_audit(
+                workspace=member.workspace_id,
+                action=AuditAction.MEMBER_ROLE_CHANGED,
+                actor=request.user,
+                subject=member.user_id,
+                role=member.role,
+                old_role=str(old_role),
+                new_role=str(member.role),
+            )
         # Other services cache membership lookups — drop the stale role.
         invalidate_membership_cache(workspace_id, user_id)
         workspace_member_changed.send(
@@ -1439,6 +1454,17 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
                     "role": str(removed_role),
                     "removed_by": str(request.user.pk),
                 },
+            )
+            # The row is gone; the record of its going is not. An audit
+            # written outside this transaction could survive a rollback and
+            # claim a removal that never happened.
+            services.record_audit(
+                workspace=workspace,
+                action=AuditAction.MEMBER_REMOVED,
+                actor=request.user,
+                subject=removed_user,
+                subject_email=getattr(removed_user, "email", "") or "",
+                role=removed_role,
             )
         # Other services cache membership lookups — drop the stale entry.
         invalidate_membership_cache(workspace_id, user_id)
@@ -2104,4 +2130,113 @@ class InstanceShapeView(APIView):
                     registration_open=(landing != "none"),
                 )
             )
+        )
+
+
+class AuditPagination(InvitationPagination):
+    """Anchor pagination for the audit list.
+
+    Same shape and the same reason as the invitation list: an admin paging
+    through history while new lines are still being appended must not have
+    rows slip under an offset window.
+    """
+
+
+@extend_schema(tags=["Members"])
+class WorkspaceAuditView(SerializerSeamsMixin, APIView):
+    """``GET <workspace_id>/audit`` — the workspace's membership history.
+
+    THE QUESTION THIS ANSWERS is "who let this person in, who took them out,
+    and when" — which nothing in this module could answer before. Half the
+    transitions the owner listed emit no comm event at all (an invitation
+    created, an invitation accepted, an account born from one), and the ones
+    that do emit are fire-and-forget notifications to other services: nothing
+    keeps them, so there was no record to ask.
+
+    GATED ON ``members.view``, not on a new capability of its own. An audit of
+    who is in the workspace is the same class of fact as the member list —
+    every role that may see who is in the room may see how they got there. A
+    separate mandate would mean a deployment could grant one without the
+    other, which describes no real product.
+
+    Read-only by construction: this view has no write method, and the model
+    has no update or delete path.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    # A guest holds no membership, so `_capability_check` answers the same
+    # keyed 403 as everywhere else in this module.
+    stapel_anonymous_access = ANONYMOUS_DENIED
+    response_serializer_class = AuditEventResponseSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "action",
+                str,
+                description=(
+                    "Narrow to one action (models.AuditAction). An unknown "
+                    "value matches nothing rather than being ignored — a "
+                    "filter that silently does not apply is worse than an "
+                    "empty page."
+                ),
+            ),
+            OpenApiParameter(
+                "user_id",
+                str,
+                description="Narrow to one person's history (as the SUBJECT).",
+            ),
+        ],
+        responses={200: AuditEventResponseSerializer(many=True)},
+    )
+    def get(self, request, workspace_id):  # noqa: R007
+        ws = Workspace.objects.filter(id=workspace_id, deleted_at__isnull=True).first()
+        if not ws:
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
+        membership = get_membership(ws.id, request.user.id, include_suspended=True)
+        err = _capability_check(membership, "members.view")
+        if err:
+            return err
+
+        rows = WorkspaceAuditEvent.objects.filter(workspace_id=ws.id)
+        action = (request.query_params.get("action") or "").strip()
+        if action:
+            rows = rows.filter(action=action)
+        subject = (request.query_params.get("user_id") or "").strip()
+        if subject:
+            try:
+                rows = rows.filter(subject_id=UUID(subject))
+            except (TypeError, ValueError):
+                # A malformed id matches nobody. Ignoring the filter would
+                # hand back the WHOLE history under a request that asked for
+                # one person's — the loudest possible wrong answer.
+                rows = rows.none()
+
+        paginator = AuditPagination()
+        page = paginator.paginate_queryset(rows, request, view=self)
+        # ONE profiles call for every person named on the page, actors and
+        # subjects together — the same batch shape the member list uses.
+        names = services._fetch_profile_display_names(
+            [r.actor_id for r in page if r.actor_id]
+            + [r.subject_id for r in page if r.subject_id]
+        )
+        dtos = [
+            AuditEventResponse(
+                id=r.id,
+                action=r.action,
+                actor_id=r.actor_id,
+                actor_display_name=names.get(str(r.actor_id), "") if r.actor_id else "",
+                subject_id=r.subject_id,
+                subject_display_name=(
+                    names.get(str(r.subject_id), "") if r.subject_id else ""
+                ),
+                subject_email=r.subject_email,
+                role=r.role,
+                metadata=r.metadata or {},
+                created_at=r.created_at.isoformat(),
+            )
+            for r in page
+        ]
+        return paginator.get_paginated_response(
+            self.get_response_serializer_class()(dtos, many=True).data
         )
