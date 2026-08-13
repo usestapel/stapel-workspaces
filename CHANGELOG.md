@@ -1,5 +1,93 @@
 # Changelog
 
+## [0.24.0] — 2026-08-13
+
+Three things a multi-workspace product could not do, all library-side: the
+products consuming this had no seam through which they could have done them.
+
+### Added — a workspace keeps its membership history
+
+"The admin section has no audit of workspace members" was literally true:
+there was no record to read. The comm events this module emits are
+fire-and-forget notifications to other services — nothing keeps them — and half
+the transitions that matter emit nothing at all: an invitation created, an
+invitation accepted, an account born from one.
+
+`WorkspaceAuditEvent` is append-only by construction (no update path, no delete
+path, no editable surface — a history somebody can edit answers a different
+question from the one it is asked). `actor` and `subject` are separate columns
+because "Anna removed Boris" and "Boris left" are the same row with the two
+swapped; a suspension applied by a policy sweep has no actor, and naming one
+would be an invention.
+
+Eleven actions, a closed vocabulary. Each is written from the SERVICE that owns
+its transition, never from a view — the same rule the emits already follow, for
+the same reason: a second door comes with a second chance to forget.
+
+`GET <workspace_id>/audit` is gated on `members.view` rather than a mandate of
+its own: every role that may see who is in the room may see how they got there,
+and a separate capability would let a deployment grant one without the other,
+which describes no real product. A malformed `?user_id=` matches NOBODY rather
+than being ignored — handing back the whole history under a request that asked
+for one person's is the loudest possible wrong answer.
+
+`test_every_emitted_membership_event_has_an_audit_action` matches emitted event
+names against the action vocabulary, so a future transition cannot ship
+emitting-but-not-recording — this module's recurring failure mode. A failing
+audit never fails the change it records, verified by breaking the write on
+purpose.
+
+Migration `0008_audit_event` (additive: one new table, no column touched).
+
+### Added — a private cloud decides who may found a workspace
+
+`POST /workspaces` asked one question: are you a real account? On a public
+cloud that is the right answer. On a private one it is not — an instance where
+entry is by invitation only, and where the operator provisions the space, still
+let every invited member mint their own organization beside it.
+
+`WORKSPACE_CREATE_POLICY`: `open` | `instance_owner` | `closed`. Empty (the
+default) DERIVES it from `STREET_LANDING_MODE` — `personal` is a public cloud
+and answers `open`, anything else answers `instance_owner` — because the two
+axes answer the same product question, and a deployment that closed its landing
+mode while leaving creation open would carry that gap unnoticed. An explicit
+value always wins. The instance owner is the OWNER of `DEFAULT_WORKSPACE_ID`:
+no second authority to keep in sync with the first.
+
+`services.can_create_workspace` answers both the gate and the new
+`can_create_workspace` flag on the workspace-list response, so a drawn
+"+ New space" button and the door it opens cannot disagree. The flag is the
+ANSWER for the caller, not the policy name — resolving `instance_owner`
+client-side would put the owner lookup in every client.
+
+Two boot checks: **E010** for a misspelled policy, which resolves
+RESTRICTIVELY rather than to `open` (degrading a typo into an open cloud is the
+failure this key exists to prevent), and **W002** for `instance_owner` with no
+default workspace, where nobody can create anything and the deployment should
+hear it at boot rather than at the first 403.
+
+New error key `error.403.workspace_creation_closed` (+ru/es) — its own key
+rather than `forbidden_workspace`: that one means "you are not in THAT space",
+this one is about a space that does not exist yet, and they lead to opposite
+screens.
+
+### Added — a workspace says who owns it
+
+A workspace NAME stopped identifying a workspace: a person can belong to
+several spaces all called "Personal" — one per company that made them one — and
+ownership can be handed over, so "Personal" answers nothing in a picker. The
+owner does.
+
+`owner_display_name` on `WorkspaceResponse`, resolved through the same
+best-effort profiles batch `MemberResponse.display_name` already uses: one call
+for the whole list, empty rather than invented when the owner has no profile,
+no route, or profiles is not installed. Resolved here rather than in each
+client — two products draw this caption and one of them does not even carry
+`@stapel/profiles-react`; one line of text is not worth a new frontend
+dependency and an N+1 per picker. The single-workspace path resolves it too, so
+the field cannot be populated on the list and empty on the detail of the same
+workspace.
+
 ## [0.23.0] — 2026-08-10
 
 Three defects on the workspace-invitation path, all found by review of a live
