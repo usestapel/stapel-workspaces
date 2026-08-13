@@ -69,6 +69,11 @@ class TestGuestMayListWorkspaces:
             # withheld too — it is only echoed to a member of it.
             "default_workspace_id": "",
             "preferred_workspace_id": "",
+            # An ANONYMOUS session may not found a workspace under any policy
+            # — a workspace has an owner, and a throwaway account cannot be
+            # one. Contrast with the registered mandate-less account in
+            # test_guest_predicate.py, which may (on the default policy).
+            "can_create_workspace": False,
         }
 
     def test_guest_list_does_not_leak_other_peoples_workspaces(

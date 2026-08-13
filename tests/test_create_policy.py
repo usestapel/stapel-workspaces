@@ -173,3 +173,38 @@ def test_the_system_check_is_registered():
         with pytest.raises(SystemCheckError) as raised:
             call_command("check")
     assert "stapel_workspaces.E010" in str(raised.value)
+
+
+@pytest.mark.django_db
+class TestOwnerDisplayName:
+    """A workspace NAME stopped identifying a workspace.
+
+    A person can belong to several spaces all called "Personal" — one per
+    company that made them one — and ownership can be handed over, so the name
+    alone answers nothing in a picker. The owner does, and it is resolved HERE
+    rather than in each client: two products drawing the same caption would
+    otherwise each need a profiles batch of their own for one line of text.
+    """
+
+    def test_absent_profile_yields_an_empty_string_not_an_id(self, authed_client, user):
+        """stapel-profiles is not wired in this test harness, which is exactly
+        the degraded case: the field is empty, never an id and never invented."""
+        create_workspace(user=user, name="Personal")
+        row = authed_client.get(LIST_URL).json()["workspaces"][0]
+        assert row["owner_display_name"] == ""
+
+    def test_the_field_is_on_every_workspace_of_the_list(self, authed_client, user):
+        create_workspace(user=user, name="Personal")
+        create_workspace(user=user, name="Work")
+        rows = authed_client.get(LIST_URL).json()["workspaces"]
+        assert len(rows) == 2
+        assert all("owner_display_name" in row for row in rows)
+
+    def test_the_list_and_the_detail_agree(self, authed_client, user):
+        """A field populated on the list and missing on the detail of the SAME
+        workspace is the kind of inconsistency clients paper over with a cache
+        lookup — so the single-workspace path resolves it too."""
+        ws = create_workspace(user=user, name="Personal")
+        listed = authed_client.get(LIST_URL).json()["workspaces"][0]
+        detail = authed_client.get(f"{LIST_URL}{ws.id}").json()
+        assert detail["owner_display_name"] == listed["owner_display_name"]

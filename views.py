@@ -207,8 +207,23 @@ def _rank_check(actor_role: str, target_role: str):
     return None
 
 
+def _workspace_owner_names(workspaces) -> dict:
+    """``{str(owner_id): display_name}`` for a batch of workspaces.
+
+    One profiles call for the whole list, not one per row: the picker draws the
+    owner under every workspace name, and a request per row is the N+1 the
+    batch endpoint exists to prevent. Best-effort exactly like
+    ``_member_display_names`` — an owner with no profile is simply absent, and
+    the DTO carries "" rather than an id.
+    """
+    return services._fetch_profile_display_names(ws.owner_id for ws in workspaces)
+
+
 def _workspace_to_dto(
-    ws: Workspace, my_role: str | None = None, member_count: int | None = None
+    ws: Workspace,
+    my_role: str | None = None,
+    member_count: int | None = None,
+    owner_names: dict | None = None,
 ) -> WorkspaceResponse:
     if member_count is None:
         # active(), not accepted(): a suspended membership counts for
@@ -231,6 +246,16 @@ def _workspace_to_dto(
         created_at=ws.created_at.isoformat(),
         updated_at=ws.updated_at.isoformat(),
         my_capabilities=capabilities_for(my_role) if my_role else [],
+        # `owner_names` is the batched answer when a caller has one (the list
+        # endpoint); a single-workspace response resolves it on its own rather
+        # than returning "" — a field that is populated on the list and empty
+        # on the detail of the same workspace is the kind of inconsistency
+        # clients paper over with a cache lookup.
+        owner_display_name=(
+            owner_names
+            if owner_names is not None
+            else _workspace_owner_names([ws])
+        ).get(str(ws.owner_id), ""),
     )
 
 
@@ -457,12 +482,14 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
             .select_related("workspace")
             .order_by("-last_accessed_at", "-invited_at")
         )
-        workspaces = []
-        for m in memberships:
-            ws = m.workspace
-            if ws.deleted_at:
-                continue
-            workspaces.append(_workspace_to_dto(ws, my_role=m.role))
+        live = [m for m in memberships if not m.workspace.deleted_at]
+        # ONE profiles call for every owner in the list — see
+        # `_workspace_owner_names`.
+        owner_names = _workspace_owner_names(m.workspace for m in live)
+        workspaces = [
+            _workspace_to_dto(m.workspace, my_role=m.role, owner_names=owner_names)
+            for m in live
+        ]
         # Definitionally the same answer as permissions.is_guest(request.user)
         # (same active()+deleted_at__isnull filter this loop already applied)
         # — read off the list already fetched instead of a second query.

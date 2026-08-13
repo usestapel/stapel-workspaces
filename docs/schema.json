@@ -91,7 +91,8 @@
                       "my_capabilities": [
                         "workspace.view",
                         "members.view"
-                      ]
+                      ],
+                      "owner_display_name": "Victor P."
                     }
                   }
                 }
@@ -146,7 +147,8 @@
                       "my_capabilities": [
                         "workspace.view",
                         "members.view"
-                      ]
+                      ],
+                      "owner_display_name": "Victor P."
                     }
                   }
                 }
@@ -218,7 +220,8 @@
                       "my_capabilities": [
                         "workspace.view",
                         "members.view"
-                      ]
+                      ],
+                      "owner_display_name": "Victor P."
                     }
                   }
                 }
@@ -2281,6 +2284,11 @@
               "workspace.view",
               "members.view"
             ]
+          },
+          "owner_display_name": {
+            "type": "string",
+            "description": "The owner's display name, best-effort from stapel-profiles (empty when it has none, is not installed, or is unreachable — never invented). Exists because a workspace NAME stopped identifying one: a person can belong to several spaces all called \"Personal\" — one per company that made them one — and ownership can be handed over, so \"Personal\" answers nothing on its own. Pickers draw it as the second line under the name. Resolved here rather than in each client, which would otherwise each need a profiles batch of its own for a caption",
+            "example": "Victor P."
           }
         },
         "required": [

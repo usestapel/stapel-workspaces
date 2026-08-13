@@ -15,6 +15,7 @@ class WorkspaceResponse:
         slug: URL-safe identifier. Example: acme-eng
         type: Workspace category. Example: work
         owner_id: Owner user UUID. Example: 0192a...
+        owner_display_name: The owner's display name, best-effort from stapel-profiles (empty when it has none, is not installed, or is unreachable — never invented). Exists because a workspace NAME stopped identifying one: a person can belong to several spaces all called "Personal" — one per company that made them one — and ownership can be handed over, so "Personal" answers nothing on its own. Pickers draw it as the second line under the name. Resolved here rather than in each client, which would otherwise each need a profiles batch of its own for a caption. Example: Victor P.
         settings: Workspace settings JSON.
         storage_used_bytes: Bytes currently stored.
         storage_limit_bytes: Plan-determined cap.
@@ -38,6 +39,7 @@ class WorkspaceResponse:
     created_at: str
     updated_at: str
     my_capabilities: List[str] = field(default_factory=list)
+    owner_display_name: str = ""
 
 
 @dataclass
