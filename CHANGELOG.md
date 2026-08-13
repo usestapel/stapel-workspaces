@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.24.1] — 2026-08-13
+
+### Fixed — the audit contract advertised a shape the endpoint never sends
+
+`WorkspaceAuditView` paginates (`get_paginated_response`) but did not declare
+`pagination_class`, which is what drf-spectacular reads to wrap the response
+schema. So `docs/schema.json` promised a bare `AuditEventResponse[]` while the
+endpoint returned `{items, has_next, next_anchor}` — and a client generated
+from that contract would have been typed against a shape the server never
+sends. Caught by the frontend pair one hour after 0.24.0, before any consumer
+shipped against it.
+
+The declaration is the fix, not a schema override: the neighbouring member and
+invitation lists have always declared theirs the same way.
+
 ## [0.24.0] — 2026-08-13
 
 Three things a multi-workspace product could not do, all library-side: the

@@ -2167,6 +2167,12 @@ class WorkspaceAuditView(SerializerSeamsMixin, APIView):
     # A guest holds no membership, so `_capability_check` answers the same
     # keyed 403 as everywhere else in this module.
     stapel_anonymous_access = ANONYMOUS_DENIED
+    # Declared, not merely used: drf-spectacular reads this to wrap the
+    # response schema in the anchor-pagination envelope. Without it the
+    # contract advertised a bare array while the endpoint returned
+    # `{items, has_next, next_anchor}` — a generated client would have been
+    # typed against a shape the server never sends.
+    pagination_class = AuditPagination
     response_serializer_class = AuditEventResponseSerializer
 
     @extend_schema(
