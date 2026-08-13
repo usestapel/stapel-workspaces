@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`68` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`69` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -48,6 +48,7 @@
 | `error.403.role_exceeds_inviter_rank` | 403 | `role` | `fix_input` | Вы не можете выдать роль, которая превышает вашу собственную ({role}) |
 | `error.403.verification_enrollment_required` | 403 | — | `verify` | Требуется регистрация фактора подтверждения. |
 | `error.403.verification_required` | 403 | — | `verify` | Требуется дополнительная проверка |
+| `error.403.workspace_creation_closed` | 403 | — | `contact_support` | На этом сервере вам недоступно создание рабочих пространств |
 | `error.404.ad_not_found` | 404 | — | `retry` | Объявление не найдено |
 | `error.404.invitation_not_found` | 404 | — | `fix_input` | Приглашение не найдено |
 | `error.404.member_not_found` | 404 | — | `fix_input` | Участник не найден в этом рабочем пространстве |

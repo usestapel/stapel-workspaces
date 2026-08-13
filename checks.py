@@ -170,3 +170,61 @@ def check_profiles_name_write_wired(app_configs, **kwargs):
             id="stapel_workspaces.W001",
         )]
     return []
+
+
+@checks.register(checks.Tags.compatibility)
+def check_workspace_create_policy(app_configs, **kwargs):
+    """E: an unrecognized ``WORKSPACE_CREATE_POLICY``; W: one nobody can satisfy.
+
+    Two different failures, deliberately at two different levels.
+
+    The E is a misspelling. ``workspace_create_policy()`` resolves anything
+    unrecognized to the RESTRICTIVE answer, so the deployment does not quietly
+    become an open cloud — but a private instance whose owner typed
+    ``"instance-owner"`` and got a policy they did not name is exactly the kind
+    of silent substitution that only surfaces the day someone founds an org.
+
+    The W is a policy with nobody to satisfy it: ``instance_owner`` with no
+    ``DEFAULT_WORKSPACE_ID`` means the API refuses EVERY creation, from
+    everybody, forever. That may be intentional (``closed`` says it plainly),
+    but reached this way it is almost always an unfinished deployment — and a
+    warning at boot beats an owner discovering it when their button 403s.
+    Warning rather than Error because the instance otherwise runs perfectly:
+    creation is one endpoint, and env-address-class v2 §2 says a partial
+    surface degrades loudly rather than blocking the start of everything else.
+    """
+    from .conf import (
+        CREATE_POLICIES,
+        CREATE_POLICY_INSTANCE_OWNER,
+        workspace_create_policy,
+        workspaces_settings,
+    )
+
+    raw = str(workspaces_settings.WORKSPACE_CREATE_POLICY or "").strip()
+    if raw and raw.lower() not in CREATE_POLICIES:
+        return [checks.Error(
+            f"STAPEL_WORKSPACES['WORKSPACE_CREATE_POLICY'] is {raw!r}, which is "
+            f"not one of {sorted(CREATE_POLICIES)}.",
+            hint="Leave it empty to derive the policy from "
+                 "STREET_LANDING_MODE (personal -> open, otherwise -> "
+                 "instance_owner). Until this is fixed the effective policy "
+                 "is 'instance_owner' — the restrictive reading.",
+            id="stapel_workspaces.E010",
+        )]
+
+    if (
+        workspace_create_policy() == CREATE_POLICY_INSTANCE_OWNER
+        and not str(workspaces_settings.DEFAULT_WORKSPACE_ID or "").strip()
+    ):
+        return [checks.Warning(
+            "The effective workspace-creation policy is 'instance_owner', but "
+            "STAPEL_WORKSPACES['DEFAULT_WORKSPACE_ID'] is unset — the instance "
+            "owner is defined as the OWNER of that workspace, so nobody can "
+            "create a workspace through the API.",
+            hint="Set DEFAULT_WORKSPACE_ID to the instance's own workspace, or "
+                 "state the intent directly with "
+                 "WORKSPACE_CREATE_POLICY='closed' (provisioning by "
+                 "`manage.py provision_space` only) or 'open'.",
+            id="stapel_workspaces.W002",
+        )]
+    return []

@@ -28,9 +28,9 @@ pip install stapel-workspaces
 | Python | `>=3.11` (3.11, 3.12, 3.13, 3.14) |
 | HTTP operations | 26 |
 | Config axes | 1 |
-| Usage surface | 41 |
+| Usage surface | 43 |
 | Extension points | 5 |
-| Error codes | 68 |
+| Error codes | 69 |
 | Fleet dependencies | [`stapel-auth`](https://github.com/usestapel/stapel-auth) (optional) · [`stapel-billing`](https://github.com/usestapel/stapel-billing) (optional) · [`stapel-core`](https://github.com/usestapel/stapel-core) · [`stapel-notifications`](https://github.com/usestapel/stapel-notifications) (optional) · [`stapel-profiles`](https://github.com/usestapel/stapel-profiles) (optional) |
 
 ## Documentation

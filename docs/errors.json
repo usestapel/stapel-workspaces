@@ -342,6 +342,13 @@
     "en": "Additional verification required"
   },
   {
+    "code": "error.403.workspace_creation_closed",
+    "status": 403,
+    "params": [],
+    "remediation": "contact_support",
+    "en": "This instance does not allow you to create workspaces"
+  },
+  {
     "code": "error.404.ad_not_found",
     "status": 404,
     "params": [],

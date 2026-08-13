@@ -23,8 +23,11 @@ from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 
 from .conf import (
+    CREATE_POLICY_CLOSED,
+    CREATE_POLICY_OPEN,
     resend_cooldown_seconds,
     rotate_token_on_resend,
+    workspace_create_policy,
     workspaces_settings,
 )
 from .dto import WorkspaceSecuritySettings
@@ -1644,3 +1647,59 @@ def preferred_workspace_id_for(user) -> str:
         .first()
     )
     return str(member.workspace_id) if member else ""
+
+
+def instance_owner_ids() -> set:
+    """User ids of the instance's owners — the OWNERs of its default workspace.
+
+    There is no separate "instance owner" role in this module, and inventing
+    one would be a second authority to keep in sync with the first. The
+    instance's default workspace (``DEFAULT_WORKSPACE_ID``) is already the
+    deployment's declared centre; whoever owns it owns the deployment.
+
+    Empty when no default workspace is configured, when it has been deleted,
+    or when nobody actively owns it. Empty is a real answer, not a fallback:
+    under the ``instance_owner`` creation policy it means nobody may create a
+    workspace through the API, which is the safe reading of "the instance
+    never said who is in charge" — and is what W002 warns about at boot.
+    """
+    configured = str(workspaces_settings.DEFAULT_WORKSPACE_ID or "").strip()
+    if not configured:
+        return set()
+    try:
+        uuid.UUID(configured)
+    except (TypeError, ValueError):
+        return set()
+    return set(
+        WorkspaceMember.objects.active()
+        .filter(
+            workspace_id=configured,
+            role=Role.OWNER,
+            workspace__deleted_at__isnull=True,
+        )
+        .values_list("user_id", flat=True)
+    )
+
+
+def can_create_workspace(user) -> bool:
+    """May *user* create a workspace on this instance (``WORKSPACE_CREATE_POLICY``)?
+
+    The one place the policy is evaluated, so the gate on ``POST /workspaces``
+    and the ``can_create_workspace`` flag a client draws its "+ New space"
+    control from can never disagree — a button that 403s and a missing button
+    that should be there are the same defect from two sides.
+
+    An anonymous account is refused under every policy: a workspace has an
+    owner, and a throwaway session cannot be one (the same reason
+    ``WorkspaceListCreateView.post`` states at its own guard).
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_anonymous", False):
+        return False
+    policy = workspace_create_policy()
+    if policy == CREATE_POLICY_OPEN:
+        return True
+    if policy == CREATE_POLICY_CLOSED:
+        return False
+    return user.pk in instance_owner_ids()

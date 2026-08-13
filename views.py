@@ -96,6 +96,7 @@ from .errors import (
     ERR_403_MEMBERSHIP_SUSPENDED,
     ERR_403_MISSING_CAPABILITY,
     ERR_403_ROLE_EXCEEDS_INVITER_RANK,
+    ERR_403_WORKSPACE_CREATION_CLOSED,
     ERR_404_INVITATION_NOT_FOUND,
     ERR_404_MEMBER_NOT_FOUND,
     ERR_404_WORKSPACE_NOT_FOUND,
@@ -501,6 +502,12 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
                     is_guest=not workspaces,
                     default_workspace_id=default_id,
                     preferred_workspace_id=preferred_id,
+                    # The instance's creation policy, ANSWERED FOR THIS
+                    # CALLER — not the policy name, which would put the
+                    # instance-owner lookup back on the client. It rides the
+                    # list because the switcher is the surface that draws the
+                    # "+ New space" control, and it already fetches this.
+                    can_create_workspace=services.can_create_workspace(request.user),
                 )
             )
         )
@@ -521,6 +528,15 @@ class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
         # never gated by it at all.
         if getattr(request.user, "is_anonymous", False):
             return error_403_forbidden()
+        # WHO MAY FOUND A WORKSPACE ON THIS INSTANCE (WORKSPACE_CREATE_POLICY).
+        # A public cloud answers "anyone"; a private one answers "the owner of
+        # the cloud" — on an instance where entry is by invitation, a member
+        # who could mint their own org would step outside the org they were
+        # invited into. Evaluated by the same helper the `can_create_workspace`
+        # flag on the LIST response is drawn from, so the button a client shows
+        # and the door it opens can never disagree.
+        if not services.can_create_workspace(request.user):
+            return StapelErrorResponse(403, ERR_403_WORKSPACE_CREATION_CLOSED)
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data

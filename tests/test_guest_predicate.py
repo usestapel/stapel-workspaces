@@ -100,6 +100,10 @@ class TestWireExposure:
             # withheld too — it is only echoed to a member of it.
             "default_workspace_id": "",
             "preferred_workspace_id": "",
+            # Belonging nowhere is not the same as being forbidden to start
+            # somewhere: on the default (public-cloud) policy a mandate-less
+            # account is exactly who SHOULD be offered a first workspace.
+            "can_create_workspace": True,
         }
         assert is_guest(user) is True
 

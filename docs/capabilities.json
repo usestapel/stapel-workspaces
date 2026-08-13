@@ -150,6 +150,12 @@
       "intent": "Demand an org's first-login steps of an account, failing closed."
     },
     {
+      "name": "can_create_workspace",
+      "kind": "predicate",
+      "path": "stapel_workspaces.services.can_create_workspace",
+      "intent": "May this account found a workspace on this instance (WORKSPACE_CREATE_POLICY) — ask before drawing a '+ New space' control, so the button and the door agree."
+    },
+    {
       "name": "check_display_name",
       "kind": "gate_function",
       "path": "stapel_workspaces.services.check_display_name",
@@ -184,6 +190,12 @@
       "kind": "factory",
       "path": "stapel_workspaces.services.ensure_personal_workspace",
       "intent": "Idempotent get-or-create of a user's Personal workspace; prefer resolve_landing_workspace."
+    },
+    {
+      "name": "instance_owner_ids",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.instance_owner_ids",
+      "intent": "User ids that own the instance — the OWNERs of DEFAULT_WORKSPACE_ID; empty when the deployment never declared one."
     },
     {
       "name": "issue_invitation_login_grant",

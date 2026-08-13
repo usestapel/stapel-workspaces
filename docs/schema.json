@@ -28,7 +28,8 @@
                   "WorkspaceListResponse": {
                     "value": {
                       "default_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3",
-                      "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+                      "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3",
+                      "can_create_workspace": true
                     }
                   }
                 }
@@ -2198,6 +2199,11 @@
             "type": "string",
             "description": "The person's OWN stated choice of home workspace (PUT me/preferred-workspace), echoed back ONLY while the membership carrying it is active, else \"\". This is the \"explicit choice\" default_workspace_id documents itself as yielding to, so a client resolves preferred first and the instance default only after it. Never inferred from behaviour — where somebody last clicked is last_accessed_at, which is telemetry, and reading it as a choice is what produced #239",
             "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+          },
+          "can_create_workspace": {
+            "type": "boolean",
+            "description": "Whether THIS caller may found a new workspace on this instance (WORKSPACE_CREATE_POLICY, evaluated by services.can_create_workspace). The ANSWER, not the policy name: resolving \"instance_owner\" client-side would mean re-implementing the instance-owner lookup in every client, and a client that got it wrong would draw a button that 403s — or hide one that should be there. Rides the list because the workspace switcher is the surface that draws \"+ New space\", and it already fetches this",
+            "example": true
           }
         }
       },

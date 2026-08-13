@@ -31,6 +31,13 @@ ERR_503_AUTH_UNAVAILABLE = "error.503.auth_unavailable"
 ERR_403_MEMBERSHIP_SUSPENDED = "error.403.membership_suspended"
 ERR_400_INVALID_PROVISION_USERNAME = "error.400.invalid_provision_username"
 ERR_403_ROLE_EXCEEDS_INVITER_RANK = "error.403.role_exceeds_inviter_rank"
+#: This instance does not let THIS caller found a workspace
+#: (``WORKSPACE_CREATE_POLICY``). Its own key rather than the generic
+#: ``forbidden_workspace``: that one means "you are not in THAT workspace",
+#: while this is about a workspace that does not exist yet, and the two lead
+#: to opposite screens — one asks for an invitation to a space, the other
+#: says the instance itself is not the kind that hands out new ones.
+ERR_403_WORKSPACE_CREATION_CLOSED = "error.403.workspace_creation_closed"
 ERR_503_PROFILES_UNAVAILABLE = "error.503.profiles_unavailable"
 #: The write to stapel-profiles could not be ATTEMPTED: this deployment
 #: has no provider for ``profiles.set_display_name`` and no comm route to
@@ -100,6 +107,7 @@ WORKSPACES_ERRORS = {
     ERR_400_DISPLAY_NAME_FORBIDDEN_CHARS: "Display name contains forbidden characters",
     ERR_400_DISPLAY_NAME_EMOJI: "Display name cannot contain emoji",
     ERR_400_DISPLAY_NAME_INVISIBLE_CHARS: "Display name contains invisible characters",
+    ERR_403_WORKSPACE_CREATION_CLOSED: "This instance does not allow you to create workspaces",
 }
 
 # Machine-readable recovery hints (remediation) — the canonical "what to do"
@@ -214,6 +222,11 @@ WORKSPACES_ERRORS = {
 #     before a user does. The status stays 503: from the caller's side this
 #     endpoint genuinely cannot be served here, and the adopting frontend's
 #     status handling must not shift under it.
+#   * 403 workspace_creation_closed → contact_support. Same shape as
+#     forbidden_workspace: no request field grants it (fix_input is wrong),
+#     retrying loops, and re-authenticating changes nothing. The only
+#     recovery is another party — the instance's owner, who either founds the
+#     space or invites the caller into an existing one.
 #   * 400 display_name_* → fix_input, verbatim from stapel-profiles'
 #     declarations. Same key, same hint, on purpose: a frontend that already
 #     highlights the name field on profiles' refusal must behave identically
@@ -246,6 +259,7 @@ WORKSPACES_REMEDIATION = {
     ERR_400_DISPLAY_NAME_FORBIDDEN_CHARS: "fix_input",
     ERR_400_DISPLAY_NAME_EMOJI: "fix_input",
     ERR_400_DISPLAY_NAME_INVISIBLE_CHARS: "fix_input",
+    ERR_403_WORKSPACE_CREATION_CLOSED: "contact_support",
 }
 
 register_service_errors(WORKSPACES_ERRORS, remediation=WORKSPACES_REMEDIATION)

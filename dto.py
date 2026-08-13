@@ -49,12 +49,14 @@ class WorkspaceListResponse:
         is_guest: True when the caller holds NO active mandate anywhere (permissions.is_guest) — the wire form of the mandate-model vardict's guest predicate (2026-08-03), so a frontend can render the "incomplete dashboard" without re-deriving it from workspaces == []. Example: false
         default_workspace_id: Which workspace a client should open when the person has expressed no choice — the instance's STAPEL_WORKSPACES["DEFAULT_WORKSPACE_ID"], echoed back ONLY when the caller actually holds an active membership in it, else "". Exists because clients that had to guess guessed badly: meettoday took `workspaces[0]` off a list ordered by last access, so a person in two spaces landed wherever they happened to have been last (measured 2026-08-06 as "the owner cannot see his own invitations" — they were in the OTHER space). A default, not a cage: an explicit choice still wins. Example: "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
         preferred_workspace_id: The person's OWN stated choice of home workspace (PUT me/preferred-workspace), echoed back ONLY while the membership carrying it is active, else "". This is the "explicit choice" default_workspace_id documents itself as yielding to, so a client resolves preferred first and the instance default only after it. Never inferred from behaviour — where somebody last clicked is last_accessed_at, which is telemetry, and reading it as a choice is what produced #239. Example: "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+        can_create_workspace: Whether THIS caller may found a new workspace on this instance (WORKSPACE_CREATE_POLICY, evaluated by services.can_create_workspace). The ANSWER, not the policy name: resolving "instance_owner" client-side would mean re-implementing the instance-owner lookup in every client, and a client that got it wrong would draw a button that 403s — or hide one that should be there. Rides the list because the workspace switcher is the surface that draws "+ New space", and it already fetches this. Example: true
     """
 
     workspaces: List[WorkspaceResponse] = field(default_factory=list)
     is_guest: bool = False
     default_workspace_id: str = ""
     preferred_workspace_id: str = ""
+    can_create_workspace: bool = False
 
 
 @dataclass

@@ -1,6 +1,6 @@
 # Errors — English
 
-`68` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`69` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -48,6 +48,7 @@
 | `error.403.role_exceeds_inviter_rank` | 403 | `role` | `fix_input` | You cannot grant a role that outranks your own ({role}) |
 | `error.403.verification_enrollment_required` | 403 | — | `verify` | Verification factor enrollment required |
 | `error.403.verification_required` | 403 | — | `verify` | Additional verification required |
+| `error.403.workspace_creation_closed` | 403 | — | `contact_support` | This instance does not allow you to create workspaces |
 | `error.404.ad_not_found` | 404 | — | `retry` | Listing not found |
 | `error.404.invitation_not_found` | 404 | — | `fix_input` | Invitation not found |
 | `error.404.member_not_found` | 404 | — | `fix_input` | Member not found in this workspace |

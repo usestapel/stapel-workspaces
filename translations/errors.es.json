@@ -18,6 +18,7 @@
   "error.403.membership_suspended": "Tu pertenencia a este espacio de trabajo está suspendida ({reason})",
   "error.403.missing_capability": "Tu rol no incluye la capacidad {capability} en este espacio de trabajo",
   "error.403.role_exceeds_inviter_rank": "No puedes conceder un rol superior al tuyo ({role})",
+  "error.403.workspace_creation_closed": "Esta instancia no te permite crear espacios de trabajo",
   "error.404.invitation_not_found": "Invitación no encontrada",
   "error.404.member_not_found": "Miembro no encontrado en este espacio de trabajo",
   "error.404.workspace_not_found": "Espacio de trabajo no encontrado",

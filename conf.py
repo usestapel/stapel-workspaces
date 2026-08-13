@@ -140,7 +140,36 @@ DEFAULTS = {
     # the caller actually holds an active membership in it — pointing a client
     # at a space it cannot open would trade one wrong screen for another.
     "DEFAULT_WORKSPACE_ID": "",
+    # WHO MAY CREATE A WORKSPACE. "" (default) means "derive it from
+    # STREET_LANDING_MODE", which is where the question actually comes from:
+    #
+    # * "open" — anyone with an account. The public-cloud shape, and what
+    #   `STREET_LANDING_MODE="personal"` implies: an instance that mints a
+    #   personal workspace for every signup has already answered "yes";
+    # * "instance_owner" — only the OWNER of the instance's default workspace
+    #   (see `instance_owner_ids`). The private-cloud shape, and what any
+    #   non-personal landing mode implies: on an instance where entry is by
+    #   invitation, a member who could mint their own org would step outside
+    #   the org they were invited into. Everyone else still SWITCHES between
+    #   the spaces they are in — this restricts creation, not choice;
+    # * "closed" — nobody, through the API. Spaces are provisioned by an
+    #   operator (`manage.py provision_space`) and by nothing else.
+    #
+    # Derived rather than defaulted to a literal because the two axes answer
+    # the same product question, and a deployment that switched to a closed
+    # landing mode and kept an "open" creation policy would have a private
+    # cloud whose members can each spin up their own org — a gap nobody would
+    # notice until it was populated. An explicit value always wins.
+    "WORKSPACE_CREATE_POLICY": "",
 }
+
+#: The three answers `WORKSPACE_CREATE_POLICY` may take, plus "" for derived.
+CREATE_POLICY_OPEN = "open"
+CREATE_POLICY_INSTANCE_OWNER = "instance_owner"
+CREATE_POLICY_CLOSED = "closed"
+CREATE_POLICIES = frozenset(
+    {CREATE_POLICY_OPEN, CREATE_POLICY_INSTANCE_OWNER, CREATE_POLICY_CLOSED}
+)
 
 workspaces_settings = AppSettings(
     "STAPEL_WORKSPACES",
@@ -183,8 +212,36 @@ def rotate_token_on_resend() -> bool:
     return bool(value)
 
 
+def workspace_create_policy() -> str:
+    """The effective ``WORKSPACE_CREATE_POLICY`` — one of :data:`CREATE_POLICIES`.
+
+    Empty (the default) derives it from ``STREET_LANDING_MODE``: ``personal``
+    is a public cloud and answers ``open``, anything else is a closed instance
+    and answers ``instance_owner``. See the key's own comment for why the
+    derivation exists rather than a literal default.
+
+    An unrecognized value resolves to ``instance_owner`` — the restrictive
+    answer — and is an E010 from ``checks.check_workspace_create_policy``.
+    Degrading a misspelled policy to "open" would silently hand every member
+    of a private cloud the ability to found their own org, which is exactly
+    the failure this key exists to prevent; the loud half is the check.
+    """
+    raw = str(workspaces_settings.WORKSPACE_CREATE_POLICY or "").strip().lower()
+    if not raw:
+        landing = str(workspaces_settings.STREET_LANDING_MODE or "personal").strip()
+        return CREATE_POLICY_OPEN if landing == "personal" else CREATE_POLICY_INSTANCE_OWNER
+    if raw not in CREATE_POLICIES:
+        return CREATE_POLICY_INSTANCE_OWNER
+    return raw
+
+
 __all__ = [
     "workspaces_settings",
     "resend_cooldown_seconds",
     "rotate_token_on_resend",
+    "workspace_create_policy",
+    "CREATE_POLICY_OPEN",
+    "CREATE_POLICY_INSTANCE_OWNER",
+    "CREATE_POLICY_CLOSED",
+    "CREATE_POLICIES",
 ]

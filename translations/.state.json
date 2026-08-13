@@ -76,6 +76,10 @@
       "hash": "ad44116c5911cc4d",
       "origin": "llm"
     },
+    "error.403.workspace_creation_closed": {
+      "hash": "8b6775e235258185",
+      "origin": "imported"
+    },
     "error.404.invitation_not_found": {
       "hash": "775ba9ebc4ae1b22",
       "origin": "seed:stapel-builtin"
@@ -185,6 +189,10 @@
     "error.403.role_exceeds_inviter_rank": {
       "hash": "ad44116c5911cc4d",
       "origin": "llm"
+    },
+    "error.403.workspace_creation_closed": {
+      "hash": "8b6775e235258185",
+      "origin": "imported"
     },
     "error.404.invitation_not_found": {
       "hash": "775ba9ebc4ae1b22",

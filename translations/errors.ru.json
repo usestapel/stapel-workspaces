@@ -18,6 +18,7 @@
   "error.403.membership_suspended": "Ваше членство в этом рабочем пространстве приостановлено ({reason})",
   "error.403.missing_capability": "Ваша роль не включает право {capability} в этом рабочем пространстве",
   "error.403.role_exceeds_inviter_rank": "Вы не можете выдать роль, которая превышает вашу собственную ({role})",
+  "error.403.workspace_creation_closed": "На этом сервере вам недоступно создание рабочих пространств",
   "error.404.invitation_not_found": "Приглашение не найдено",
   "error.404.member_not_found": "Участник не найден в этом рабочем пространстве",
   "error.404.workspace_not_found": "Рабочее пространство не найдено",
