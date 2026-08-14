@@ -86,7 +86,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - provision_member — stapel_workspaces.services.provision_member
   Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials).
 - record_audit — stapel_workspaces.audit.record_audit
-  Append one line to a workspace's membership history (an event-store line since 0.25, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget.
+  Append one line to a workspace's membership history (an event-store line, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget.
 - replay_legacy_rows — stapel_workspaces.audit.replay_legacy_rows
   Carry rows of the retired 0.24 audit table into the stream, ids and timestamps intact — the data path migration 0009 runs; not for new writes.
 - resend_invitation — stapel_workspaces.services.resend_invitation

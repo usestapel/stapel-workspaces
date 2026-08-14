@@ -69,10 +69,13 @@ TRIAD = ("schema.json", "flows.json", "errors.json")
 # shorten intents to fit. Raised again in 0.19 (4500 -> 5000) when the
 # profiles seam behind the roster's name edit added three surface entries
 # and the profiles dependency line grew a write half. Raised again in 0.20
-# (5000 -> 5500) for the two preferred-workspace surface entries. The budget
-# stays enforced, just at 5500 — keep it in step with the Makefile.
+# (5000 -> 5500) for the two preferred-workspace surface entries, and again
+# (5500 -> 6000) when the audit journal moved into the core event store and
+# its sink seam, anchor read and migration data path each earned a surface
+# entry. The budget stays enforced, just at 6000 — keep it in step with the
+# Makefile.
 ARTIFACTS = TRIAD + ("capabilities.json", "llms.txt")
-LLMS_TXT_BUDGET = "5500"
+LLMS_TXT_BUDGET = "6000"
 
 
 def _emit(out_dir: Path) -> None:

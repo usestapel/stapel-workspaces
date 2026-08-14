@@ -63,7 +63,7 @@
       "name": "record_audit",
       "kind": "factory",
       "path": "stapel_workspaces.audit.record_audit",
-      "intent": "Append one line to a workspace's membership history (an event-store line since 0.25, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
+      "intent": "Append one line to a workspace's membership history (an event-store line, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
     },
     {
       "name": "replay_legacy_rows",
