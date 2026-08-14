@@ -133,8 +133,39 @@ def raw_lifecycle_filters(source: str, filename: str) -> list[str]:
     return hits
 
 
+def _venv_roots():
+    """Directories that are virtualenvs, found by their defining marker.
+
+    A venv created inside the repo (``.venv``, ``venv``, ``.direnv/...``)
+    contains every INSTALLED sibling library, and those are not this
+    package's sources. Naming the marker rather than the directory is the
+    point: a name list goes stale the moment someone uses a name nobody
+    thought of, and the rule then reports a sibling library's file as this
+    repo's violation — a gate accusing the wrong file is worse than no gate,
+    because the reader chases a defect that is not there.
+    """
+    return {cfg.parent for cfg in PACKAGE_ROOT.rglob("pyvenv.cfg")}
+
+
+def _is_foreign_source(path, venvs) -> bool:
+    """True when *path* is not this package's own source.
+
+    Split out from the walk so the exclusion can be asserted on synthetic
+    paths: in CI there is no in-repo venv, so a test that only walked the
+    real tree would pass vacuously and the guard would rot unnoticed.
+    """
+    if any(venv in path.parents for venv in venvs):
+        return True
+    if "site-packages" in path.parts:
+        return True  # a vendored tree without a pyvenv.cfg
+    return False
+
+
 def _package_sources():
+    venvs = _venv_roots()
     for path in sorted(PACKAGE_ROOT.rglob("*.py")):
+        if _is_foreign_source(path, venvs):
+            continue
         if SKIPPED_DIRS & set(path.relative_to(PACKAGE_ROOT).parts):
             continue
         if path.name == "models.py":
@@ -143,6 +174,31 @@ def _package_sources():
 
 
 class TestNoRawLifecycleFilters:
+    def test_installed_siblings_are_not_this_package(self):
+        """A venv inside the repo must not be read as this repo's source.
+
+        Without this, `pip install -e .` into an in-repo `.venv` makes the
+        rule report e.g. stapel-core's `gateway/tokens.py` as a workspaces
+        violation — a real red on a file this repo does not own, which sends
+        the reader hunting a defect that is not there.
+        """
+        venv = PACKAGE_ROOT / ".venv"
+        installed = venv / "lib" / "python3.12" / "site-packages" / "sibling.py"
+        vendored = PACKAGE_ROOT / "vendor" / "site-packages" / "other.py"
+        ours = PACKAGE_ROOT / "services.py"
+
+        assert _is_foreign_source(installed, {venv})
+        assert _is_foreign_source(vendored, set())
+        assert not _is_foreign_source(ours, {venv})
+
+    def test_venv_roots_are_found_by_their_marker(self, tmp_path):
+        """The marker, not the directory name, is what identifies a venv."""
+        for name in (".venv", "venv", "env-3.12"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "pyvenv.cfg").write_text("home = /usr\n")
+        found = {cfg.parent for cfg in tmp_path.rglob("pyvenv.cfg")}
+        assert found == {tmp_path / n for n in (".venv", "venv", "env-3.12")}
+
     def test_detector_flags_a_raw_spelling(self):
         """The detector is not vacuous — it catches a planted violation.
 
