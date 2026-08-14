@@ -288,6 +288,12 @@
       "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
     },
     {
+      "name": "reconcile_provision_operations",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.reconcile_provision_operations",
+      "intent": "Retry the refunds a failed provisioning could not make — the queue manage.py reconcile_provisioning drains, so an orphan charge is a number somebody can act on."
+    },
+    {
       "name": "record_member_mfa",
       "kind": "factory",
       "path": "stapel_workspaces.services.record_member_mfa",

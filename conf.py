@@ -109,6 +109,33 @@ DEFAULTS = {
     "INVITATION_ROTATE_TOKEN_ON_RESEND": False,
     # Credits debited per provisioned org user (0 = free).
     "PROVISION_USER_CREDITS": 0,
+    # Whether the workspace.provisioned_account letter carries the
+    # server-generated initial password.
+    #
+    # Default False, and the reason belongs here. A provisioned account's
+    # password is a credential the org owns until first login; putting it
+    # in an email leaves it sitting in a mailbox (and in every mail hop's
+    # logs) for the life of that mailbox, which is exactly the exposure the
+    # first-login policy is meant to close in one use. The letter still
+    # goes out — username, workspace, login URL — and the password reaches
+    # the administrator once, in the provisioning response, to hand over on
+    # a channel they choose.
+    #
+    # A deployment whose provisioned users have no other channel at all
+    # (no phone, no in-person handover) sets this True and accepts the
+    # trade. The real answer is a one-time activation link instead of a
+    # password, which needs an issuance seam stapel-auth does not publish
+    # yet (WORK-03).
+    "PROVISION_EMAIL_INITIAL_PASSWORD": False,
+    # How long one invitation login grant stays "live" here, in seconds.
+    #
+    # The claim endpoint mints a single-use grant in auth for an address
+    # with no account yet. Auth's own grant expires in 15 minutes; this key
+    # is how long THIS side refuses to mint another one for the same
+    # invitation, so a leaked invite link cannot be replayed into an
+    # unbounded supply of grants. Past the window a genuine "the email
+    # never arrived" retry works again. 0 disables the limit.
+    "INVITATION_LOGIN_GRANT_TTL_SECONDS": 900,
     # Mandate axis for an un-invited ("street") registration — the policy
     # `resolve_landing_workspace(user, origin=...)` reads for every origin
     # OTHER than "invited" (org-program #85, mandate-model vardict 2026-08-03).
@@ -225,6 +252,32 @@ def resend_cooldown_seconds() -> int:
         return 0
 
 
+def email_initial_password() -> bool:
+    """``PROVISION_EMAIL_INITIAL_PASSWORD`` as a bool (see that key)."""
+    value = workspaces_settings.PROVISION_EMAIL_INITIAL_PASSWORD
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY
+    return bool(value)
+
+
+def login_grant_ttl_seconds() -> int:
+    """``INVITATION_LOGIN_GRANT_TTL_SECONDS`` as an int; 0 when disabled.
+
+    Same string/int tolerance as :func:`resend_cooldown_seconds` — an env
+    var arrives as text and a mis-typed limit must not silently become "no
+    limit at all".
+    """
+    value = workspaces_settings.INVITATION_LOGIN_GRANT_TTL_SECONDS
+    if isinstance(value, bool) or value is None:
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    try:
+        return max(0, int(str(value).strip()))
+    except (TypeError, ValueError):
+        return 0
+
+
 def rotate_token_on_resend() -> bool:
     """``INVITATION_ROTATE_TOKEN_ON_RESEND`` as a bool (see that key)."""
     value = workspaces_settings.INVITATION_ROTATE_TOKEN_ON_RESEND
@@ -258,6 +311,8 @@ def workspace_create_policy() -> str:
 
 __all__ = [
     "workspaces_settings",
+    "email_initial_password",
+    "login_grant_ttl_seconds",
     "resend_cooldown_seconds",
     "rotate_token_on_resend",
     "workspace_create_policy",

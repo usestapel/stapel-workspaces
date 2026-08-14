@@ -23,6 +23,12 @@ ERR_400_INVITATION_DECLINED = "error.400.invitation_declined"
 #: specific countdown to render next to it, and "we already emailed them a
 #: minute ago" is a different sentence from "you are calling us too often".
 ERR_429_INVITATION_RESEND_COOLDOWN = "error.429.invitation_resend_cooldown"
+#: A login grant for this invitation is still live (WORK-03). Its own key
+#: rather than the resend cooldown's: the invitee is being told "the link we
+#: just made for you is still valid, look for it", which is a different
+#: sentence — and a different screen — from an admin being told the mailbox
+#: was written to recently.
+ERR_429_INVITATION_GRANT_PENDING = "error.429.invitation_grant_pending"
 ERR_403_MISSING_CAPABILITY = "error.403.missing_capability"
 ERR_402_ENTITLEMENT_REQUIRED = "error.402.entitlement_required"
 ERR_402_MEMBER_LIMIT_REACHED = "error.402.member_limit_reached"
@@ -87,6 +93,10 @@ WORKSPACES_ERRORS = {
     ERR_429_INVITATION_RESEND_COOLDOWN: (
         "This invitation was emailed recently; you can send it again in "
         "{retry_after} seconds"
+    ),
+    ERR_429_INVITATION_GRANT_PENDING: (
+        "A sign-in link for this invitation is still valid; you can request "
+        "another one in {retry_after} seconds"
     ),
     ERR_400_INVALID_ROLE: "Invalid role",
     ERR_403_MISSING_CAPABILITY: "Your role does not include the {capability} capability in this workspace",
@@ -248,6 +258,7 @@ WORKSPACES_REMEDIATION = {
     ERR_402_MEMBER_LIMIT_REACHED: "fix_input",
     ERR_400_INVITATION_DECLINED: "contact_support",
     ERR_429_INVITATION_RESEND_COOLDOWN: "wait_and_retry",
+    ERR_429_INVITATION_GRANT_PENDING: "wait_and_retry",
     ERR_409_EMAIL_ALREADY_REGISTERED: "reauthenticate",
     ERR_503_AUTH_UNAVAILABLE: "wait_and_retry",
     ERR_403_MEMBERSHIP_SUSPENDED: "fix_input",

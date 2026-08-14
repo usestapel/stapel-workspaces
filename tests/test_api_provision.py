@@ -246,9 +246,33 @@ class TestProvisionEmailNuance:
         assert kwargs["email"] == "jdoe@corp.example"
         variables = kwargs["variables"]
         assert variables["username"] == f"{ws.slug}/jdoe"
-        assert variables["initial_password"] == "srv-generated-1"
         assert variables["login_url"] == "https://app.example.com/login"
         assert variables["workspace_name"] == ws.name
+        # The generated password does NOT ride the letter by default
+        # (WORK-03): it reaches the administrator once, in the response,
+        # instead of living in a mailbox for the life of that mailbox.
+        assert "initial_password" not in variables
+        assert resp.json()["generated_password"] == "srv-generated-1"
+
+    def test_a_deployment_can_still_mail_the_password(
+        self, authed_client, user, sensitive_grant, fake_auth_provision,
+        monkeypatch, settings,
+    ):
+        """The opt-in for orgs whose provisioned users have no other channel."""
+        sent = []
+        monkeypatch.setattr(
+            "stapel_core.notifications.request_notification",
+            lambda notification_type, **kwargs: sent.append(
+                (notification_type, kwargs)
+            )
+            or True,
+        )
+        settings.STAPEL_WORKSPACES = {"PROVISION_EMAIL_INITIAL_PASSWORD": True}
+        ws = _ws(user)
+        resp = _provision(authed_client, ws, {"email": "jdoe@corp.example"})
+        assert resp.status_code == 201, resp.content
+        (_, kwargs), = sent
+        assert kwargs["variables"]["initial_password"] == "srv-generated-1"
 
 
 @pytest.mark.django_db

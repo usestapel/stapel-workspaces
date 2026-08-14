@@ -465,6 +465,19 @@ class WorkspaceInvitation(models.Model):
     #: one admin holding ``members.invite`` could drive an unbounded number
     #: of letters at one address through this fleet's mail infrastructure.
     last_sent_at = models.DateTimeField(null=True, blank=True)
+    #: When a login grant was last minted for this invitation, and how many
+    #: have been (WORK-03). The claim endpoint mints an auth login grant for
+    #: an address with no account yet; before this, a pending invitation
+    #: could be claimed again and again, so one leaked invite link was an
+    #: unbounded supply of session-bearing grants for that mailbox — each
+    #: single-use in auth, and each mintable afresh here.
+    #:
+    #: One live grant at a time: a second claim inside the grant's TTL is
+    #: refused (``error.429.invitation_grant_pending``), and after the TTL a
+    #: genuine "I lost the email" retry still works. Counting them is what
+    #: makes the abuse visible afterwards.
+    login_grant_issued_at = models.DateTimeField(null=True, blank=True)
+    login_grant_count = models.PositiveIntegerField(default=0)
     #: The invite modal's "Name" field (a NAME HINT, not the canonical name —
     #: see ``WorkspaceMember.display_name_hint``, which this is copied onto at
     #: accept time). Optional: an invite without one behaves exactly as
@@ -635,3 +648,80 @@ class WorkspaceMFAEnforcement(models.Model):
 
     def __str__(self):
         return f"{self.workspace_id}: mfa {self.state}"
+
+
+class ProvisionState(models.TextChoices):
+    """Where one provisioning operation got to (WORK-03).
+
+    Provisioning spends money in billing, mints an account in auth and
+    writes a membership here — three services, no shared transaction. It
+    used to be a straight line with no record, so a failure anywhere left
+    an orphan nobody could find: a charge with no account, or an account
+    with no membership and no way to tell it from a half-finished retry.
+
+    The states are what a compensating saga needs to be resumable:
+    ``started`` (nothing external yet), ``charged``, ``account_created``,
+    ``completed``, and the two the failure path uses — ``compensating``
+    (something is owed back) and ``compensated``/``failed`` (settled).
+    """
+
+    STARTED = "started", "Started"
+    CHARGED = "charged", "Charged"
+    ACCOUNT_CREATED = "account_created", "Account created"
+    COMPLETED = "completed", "Completed"
+    COMPENSATING = "compensating", "Compensating"
+    COMPENSATED = "compensated", "Compensated"
+    FAILED = "failed", "Failed"
+
+
+class WorkspaceProvisionOperation(models.Model):
+    """One provisioning attempt, keyed by a stable operation id.
+
+    The id is derived from (workspace, username) unless the caller supplies
+    one, so a retry of the same provisioning IS the same operation: it does
+    not charge twice, and once it has completed it answers with the member
+    it already made instead of a second account.
+
+    The row also outlives the request, which is the point — a charge that
+    could not be refunded is a ``compensating`` row a human or
+    ``manage.py reconcile_provisioning`` can act on, rather than a log line.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="provision_operations"
+    )
+    #: Idempotency key: the caller's, or uuid5(workspace, username).
+    operation_id = models.CharField(max_length=64)
+    username = models.CharField(max_length=255)
+    state = models.CharField(
+        max_length=20, choices=ProvisionState.choices, default=ProvisionState.STARTED
+    )
+    #: The auth account, once it exists — what a reconciliation needs to
+    #: find an orphan account whose membership never landed.
+    user_id = models.UUIDField(null=True, blank=True)
+    credits = models.PositiveIntegerField(default=0)
+    #: Which attempt of this operation is running. A resume (the process
+    #: died mid-flight) keeps the number; a retry after a compensated
+    #: failure raises it, so the fresh charge is a fresh charge and not a
+    #: duplicate billing would rightly dedupe away.
+    attempt = models.PositiveIntegerField(default=1)
+    #: Credits still owed back to the org. Non-zero means somebody paid for
+    #: a provisioning that did not happen.
+    credits_to_refund = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workspaces_provision_operation"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "operation_id"],
+                name="workspaces_provision_operation_unique",
+            ),
+        ]
+        indexes = [models.Index(fields=["state"])]
+
+    def __str__(self):
+        return f"{self.username}: {self.state}"

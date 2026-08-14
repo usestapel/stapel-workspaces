@@ -209,6 +209,10 @@
       "kind": "factory",
       "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
     },
+    "reconcile_provision_operations": {
+      "kind": "factory",
+      "intent": "Retry the refunds a failed provisioning could not make — the queue manage.py reconcile_provisioning drains, so an orphan charge is a number somebody can act on."
+    },
     "reset_member_password": {
       "kind": "factory",
       "intent": "Reset a member's password on the org's order, with the audit emit and security-signal letter."

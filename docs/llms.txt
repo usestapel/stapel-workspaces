@@ -2,7 +2,7 @@
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 56 · extension points 5 · operations 27 · error codes 69.
+Contract: axes 1 · surface 57 · extension points 5 · operations 27 · error codes 70.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -97,6 +97,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   The caller's stated home workspace id, or '' — active-membership filtered, so it goes quiet during a suspension.
 - provision_member — stapel_workspaces.services.provision_member
   Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials).
+- reconcile_provision_operations — stapel_workspaces.services.reconcile_provision_operations
+  Retry the refunds a failed provisioning could not make — the queue manage.py reconcile_provisioning drains, so an orphan charge is a number somebody can act on.
 - record_audit — stapel_workspaces.audit.record_audit
   Append one line to a workspace's membership history (an event-store line, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget.
 - record_member_mfa — stapel_workspaces.services.record_member_mfa
@@ -180,7 +182,7 @@ Paths are relative to `/workspaces/api/v1/`.
 - GET /{workspace_id} — workspaces_api_v1_retrieve_2
 - GET /roles — workspaces_api_v1_roles_retrieve
 
-## Error codes (69) — the StapelError envelope
+## Error codes (70) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.already_workspace_member [400] fix_input
 - error.400.bad_request [400] fix_input
@@ -244,6 +246,7 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.422.unprocessable_entity [422] wait_and_retry
 - error.423.locked [423] wait_and_retry
 - error.423.verification_locked [423] wait_and_retry
+- error.429.invitation_grant_pending [429] wait_and_retry {retry_after}
 - error.429.invitation_resend_cooldown [429] wait_and_retry {retry_after}
 - error.429.rate_limit [429] wait_and_retry {retry_after_minutes}
 - error.429.too_many_requests [429] wait_and_retry

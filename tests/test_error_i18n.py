@@ -101,6 +101,10 @@ _MACHINE_RU = {
     "error.429.invitation_resend_cooldown":
         "Это приглашение недавно отправлялось; отправить снова можно через "
         "{retry_after} с",
+    # Single-use login grant (WORK-03).
+    "error.429.invitation_grant_pending":
+        "Ссылка для входа по этому приглашению ещё действует; запросить "
+        "новую можно через {retry_after} с",
 }
 
 _MACHINE_ES = {
@@ -139,6 +143,10 @@ _MACHINE_ES = {
     "error.429.invitation_resend_cooldown":
         "Esta invitación se envió por correo hace poco; puedes volver a "
         "enviarla en {retry_after} segundos",
+    # Single-use login grant (WORK-03).
+    "error.429.invitation_grant_pending":
+        "El enlace de acceso de esta invitación sigue siendo válido; puedes "
+        "solicitar otro en {retry_after} segundos",
 }
 
 #: language -> machine-translation table, consulted for the keys the

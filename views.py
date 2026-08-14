@@ -104,6 +104,7 @@ from .errors import (
     ERR_404_MEMBER_NOT_FOUND,
     ERR_404_WORKSPACE_NOT_FOUND,
     ERR_409_EMAIL_ALREADY_REGISTERED,
+    ERR_429_INVITATION_GRANT_PENDING,
     ERR_429_INVITATION_RESEND_COOLDOWN,
     ERR_503_AUTH_UNAVAILABLE,
 )
@@ -1989,6 +1990,11 @@ class InvitationClaimView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
     meaningless, so this seam never degrades to allow. The invitation is
     NOT consumed here: accept stays a separate, deliberate step after
     setup. Neither the invite token nor the grant token is ever logged.
+
+    ONE live grant at a time (WORK-03): while the previous grant is inside
+    its TTL this answers 429 ``error.429.invitation_grant_pending`` with a
+    ``Retry-After``, so a leaked invite link cannot be replayed into an
+    endless supply of sign-in credentials for the invited mailbox.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -2017,6 +2023,17 @@ class InvitationClaimView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
             grant_token = services.issue_invitation_login_grant(
                 invitation=inv, language=language
             )
+        except services.LoginGrantAlreadyIssued as live:
+            # One live grant per invitation (WORK-03): the link already
+            # minted is still valid, and the invitee is told when they may
+            # ask for another.
+            resp = StapelErrorResponse(
+                429,
+                ERR_429_INVITATION_GRANT_PENDING,
+                params={"retry_after": live.retry_after},
+            )
+            resp["Retry-After"] = str(live.retry_after)
+            return resp
         except (FunctionNotRegistered, FunctionRouteNotConfigured):
             return StapelErrorResponse(503, ERR_503_AUTH_UNAVAILABLE)
         return StapelResponse(

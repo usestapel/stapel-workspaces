@@ -1,6 +1,6 @@
 # Errors — Español
 
-`69` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
+`70` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
 
 | Código | Estado | Parámetros | Acción | Texto |
 |---|---|---|---|---|
@@ -66,6 +66,7 @@
 | `error.422.unprocessable_entity` | 422 | — | `wait_and_retry` | Entidad no procesable |
 | `error.423.locked` | 423 | — | `wait_and_retry` | El recurso está bloqueado |
 | `error.423.verification_locked` | 423 | — | `wait_and_retry` | Demasiados intentos fallidos — verificación bloqueada |
+| `error.429.invitation_grant_pending` | 429 | `retry_after` | `wait_and_retry` | El enlace de acceso de esta invitación sigue siendo válido; puedes solicitar otro en {retry_after} segundos |
 | `error.429.invitation_resend_cooldown` | 429 | `retry_after` | `wait_and_retry` | Esta invitación se envió por correo hace poco; puedes volver a enviarla en {retry_after} segundos |
 | `error.429.rate_limit` | 429 | `retry_after_minutes` | `wait_and_retry` | Demasiados intentos. Inténtalo de nuevo en {retry_after_minutes} minutos. |
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Demasiadas solicitudes. Inténtalo de nuevo más tarde. |

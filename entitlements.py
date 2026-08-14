@@ -32,6 +32,11 @@ ENT_PROVISION_USER = "workspaces.provision_user"
 
 CHECK_ENTITLEMENT = "billing.check_entitlement"
 DEBIT = "billing.debit"
+#: The compensating half of :data:`DEBIT`. stapel-billing does not publish
+#: this Function yet, so the refund normally cannot be made from here — see
+#: :func:`refund_provision_credits`, which is written so that "cannot" is a
+#: recorded debt rather than a lost one.
+CREDIT = "billing.credit"
 
 
 @dataclass
@@ -145,6 +150,57 @@ def debit_provision_credits(
             ENT_PROVISION_USER,
             EntitlementResult(allowed=False, reason=result.get("reason")),
         )
+
+
+def refund_provision_credits(
+    workspace, *, operation_id, credits: int, reason: str = ""
+) -> bool:
+    """Give back what a failed provisioning charged (WORK-03).
+
+    The compensating step of the provisioning saga. Returns True when
+    billing accepted the refund, False when it could not be made — the
+    caller keeps the debt on the operation row and
+    ``manage.py reconcile_provisioning`` retries it, so an unrefundable
+    charge is a queue with a number in it instead of a line in a log.
+
+    Idempotency key mirrors the debit's, prefixed: replaying the refund of
+    one operation is one refund.
+
+    NOTE: ``billing.credit`` is not published by stapel-billing today, so
+    the honest answer here is usually False. That is deliberate — silently
+    treating "no refund seam" as "nothing owed" is how the orphan charge
+    the audit found stayed invisible in the first place.
+    """
+    try:
+        result = call(
+            CREDIT,
+            {
+                "user_id": str(workspace.owner_id),
+                "credits": int(credits),
+                "idempotency_key": f"ws-provision-refund:{operation_id}",
+                "metadata": {
+                    "workspace_id": str(workspace.id),
+                    "action": "workspaces.provision_user.refund",
+                    "reason": reason,
+                },
+                "description": "Refund for a provisioning that did not complete",
+            },
+        )
+    except (FunctionNotRegistered, FunctionRouteNotConfigured):
+        logger.warning(
+            "billing.credit unavailable — %s credits owed back to workspace %s "
+            "for provisioning operation %s remain recorded for reconciliation",
+            credits,
+            workspace.pk,
+            operation_id,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "billing.credit failed for provisioning operation %s", operation_id
+        )
+        return False
+    return bool((result or {}).get("ok"))
 
 
 def member_seats_quantity(workspace, *, additional: int = 0) -> int:
