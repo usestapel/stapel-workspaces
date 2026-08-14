@@ -228,3 +228,49 @@ def check_workspace_create_policy(app_configs, **kwargs):
             id="stapel_workspaces.W002",
         )]
     return []
+
+
+@checks.register(checks.Tags.compatibility)
+def check_billing_seam_wired(app_configs, **kwargs):
+    """E: plan ceilings are enforced but nothing can answer them.
+
+    ``check_entitlement`` fails closed, so a deployment that neither ships
+    billing nor routes ``billing.`` to it answers 503 to every org
+    creation, invitation and provisioning — forever, and only once a user
+    presses the button. This is the boot-time half of that: the operator
+    either wires the seam or states that the instance sells nothing
+    (``ALLOW_UNBILLED``), and finds out at deploy either way.
+
+    Two ways to be wired, because both topologies are real: billing in
+    INSTALLED_APPS (monolith — its ``ready()`` registers the Function), or
+    a ``billing.`` prefix in ``STAPEL_COMM["FUNCTION_ROUTES"]`` (split
+    services, where billing is legitimately absent from this process).
+    Neither is a liveness probe; a wired-but-down billing is exactly the
+    case the 503 exists for.
+    """
+    from django.apps import apps
+
+    from .conf import allow_unbilled
+
+    if allow_unbilled():
+        return []
+    if apps.is_installed("stapel_billing"):
+        return []
+    try:
+        from stapel_core.comm.config import comm_setting
+    except ImportError:  # pragma: no cover - comm ships with stapel-core
+        return []
+    routes = comm_setting("FUNCTION_ROUTES", {}) or {}
+    if any(str(prefix).startswith("billing.") or "billing.".startswith(str(prefix))
+           for prefix in routes):
+        return []
+    return [checks.Error(
+        "Plan ceilings fail closed, but this deployment has no billing seam: "
+        "stapel_billing is not installed and no STAPEL_COMM['FUNCTION_ROUTES'] "
+        "prefix matches 'billing.'. Creating an organization, inviting a "
+        "member and provisioning a user will all answer 503.",
+        hint="Wire billing (install the app, or route 'billing.' to the "
+             "service that owns it), or declare that this instance sells "
+             "nothing with STAPEL_WORKSPACES['ALLOW_UNBILLED'] = True.",
+        id="stapel_workspaces.E011",
+    )]

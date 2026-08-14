@@ -109,6 +109,25 @@ DEFAULTS = {
     "INVITATION_ROTATE_TOKEN_ON_RESEND": False,
     # Credits debited per provisioned org user (0 = free).
     "PROVISION_USER_CREDITS": 0,
+    # Whether this deployment may run its plan ceilings WITHOUT billing.
+    #
+    # Default False, and the reason is that the seam cannot tell the two
+    # situations apart. When `billing.check_entitlement` raises a comm
+    # wiring error, that error means "nothing answered" — and "nothing
+    # answered" is what a deployment that never bought billing looks like
+    # AND what a billing service that crashed, scaled to zero, lost its
+    # FUNCTION_ROUTES entry or sits behind a gateway rendering JSON 404s
+    # looks like. Treating the pair as "unlimited" made an outage the most
+    # generous plan on the price list: every seat ceiling, every org
+    # gate and every per-user debit evaporated, and the loudest artifact
+    # anywhere on that path was a debug log.
+    #
+    # So the wiring errors now refuse (503, `error.503.billing_unavailable`)
+    # and a deployment that genuinely has no billing says so once, here.
+    # "I do not sell seats" is a fact only the operator knows; no probe can
+    # infer it, because in the split-repo topology billing is legitimately
+    # absent from THIS service's INSTALLED_APPS whether it exists or not.
+    "ALLOW_UNBILLED": False,
     # Whether the workspace.provisioned_account letter carries the
     # server-generated initial password.
     #
@@ -221,7 +240,12 @@ workspaces_settings = AppSettings(
     # The sink decides what code runs on every membership transition — a
     # stray same-named env var must never swap it silently (the gateway
     # applies the same rule to its AUDIT_SINK).
-    no_env=("AUDIT_SINK",),
+    # ALLOW_UNBILLED joins it for the same reason one step further out: it
+    # is the only key here that can turn an outage back into unlimited
+    # plan, its name is generic enough to collide in a shared pod, and it
+    # can only ever be flipped ON by a stray value. "This instance sells
+    # nothing" is a deployment declaration, so it is stated in settings.
+    no_env=("AUDIT_SINK", "ALLOW_UNBILLED"),
 )
 
 #: Values an environment variable may spell "yes" with. AppSettings resolves
@@ -276,6 +300,20 @@ def login_grant_ttl_seconds() -> int:
         return max(0, int(str(value).strip()))
     except (TypeError, ValueError):
         return 0
+
+
+def allow_unbilled() -> bool:
+    """``ALLOW_UNBILLED`` as a bool (see that key).
+
+    Goes through :data:`_TRUTHY` like every other boolean here: this one
+    decides whether an unreachable billing service means "unlimited", so an
+    operator who writes ``ALLOW_UNBILLED=false`` in the environment must get
+    False rather than the True that ``bool("false")`` would hand them.
+    """
+    value = workspaces_settings.ALLOW_UNBILLED
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY
+    return bool(value)
 
 
 def rotate_token_on_resend() -> bool:

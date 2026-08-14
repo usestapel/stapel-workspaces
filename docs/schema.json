@@ -8,7 +8,7 @@
     "/workspaces/api/v1/": {
       "get": {
         "operationId": "workspaces_api_v1_retrieve",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Workspaces"
         ],
@@ -41,7 +41,7 @@
       },
       "post": {
         "operationId": "workspaces_api_v1_create",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Workspaces"
         ],
@@ -1009,7 +1009,7 @@
     "/workspaces/api/v1/{workspace_id}/members/invite": {
       "post": {
         "operationId": "workspaces_api_v1_members_invite_create",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
             "in": "path",
@@ -1380,7 +1380,7 @@
     "/workspaces/api/v1/invitations/accept": {
       "post": {
         "operationId": "workspaces_api_v1_invitations_accept_create",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Members"
         ],

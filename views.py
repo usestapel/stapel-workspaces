@@ -107,6 +107,7 @@ from .errors import (
     ERR_429_INVITATION_GRANT_PENDING,
     ERR_429_INVITATION_RESEND_COOLDOWN,
     ERR_503_AUTH_UNAVAILABLE,
+    ERR_503_BILLING_UNAVAILABLE,
 )
 from .models import (
     InvitationStatus,
@@ -163,6 +164,22 @@ class SerializerSeamsMixin:
 
     def get_response_serializer_class(self):
         return self.response_serializer_class
+
+
+class BillingSeamMixin:
+    """Turns an unaskable plan ceiling into 503 for the whole view.
+
+    Mixed in rather than written as an ``except`` at each call site because
+    the seam is consulted from views AND from inside ``services`` under the
+    workspace lock, and the set of call sites grows: a view that gains a
+    method later inherits the mapping instead of re-deriving it. The 402
+    denials stay per-call-site — those carry a limit the screen renders.
+    """
+
+    def handle_exception(self, exc):
+        if isinstance(exc, entitlements.BillingUnavailable):
+            return StapelErrorResponse(503, ERR_503_BILLING_UNAVAILABLE)
+        return super().handle_exception(exc)
 
 
 def _capability_check(membership, capability: str):
@@ -489,7 +506,7 @@ def _invitation_terminal_error(inv: WorkspaceInvitation):
 
 
 @extend_schema(tags=["Workspaces"])
-class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
+class WorkspaceListCreateView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     # GET is a live guest path: an app header asks "which workspaces am I in?"
     # for every session, guest included, to decide what to draw (meettoday's
@@ -903,7 +920,7 @@ class MemberListView(SerializerSeamsMixin, APIView):
 
 
 @extend_schema(tags=["Members"])
-class MemberInviteView(SerializerSeamsMixin, APIView):
+class MemberInviteView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     # `members.invite` capability check in the body — a guest has no
     # membership and therefore no role that could carry it.
@@ -1088,7 +1105,7 @@ class WorkspaceInvitationListView(SerializerSeamsMixin, APIView):
         return paginator.get_paginated_response(items)
 
 
-class WorkspaceInvitationActionView(SerializerSeamsMixin, APIView):
+class WorkspaceInvitationActionView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     """Shared resolution for the admin-side invitation actions (#109).
 
     Both actions answer with the SAME 404 for an unknown invitation UUID
@@ -1250,7 +1267,7 @@ class InvitationResendView(WorkspaceInvitationActionView):
 
 
 @extend_schema(tags=["Members"])
-class MemberProvisionView(SerializerSeamsMixin, APIView):
+class MemberProvisionView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     """Provision an org-created (synthetic) member (org-program spec §C1).
 
     The org mints its own login/password account: full username is
@@ -1825,7 +1842,7 @@ class RoleListView(SerializerSeamsMixin, APIView):
 
 
 @extend_schema(tags=["Members"])
-class InvitationAcceptView(SerializerSeamsMixin, APIView):
+class InvitationAcceptView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     # Gated in the body by the email match: an invitation is personal, and the
     # caller's address must equal the invited one. An anonymous account has no

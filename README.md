@@ -30,7 +30,7 @@ pip install stapel-workspaces
 | Config axes | 1 |
 | Usage surface | 57 |
 | Extension points | 5 |
-| Error codes | 70 |
+| Error codes | 71 |
 | Fleet dependencies | [`stapel-auth`](https://github.com/usestapel/stapel-auth) (optional) · [`stapel-billing`](https://github.com/usestapel/stapel-billing) (optional) · [`stapel-core`](https://github.com/usestapel/stapel-core) · [`stapel-notifications`](https://github.com/usestapel/stapel-notifications) (optional) · [`stapel-profiles`](https://github.com/usestapel/stapel-profiles) (optional) |
 
 ## Documentation

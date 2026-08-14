@@ -516,6 +516,13 @@
     "en": "The authentication service is unavailable; try again later"
   },
   {
+    "code": "error.503.billing_unavailable",
+    "status": 503,
+    "params": [],
+    "remediation": "wait_and_retry",
+    "en": "The billing service is unavailable; try again later"
+  },
+  {
     "code": "error.503.profiles_not_configured",
     "status": 503,
     "params": [],

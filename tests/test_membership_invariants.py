@@ -62,6 +62,8 @@ def fake_billing():
         response = state["response"]
         return response(payload) if callable(response) else response
 
+    # Displaces the suite-wide stand-in from conftest (one provider per name).
+    function_registry._providers.pop(entitlements.CHECK_ENTITLEMENT, None)
     function_registry.register(entitlements.CHECK_ENTITLEMENT, provider)
     yield state
     function_registry._providers.pop(entitlements.CHECK_ENTITLEMENT, None)

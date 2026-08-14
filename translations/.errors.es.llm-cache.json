@@ -51,6 +51,10 @@
     "hash": "c01407bc09695de1",
     "text": "El servicio de autenticación no está disponible; inténtalo de nuevo más tarde"
   },
+  "error.503.billing_unavailable": {
+    "hash": "be3d5bb85dbffc20",
+    "text": "El servicio de facturación no está disponible; inténtalo de nuevo más tarde"
+  },
   "error.503.profiles_not_configured": {
     "hash": "cfb307774d3fcea7",
     "text": "Este despliegue no tiene configurado un servicio de perfiles, por lo que aquí no se puede escribir un nombre para mostrar"

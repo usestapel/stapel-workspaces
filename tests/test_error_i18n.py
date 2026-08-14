@@ -84,6 +84,8 @@ _MACHINE_RU = {
         "Аккаунт с этим email уже существует — войдите в него",
     "error.503.auth_unavailable":
         "Сервис аутентификации недоступен; повторите попытку позже",
+    "error.503.billing_unavailable":
+        "Сервис биллинга недоступен; повторите попытку позже",
     # 0.8 security harden (org-program spec §C1/§C3, Wave 3).
     "error.403.membership_suspended":
         "Ваше членство в этом рабочем пространстве приостановлено ({reason})",
@@ -123,6 +125,9 @@ _MACHINE_ES = {
         "su lugar",
     "error.503.auth_unavailable":
         "El servicio de autenticación no está disponible; inténtalo de nuevo "
+        "más tarde",
+    "error.503.billing_unavailable":
+        "El servicio de facturación no está disponible; inténtalo de nuevo "
         "más tarde",
     # 0.8 security harden (org-program spec C1/C3, Wave 3).
     "error.403.membership_suspended":

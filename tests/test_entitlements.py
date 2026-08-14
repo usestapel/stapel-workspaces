@@ -1,12 +1,13 @@
 """Billing entitlement seam tests (org-program spec §D2).
 
-Billing is NOT installed in this suite — the degrade-ALLOW path is the
-default. Enforcement is exercised by registering a fake
-``billing.check_entitlement`` comm Function provider (the real one lives in
-stapel-billing; only its payload contract is shared).
+Billing is NOT installed in this suite, so conftest stands in a provider
+that allows; enforcement is exercised by displacing it with a scripted one
+(the real provider lives in stapel-billing; only its payload contract is
+shared), and the closed path by removing it entirely (``no_billing``).
 """
 
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 
 from stapel_core.comm.registry import function_registry
@@ -15,6 +16,7 @@ from stapel_workspaces import entitlements
 from stapel_workspaces.errors import (
     ERR_402_ENTITLEMENT_REQUIRED,
     ERR_402_MEMBER_LIMIT_REACHED,
+    ERR_503_BILLING_UNAVAILABLE,
 )
 from stapel_workspaces.models import Role, WorkspaceInvitation, WorkspaceMember
 
@@ -41,35 +43,133 @@ def fake_billing():
         response = state["response"]
         return response(payload) if callable(response) else response
 
+    # Displaces the suite-wide allow-everything provider (conftest): a
+    # function name has exactly one provider, and this one is scripted.
+    function_registry._providers.pop(entitlements.CHECK_ENTITLEMENT, None)
     function_registry.register(entitlements.CHECK_ENTITLEMENT, provider)
     yield state
     function_registry._providers.pop(entitlements.CHECK_ENTITLEMENT, None)
     function_registry._schemas.pop(entitlements.CHECK_ENTITLEMENT, None)
 
 
+@pytest.fixture
+def no_billing():
+    """No provider answers ``billing.check_entitlement`` — the seam is down.
+
+    Indistinguishable, at this seam, from a billing that crashed, scaled to
+    zero or lost its FUNCTION_ROUTES entry: all of them arrive as the same
+    two comm wiring errors.
+    """
+    from stapel_workspaces import entitlements as ent
+
+    function_registry._providers.pop(ent.CHECK_ENTITLEMENT, None)
+    function_registry._schemas.pop(ent.CHECK_ENTITLEMENT, None)
+    yield
+
+
+def _settings(**overrides):
+    """STAPEL_WORKSPACES with only the keys under test replaced."""
+    from django.conf import settings
+
+    base = dict(getattr(settings, "STAPEL_WORKSPACES", {}) or {})
+    base.update(overrides)
+    return base
+
+
 @pytest.mark.django_db
-class TestDegradeAllow:
-    """Without billing installed every entitlement check allows (OSS default)."""
+class TestSeamFailsClosed:
+    """An unreachable billing refuses; it does not hand out unlimited plan."""
 
-    def test_check_entitlement_degrades_to_allow(self, user):
-        result = entitlements.check_entitlement(user.pk, entitlements.ENT_ORG)
-        assert result.allowed is True
-        assert result.reason == "billing_not_installed"
+    def test_check_entitlement_refuses(self, user, no_billing):
+        with pytest.raises(entitlements.BillingUnavailable):
+            entitlements.check_entitlement(user.pk, entitlements.ENT_ORG)
 
-    def test_work_workspace_creation_unrestricted(self, authed_client):
+    def test_debit_refuses(self, user, no_billing):
+        ws = _create_ws(user)
+        with pytest.raises(entitlements.BillingUnavailable):
+            entitlements.debit_provision_credits(
+                ws, provision_id="p-1", username="someone", credits=5
+            )
+
+    def test_work_workspace_creation_answers_503(self, authed_client, no_billing):
         resp = authed_client.post(
             f"{BASE}/", {"name": "Org", "type": "work"}, format="json"
         )
-        assert resp.status_code == 201, resp.content
+        assert resp.status_code == 503, resp.content
+        assert resp.json()["localizable_error"] == ERR_503_BILLING_UNAVAILABLE
 
-    def test_invite_and_accept_unrestricted(self, authed_client, user, other_user):
+    def test_invite_answers_503(self, authed_client, user, other_user, no_billing):
         ws = _create_ws(user)
         resp = authed_client.post(
             f"{BASE}/{ws.id}/members/invite",
             {"emails": [other_user.email], "role": "member"},
             format="json",
         )
+        assert resp.status_code == 503, resp.content
+        assert resp.json()["localizable_error"] == ERR_503_BILLING_UNAVAILABLE
+
+
+@pytest.mark.django_db
+class TestAllowUnbilled:
+    """The one deployment that really sells nothing says so explicitly."""
+
+    def test_check_entitlement_allows(self, user, no_billing):
+        with override_settings(STAPEL_WORKSPACES=_settings(ALLOW_UNBILLED=True)):
+            result = entitlements.check_entitlement(user.pk, entitlements.ENT_ORG)
+        assert result.allowed is True
+        assert result.reason == "billing_not_installed"
+
+    def test_work_workspace_creation_unrestricted(self, authed_client, no_billing):
+        with override_settings(STAPEL_WORKSPACES=_settings(ALLOW_UNBILLED=True)):
+            resp = authed_client.post(
+                f"{BASE}/", {"name": "Org", "type": "work"}, format="json"
+            )
         assert resp.status_code == 201, resp.content
+
+    def test_debit_is_a_no_op(self, user, no_billing):
+        ws = _create_ws(user)
+        with override_settings(STAPEL_WORKSPACES=_settings(ALLOW_UNBILLED=True)):
+            entitlements.debit_provision_credits(
+                ws, provision_id="p-1", username="someone", credits=5
+            )
+
+    @pytest.mark.parametrize("spelling", ["false", "1", "true"])
+    def test_the_environment_cannot_open_it(
+        self, user, no_billing, monkeypatch, spelling
+    ):
+        """No env spelling opens the paywall — the key is ``no_env``.
+
+        Both halves matter. A stray ``ALLOW_UNBILLED=1`` in a shared pod
+        must not hand an outage unlimited plan; and ``=false``, which an
+        operator would write to DISABLE this, must not be read as True the
+        way ``bool("false")`` would.
+        """
+        monkeypatch.setenv("ALLOW_UNBILLED", spelling)
+        with pytest.raises(entitlements.BillingUnavailable):
+            entitlements.check_entitlement(user.pk, entitlements.ENT_ORG)
+
+
+class TestBillingSeamCheck:
+    """E011: a closed seam nobody wired is a deploy-time failure, not a 503."""
+
+    def test_error_when_unwired_and_not_declared(self):
+        from stapel_workspaces.checks import check_billing_seam_wired
+
+        assert [e.id for e in check_billing_seam_wired(None)] == [
+            "stapel_workspaces.E011"
+        ]
+
+    def test_silent_when_declared_unbilled(self):
+        from stapel_workspaces.checks import check_billing_seam_wired
+
+        with override_settings(STAPEL_WORKSPACES=_settings(ALLOW_UNBILLED=True)):
+            assert check_billing_seam_wired(None) == []
+
+    def test_silent_when_routed(self):
+        from stapel_workspaces.checks import check_billing_seam_wired
+
+        with override_settings(STAPEL_COMM={"FUNCTION_ROUTES": {"billing.": "http://b"}}):
+            assert check_billing_seam_wired(None) == []
 
 
 @pytest.mark.django_db

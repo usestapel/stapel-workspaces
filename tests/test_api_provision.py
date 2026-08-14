@@ -23,6 +23,7 @@ from stapel_workspaces.errors import (
     ERR_400_INVALID_PROVISION_USERNAME,
     ERR_400_INVALID_ROLE,
     ERR_402_ENTITLEMENT_REQUIRED,
+    ERR_503_BILLING_UNAVAILABLE,
     ERR_403_MISSING_CAPABILITY,
     ERR_503_AUTH_UNAVAILABLE,
 )
@@ -40,6 +41,9 @@ def _ws(user, name="Acme"):
 
 
 def _register(name, provider):
+    # Displaces the suite-wide stand-in from conftest where there is one: a
+    # function name has exactly one provider, and this one is scripted.
+    function_registry._providers.pop(name, None)
     function_registry.register(name, provider)
 
 
@@ -434,11 +438,32 @@ class TestProvisionDebit:
             workspace=ws, provisioned=True
         ).exists()
 
-    def test_billing_absent_degrades_to_allow(
+    def test_billing_absent_refuses_to_provision_uncharged(
         self, authed_client, user, sensitive_grant, fake_auth_provision,
         settings,
     ):
+        """A debit nobody can take must not become a free provisioning.
+
+        The plan ceiling and the charge are one decision: closing only the
+        check half would still hand out paid capacity for nothing whenever
+        billing is unreachable.
+        """
         settings.STAPEL_WORKSPACES = {"PROVISION_USER_CREDITS": 5}
+        ws = _ws(user)
+        resp = _provision(authed_client, ws)  # no billing.debit registered
+        assert resp.status_code == 503, resp.content
+        assert resp.json()["localizable_error"] == ERR_503_BILLING_UNAVAILABLE
+        assert not WorkspaceMember.objects.filter(
+            workspace=ws, provisioned=True
+        ).exists()
+
+    def test_allow_unbilled_provisions_uncharged(
+        self, authed_client, user, sensitive_grant, fake_auth_provision,
+        settings,
+    ):
+        settings.STAPEL_WORKSPACES = {
+            "PROVISION_USER_CREDITS": 5, "ALLOW_UNBILLED": True
+        }
         ws = _ws(user)
         resp = _provision(authed_client, ws)  # no billing.debit registered
         assert resp.status_code == 201, resp.content

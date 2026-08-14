@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### Changed — BREAKING: the billing seam fails closed
+
+**Read this before upgrading if you run stapel-workspaces without
+stapel-billing.** The entitlement seam used to treat "nothing answered
+`billing.check_entitlement`" as ALLOW, on the reading that an unbilled
+deployment is unrestricted by construction. The seam cannot tell that
+situation apart from a billing service that crashed, scaled to zero, lost
+its `FUNCTION_ROUTES` entry or sits behind a gateway rendering JSON 404s —
+on NATS a `NoRespondersError` arrives as the very same
+`FunctionNotRegistered`. The price of one outage was therefore every seat
+ceiling, every org gate and every per-user debit at once, announced only by
+a `logger.debug`.
+
+Those two comm wiring errors now raise `BillingUnavailable`, which the API
+answers with **503 `error.503.billing_unavailable`** (not 402: nobody yet
+knows whether the plan allowed it, so this is a server fault to page on,
+not an upsell to show a customer). `billing.debit` closes the same way —
+provisioning paid capacity and charging nobody was the same finding as
+letting the check through.
+
+**Upgrade note.** A deployment that genuinely sells nothing declares it
+once: `STAPEL_WORKSPACES["ALLOW_UNBILLED"] = True`, which restores the old
+allow for the wiring errors only. You will not discover this in
+production — the new `stapel_workspaces.E011` system check fails
+`manage.py check` at boot when plan ceilings are enforced and neither
+`stapel_billing` is installed nor a `billing.` prefix is routed. The key
+is `no_env`: set it in `STAPEL_WORKSPACES`, not in the environment, so that
+no stray same-named variable in a shared pod can open the paywall. (It also
+goes through the same `_TRUTHY` coercion as its neighbours, so it cannot
+read `"false"` as True the way `bool("false")` would.)
+
 ### Fixed — the three HIGH findings of the 2026-08-11 security audit
 
 **WORK-01 — `require_mfa` said "done" for work it had not done.** Turning

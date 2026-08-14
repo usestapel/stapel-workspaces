@@ -33,6 +33,13 @@ ERR_403_MISSING_CAPABILITY = "error.403.missing_capability"
 ERR_402_ENTITLEMENT_REQUIRED = "error.402.entitlement_required"
 ERR_402_MEMBER_LIMIT_REACHED = "error.402.member_limit_reached"
 ERR_409_EMAIL_ALREADY_REGISTERED = "error.409.email_already_registered"
+#: The plan ceiling could not be asked. 503 rather than 402 because the two
+#: are verdicts about different parties: 402 says "your plan does not cover
+#: this, upgrade and retry", which is a sentence about the customer, while
+#: this one says the deployment cannot reach its own billing service. That
+#: is a retryable server fault that should page an operator, not an upsell
+#: shown to a customer whose infrastructure is broken.
+ERR_503_BILLING_UNAVAILABLE = "error.503.billing_unavailable"
 ERR_503_AUTH_UNAVAILABLE = "error.503.auth_unavailable"
 ERR_403_MEMBERSHIP_SUSPENDED = "error.403.membership_suspended"
 ERR_400_INVALID_PROVISION_USERNAME = "error.400.invalid_provision_username"
@@ -103,6 +110,7 @@ WORKSPACES_ERRORS = {
     ERR_402_ENTITLEMENT_REQUIRED: "The workspace owner's plan does not include this feature",
     ERR_402_MEMBER_LIMIT_REACHED: "The workspace member limit ({limit}) has been reached",
     ERR_409_EMAIL_ALREADY_REGISTERED: "An account with this email already exists — log in instead",
+    ERR_503_BILLING_UNAVAILABLE: "The billing service is unavailable; try again later",
     ERR_503_AUTH_UNAVAILABLE: "The authentication service is unavailable; try again later",
     ERR_403_MEMBERSHIP_SUSPENDED: "Your membership in this workspace is suspended ({reason})",
     ERR_400_INVALID_PROVISION_USERNAME: "Invalid username for a provisioned account",
@@ -195,6 +203,11 @@ WORKSPACES_ERRORS = {
 #   * 503 auth_unavailable → wait_and_retry. Transient wiring/deploy gap
 #     (auth's login-grant Function not reachable); the request itself is
 #     fine and succeeds once auth is back.
+#   * 503 billing_unavailable → wait_and_retry, for the same reason and
+#     with the same shape as auth_unavailable: the plan ceiling could not
+#     be asked, so nobody yet knows whether the caller was entitled. The
+#     one deployment where this is NOT transient — a host that sells
+#     nothing — says so with ALLOW_UNBILLED and never reaches this key.
 #   * 403 membership_suspended → fix_input. Same shape as last_owner: a
 #     self-serve precondition, not an authorization wall. The canonical
 #     reason (no_mfa) states its own fix — enable a strong second factor —
@@ -260,6 +273,7 @@ WORKSPACES_REMEDIATION = {
     ERR_429_INVITATION_RESEND_COOLDOWN: "wait_and_retry",
     ERR_429_INVITATION_GRANT_PENDING: "wait_and_retry",
     ERR_409_EMAIL_ALREADY_REGISTERED: "reauthenticate",
+    ERR_503_BILLING_UNAVAILABLE: "wait_and_retry",
     ERR_503_AUTH_UNAVAILABLE: "wait_and_retry",
     ERR_403_MEMBERSHIP_SUSPENDED: "fix_input",
     ERR_400_INVALID_PROVISION_USERNAME: "fix_input",
