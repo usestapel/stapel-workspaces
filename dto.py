@@ -6,6 +6,31 @@ from uuid import UUID
 
 
 @dataclass
+class MFAEnforcementStatus:
+    """How far the workspace's require_mfa policy has actually got.
+
+    Attributes:
+        state: pending / enforcing / enforced / failed. Only "enforced" means every active member's second factor has been confirmed — a settings flag saying require_mfa=true says somebody asked for it, not that it holds. Example: enforcing
+        attempts: How many sweeps have run since the policy was switched on. Example: 3
+        checked_members: Members auth answered about in the last sweep. Example: 12
+        noncompliant_members: Of those, members with no strong factor — suspended with reason no_mfa. Example: 2
+        unverified_members: Active members whose factor nobody has confirmed yet. They are NOT admitted while the policy is on; this is the number an administrator has to get to zero. Example: 1
+        last_attempt_at: ISO 8601 time of the last sweep; null before the first. Example: 2026-08-11T10:00:00Z
+        completed_at: ISO 8601 time coverage last became complete; null while it is not. Example: null
+        last_error: What auth answered when the last sweep failed, verbatim; empty otherwise. Never credential material. Example: FunctionCallError: mfa_status timed out
+    """
+
+    state: str
+    attempts: int = 0
+    checked_members: int = 0
+    noncompliant_members: int = 0
+    unverified_members: int = 0
+    last_attempt_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    last_error: str = ""
+
+
+@dataclass
 class WorkspaceResponse:
     """Workspace details.
 
@@ -24,6 +49,7 @@ class WorkspaceResponse:
         created_at: ISO 8601 creation time. Example: 2026-05-20T10:00:00Z
         updated_at: ISO 8601 last update time. Example: 2026-05-20T10:00:00Z
         my_capabilities: Granted capability strings of the requesting user's role, verbatim from the registry (wildcards like * included). Example: ["workspace.view", "members.view"]
+        mfa_enforcement: State of the security.require_mfa policy — present on the single-workspace responses (GET/PATCH detail) when the policy is on, null otherwise. The settings block says what was asked for; this says what actually holds, so an administrator who switched MFA on is not told "done" while half the organization was never checked.
     """
 
     id: UUID
@@ -40,6 +66,7 @@ class WorkspaceResponse:
     updated_at: str
     my_capabilities: List[str] = field(default_factory=list)
     owner_display_name: str = ""
+    mfa_enforcement: Optional[MFAEnforcementStatus] = None
 
 
 @dataclass
@@ -122,6 +149,7 @@ class MemberResponse:
         suspended_at: ISO 8601 suspension timestamp; null while active. Suspension is not removal — the role stays but access is closed. Example: null
         suspension_reason: Why the membership is suspended (canonical value no_mfa); null while active.
         display_name: Best-effort display name — a live lookup in stapel-profiles when it is installed and has one, else the name typed at invite/provision time (never both, never invented when neither exists). Null when nobody has one yet. Example: Ada Lovelace
+        mfa_compliant: Whether this member was PROVEN to hold a strong second factor — true, false, or null for "nobody has asked yet". Under a require_mfa policy the null is what an administrator acts on: those members are not admitted until the answer arrives. Example: true
     """
 
     id: UUID
@@ -136,6 +164,7 @@ class MemberResponse:
     suspended_at: Optional[str] = None
     suspension_reason: Optional[str] = None
     display_name: Optional[str] = None
+    mfa_compliant: Optional[bool] = None
 
 
 @dataclass

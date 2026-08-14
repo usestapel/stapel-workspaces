@@ -225,6 +225,26 @@
       "kind": "gate_function",
       "intent": "Sweep a workspace's members via auth.mfa_status, suspend the unenrolled, fail-open on an auth hiccup."
     },
+    "mfa_enforcement_for": {
+      "kind": "factory",
+      "intent": "The workspace's MFA enforcement record (pending/enforcing/enforced/failed) — read it, not the settings flag, to answer whether MFA actually holds here."
+    },
+    "verify_member_mfa": {
+      "kind": "gate_function",
+      "intent": "Ask auth about one member's second factor and store the answer — returns None when auth could not be reached, which never counts as compliant."
+    },
+    "record_member_mfa": {
+      "kind": "factory",
+      "intent": "Persist one member's compliance answer (and suspend them for no_mfa when it is a no) — the per-member half the sweep and the events share."
+    },
+    "retry_mfa_enforcement": {
+      "kind": "factory",
+      "intent": "Idempotent re-sweep of every workspace not yet enforced — what manage.py enforce_workspace_mfa schedules."
+    },
+    "mfa_admission_blocked": {
+      "kind": "predicate",
+      "intent": "Is this member barred by the workspace's require_mfa policy — the door the policy is enforced at, verifying on the spot when nobody has asked yet."
+    },
     "lift_no_mfa_suspensions": {
       "kind": "factory",
       "intent": "Lift every no_mfa suspension in a workspace — call when require_mfa turns off."

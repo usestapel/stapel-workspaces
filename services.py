@@ -55,10 +55,12 @@ from .models import (
     SUSPENSION_NO_MFA,
     AuditAction,
     InvitationStatus,
+    MFAEnforcementState,
     Role,
     Workspace,
     WorkspaceInvitation,
     WorkspaceMember,
+    WorkspaceMFAEnforcement,
     WorkspaceType,
 )
 
@@ -1787,23 +1789,95 @@ def _send_mfa_notification(
         )
 
 
-def enforce_require_mfa(workspace: Workspace) -> bool:
-    """Sync sweep when the require_mfa policy flips on (spec §C3).
+def mfa_enforcement_for(workspace: Workspace) -> WorkspaceMFAEnforcement:
+    """The workspace's enforcement record, created ``pending`` if absent.
 
-    Asks ``auth.mfa_status`` for every active (accepted, non-suspended)
-    member and suspends those without a strong second factor (reason
-    ``no_mfa``, emit + letter). Fail-open by suspension: when auth is
-    unavailable (not wired, or a call fails) members are NOT touched — the
-    sweep stops and returns False; fail-closed would lock out the whole
-    org on an auth hiccup. The ``user.mfa_disabled`` consumer catches up
-    once auth events flow again.
+    Reading it is how any surface answers "is MFA actually enforced here" —
+    the settings flag only says somebody asked for it.
     """
-    members = (
+    record, _ = WorkspaceMFAEnforcement.objects.get_or_create(workspace=workspace)
+    return record
+
+
+def record_member_mfa(member: WorkspaceMember, *, compliant: bool) -> None:
+    """Persist one member's compliance answer and act on it.
+
+    Compliance is stored per member (``mfa_compliant`` / ``mfa_verified_at``)
+    rather than inferred from "not suspended": a member nobody ever asked
+    about and a member auth confirmed look identical from the suspension
+    column, and telling them apart is the whole of WORK-01.
+    """
+    member.mfa_compliant = compliant
+    member.mfa_verified_at = timezone.now()
+    member.save(update_fields=["mfa_compliant", "mfa_verified_at"])
+    if not compliant:
+        suspend_member(member, reason=SUSPENSION_NO_MFA)
+
+
+def verify_member_mfa(member: WorkspaceMember) -> bool | None:
+    """Ask ``auth.mfa_status`` about one member and record the answer.
+
+    Returns True/False as auth answered, or ``None`` when auth could not be
+    reached — the honest third value the old sweep collapsed into "carry
+    on". A None never marks the member compliant, so the admission gate
+    keeps refusing until somebody gets a real answer.
+    """
+    try:
+        status = call(MFA_STATUS, {"user_id": str(member.user_id)}) or {}
+    except (
+        FunctionNotRegistered,
+        FunctionRouteNotConfigured,
+        FunctionCallError,
+    ) as exc:
+        logger.warning(
+            "auth.mfa_status unavailable (%s) — member %s stays unverified",
+            exc,
+            member.pk,
+        )
+        return None
+    compliant = bool(status.get("has_strong_mfa"))
+    record_member_mfa(member, compliant=compliant)
+    return compliant
+
+
+def enforce_require_mfa(workspace: Workspace) -> WorkspaceMFAEnforcement:
+    """Sweep the workspace's members and record how far enforcement got.
+
+    Asks ``auth.mfa_status`` for every active member, suspends those
+    without a strong factor (reason ``no_mfa``, emit + letter) and writes
+    what happened to :class:`~stapel_workspaces.models.WorkspaceMFAEnforcement`:
+    ``enforced`` only when every member answered, ``failed`` (with
+    ``last_error``) when auth broke, ``enforcing`` when coverage is
+    otherwise incomplete.
+
+    An auth outage no longer ends the sweep — the remaining members are
+    still attempted, because one unreachable call is not a reason to leave
+    the rest of the organization unexamined. It also no longer ends in
+    silence: the record is what the retry sweep
+    (:func:`retry_mfa_enforcement`), the administrator's screen and the
+    admission gate all read, so a policy that did not finish cannot be
+    reported as one that did.
+
+    Members are NOT suspended on an auth error (unchanged, spec §C3:
+    fail-closed there would lock out a whole org on a hiccup). They are
+    instead left unverified, which the admission gate treats as "not
+    admitted while the policy is on" — the containment moved from a blanket
+    suspension to the door.
+
+    Idempotent: re-running re-asks only what it must and rewrites the same
+    record.
+    """
+    record = mfa_enforcement_for(workspace)
+    members = list(
         WorkspaceMember.objects.active()
         .filter(workspace=workspace)
         .select_related("workspace", "user")
         .order_by("invited_at")
     )
+    checked = 0
+    noncompliant = 0
+    unknown = 0
+    last_error = ""
     for member in members:
         try:
             status = call(MFA_STATUS, {"user_id": str(member.user_id)}) or {}
@@ -1812,16 +1886,106 @@ def enforce_require_mfa(workspace: Workspace) -> bool:
             FunctionRouteNotConfigured,
             FunctionCallError,
         ) as exc:
+            unknown += 1
+            last_error = f"{type(exc).__name__}: {exc}"
             logger.warning(
-                "auth.mfa_status unavailable (%s) — require_mfa sweep for "
-                "workspace %s aborted, remaining members untouched (fail-open)",
+                "auth.mfa_status unavailable (%s) — member %s of workspace %s "
+                "stays unverified and is not admitted while require_mfa is on",
                 exc,
+                member.pk,
                 workspace.pk,
             )
-            return False
-        if not status.get("has_strong_mfa"):
-            suspend_member(member, reason=SUSPENSION_NO_MFA)
-    return True
+            continue
+        checked += 1
+        compliant = bool(status.get("has_strong_mfa"))
+        if not compliant:
+            noncompliant += 1
+        record_member_mfa(member, compliant=compliant)
+    now = timezone.now()
+    record.attempts += 1
+    record.last_attempt_at = now
+    record.checked_members = checked
+    record.noncompliant_members = noncompliant
+    record.last_error = last_error
+    if last_error:
+        record.state = MFAEnforcementState.FAILED
+        record.completed_at = None
+    elif unknown or _members_awaiting_mfa_verification(workspace).exists():
+        record.state = MFAEnforcementState.ENFORCING
+        record.completed_at = None
+    else:
+        record.state = MFAEnforcementState.ENFORCED
+        record.completed_at = now
+    record.save(
+        update_fields=[
+            "attempts",
+            "last_attempt_at",
+            "checked_members",
+            "noncompliant_members",
+            "last_error",
+            "state",
+            "completed_at",
+        ]
+    )
+    return record
+
+
+def _members_awaiting_mfa_verification(workspace: Workspace):
+    """Active members of *workspace* whose factor nobody has confirmed."""
+    return (
+        WorkspaceMember.objects.active()
+        .filter(workspace=workspace, mfa_compliant__isnull=True)
+        .select_related("workspace", "user")
+    )
+
+
+def retry_mfa_enforcement(*, limit: int = 100) -> list:
+    """The durable half: re-sweep every workspace that is not ``enforced``.
+
+    Idempotent by construction — it re-reads state from the database and
+    re-asks auth, so running it twice costs two calls and changes nothing
+    else. A deployment schedules ``manage.py enforce_workspace_mfa``;
+    without it the retry still happens lazily, one member at a time, at the
+    admission gate.
+
+    Returns the records it touched (newest attempt first is not promised;
+    the order is the queue's).
+    """
+    pending = (
+        WorkspaceMFAEnforcement.objects.exclude(state=MFAEnforcementState.ENFORCED)
+        .filter(workspace__deleted_at__isnull=True)
+        .select_related("workspace")
+        .order_by("last_attempt_at")[:limit]
+    )
+    touched = []
+    for record in pending:
+        if not security_settings_for(record.workspace).require_mfa:
+            # The policy was switched off while this row waited; the lift
+            # already ran, so there is nothing left to enforce.
+            continue
+        touched.append(enforce_require_mfa(record.workspace))
+    return touched
+
+
+def mfa_admission_blocked(member: WorkspaceMember) -> bool:
+    """Is this member barred from the workspace by its ``require_mfa`` policy?
+
+    True when the workspace requires a strong second factor and this
+    member's compliance is not established. An unverified member is asked
+    about on the spot (one ``auth.mfa_status`` call, the answer persisted),
+    so the gate heals itself as people arrive; while the answer cannot be
+    got, the member stays out.
+
+    This is the "enforce at every admission" half of WORK-01. Without it,
+    ``require_mfa`` was enforced exactly once — during a sweep that could
+    quietly cover none of the org — and never again for anyone who joined,
+    was reinstated, or was missed.
+    """
+    if member.mfa_compliant:
+        return False
+    if not security_settings_for(member.workspace).require_mfa:
+        return False
+    return verify_member_mfa(member) is not True
 
 
 def lift_no_mfa_suspensions(workspace: Workspace) -> int:
@@ -1841,6 +2005,20 @@ def lift_no_mfa_suspensions(workspace: Workspace) -> int:
     for member in members:
         if unsuspend_member(member, notify=False):
             lifted += 1
+    # Every stored compliance answer is dropped with the policy. Keeping
+    # them would let a workspace that switched MFA off for a year switch it
+    # back on and admit people on a year-old "yes" — the enforcement record
+    # goes back to pending for the same reason.
+    WorkspaceMember.objects.filter(workspace=workspace).update(
+        mfa_compliant=None, mfa_verified_at=None
+    )
+    WorkspaceMFAEnforcement.objects.filter(workspace=workspace).update(
+        state=MFAEnforcementState.PENDING,
+        completed_at=None,
+        checked_members=0,
+        noncompliant_members=0,
+        last_error="",
+    )
     return lifted
 
 
@@ -1862,8 +2040,10 @@ def suspend_memberships_without_mfa(user_id) -> int:
         if workspace.deleted_at:
             continue
         if security_settings_for(workspace).require_mfa:
-            if suspend_member(member, reason=SUSPENSION_NO_MFA):
-                suspended += 1
+            # The event IS the answer auth would give — record it as such,
+            # so the admission gate does not spend a call re-asking.
+            record_member_mfa(member, compliant=False)
+            suspended += 1
     return suspended
 
 
@@ -1881,6 +2061,11 @@ def lift_no_mfa_suspensions_for_user(user_id) -> int:
     for member in members:
         if unsuspend_member(member):
             lifted += 1
+        # Same reasoning as the disable consumer: auth just told us the
+        # factor exists, so the membership is verified without a call.
+        member.mfa_compliant = True
+        member.mfa_verified_at = timezone.now()
+        member.save(update_fields=["mfa_compliant", "mfa_verified_at"])
     return lifted
 
 

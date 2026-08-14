@@ -48,10 +48,30 @@ def get_membership(
     widens the lookup to suspended rows — for surfaces that must
     distinguish "suspended member" from "not a member" (the view layer's
     ``membership_suspended`` 403); authorization decisions never pass it.
+
+    **The MFA door (WORK-01).** In a workspace whose ``require_mfa`` policy
+    is on, a membership whose second factor has never been confirmed is not
+    an admission: the member is asked about here, once, and the answer is
+    stored. Before this, the policy was applied by a single sweep at the
+    moment it was switched on — anyone who joined afterwards, or whom the
+    sweep never reached because auth was down, walked in unchecked while
+    the organization was told MFA was required.
+
+    A workspace without the policy pays nothing for this: the settings
+    block rides on the row already joined here.
     """
-    qs = WorkspaceMember.objects.filter(workspace_id=workspace_id, user_id=user_id)
+    qs = WorkspaceMember.objects.filter(
+        workspace_id=workspace_id, user_id=user_id
+    ).select_related("workspace")
     qs = qs.accepted() if include_suspended else qs.active()
-    return qs.first()
+    membership = qs.first()
+    if membership is None:
+        return None
+    from .services import mfa_admission_blocked
+
+    if mfa_admission_blocked(membership):
+        return None
+    return membership
 
 
 def require_role(workspace_id, user_id, minimum: str) -> WorkspaceMember | None:

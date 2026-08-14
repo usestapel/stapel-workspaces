@@ -248,6 +248,21 @@ class WorkspaceMember(models.Model):
     #: ``Profile.display_name`` (35) so a hint is never silently truncated on
     #: the day it lands there for real.
     display_name_hint = models.CharField(max_length=35, blank=True, default="")
+    #: Whether this member was PROVEN to hold a strong second factor, and
+    #: when (org-program spec §C3 / WORK-01). Three values, and the third
+    #: is the one that matters: True = auth answered yes, False = auth
+    #: answered no (the membership is suspended for ``no_mfa``), NULL =
+    #: **nobody has asked yet**.
+    #:
+    #: The policy used to have no third value. A sweep that stopped at the
+    #: first auth error left the rest of the org untouched and
+    #: indistinguishable from an org that had passed — the endpoint said
+    #: "MFA is required now" and half the members had never been checked.
+    #: NULL under a ``require_mfa`` policy is therefore not admission: see
+    #: ``permissions.get_membership``, which verifies on the spot and
+    #: refuses while the answer is unknown.
+    mfa_compliant = models.BooleanField(null=True, blank=True, default=None)
+    mfa_verified_at = models.DateTimeField(null=True, blank=True)
     #: The person's EXPLICIT choice of home workspace — the choice
     #: ``STAPEL_WORKSPACES["DEFAULT_WORKSPACE_ID"]`` already promises to yield
     #: to ("a DEFAULT, not a cage: a person still switches spaces, and their
@@ -541,3 +556,82 @@ class AuditAction(models.TextChoices):
     MEMBER_ROLE_CHANGED = "member_role_changed", "Member role changed"
     MEMBER_SUSPENDED = "member_suspended", "Member suspended"
     MEMBER_UNSUSPENDED = "member_unsuspended", "Member reinstated"
+
+
+class MFAEnforcementState(models.TextChoices):
+    """How far a workspace's ``require_mfa`` policy has actually got.
+
+    The policy used to be a boolean in a JSON blob and a best-effort sweep
+    that returned True or False into a caller that ignored it: an
+    administrator who turned MFA on got a 200 whether every member had been
+    checked, half of them had, or auth had been unreachable from the first
+    call onward (WORK-01).
+
+    ``pending``
+        The policy is on and no sweep has run yet.
+    ``enforcing``
+        A sweep has run but coverage is incomplete — members remain whose
+        factor nobody has confirmed (a new joiner, an attempt that stopped
+        at an auth error).
+    ``enforced``
+        Every active member has been asked and answered: compliant, or
+        suspended for ``no_mfa``. This is the only state in which the
+        workspace may be reported as enforcing MFA.
+    ``failed``
+        The last attempt hit an auth error. Distinct from ``enforcing``
+        because it carries ``last_error`` and is what the retry sweep and
+        the administrator's screen are looking for.
+    """
+
+    PENDING = "pending", "Pending"
+    ENFORCING = "enforcing", "Enforcing"
+    ENFORCED = "enforced", "Enforced"
+    FAILED = "failed", "Failed"
+
+
+class WorkspaceMFAEnforcement(models.Model):
+    """The durable state of one workspace's ``require_mfa`` enforcement.
+
+    One row per workspace, created when the policy is switched on and kept
+    afterwards (a workspace that turned MFA off and on again keeps its
+    history of attempts). It exists so three questions have answers that
+    survive the request that asked them: has the sweep finished, when was
+    it last tried, and what did auth say when it did not.
+
+    :func:`~stapel_workspaces.services.retry_mfa_enforcement` is the
+    durable half — an idempotent sweep over every row that is not
+    ``enforced`` — and ``manage.py enforce_workspace_mfa`` is how a
+    deployment schedules it.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.OneToOneField(
+        Workspace, on_delete=models.CASCADE, related_name="mfa_enforcement"
+    )
+    state = models.CharField(
+        max_length=16,
+        choices=MFAEnforcementState.choices,
+        default=MFAEnforcementState.PENDING,
+    )
+    #: When the policy was last switched on (the clock a compliance report
+    #: measures "how long has this org been half-enforced" against).
+    requested_at = models.DateTimeField(auto_now_add=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    #: When coverage first became complete. Cleared whenever it stops being.
+    completed_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    #: The last auth failure, verbatim, for the administrator's screen. Never
+    #: a credential — ``auth.mfa_status`` answers with a boolean and errors
+    #: with a message about the call, not about the factor.
+    last_error = models.TextField(blank=True, default="")
+    #: Coverage of the last attempt: members asked, and of those, members
+    #: without a strong factor (i.e. suspended for no_mfa).
+    checked_members = models.PositiveIntegerField(default=0)
+    noncompliant_members = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "workspaces_mfa_enforcement"
+        indexes = [models.Index(fields=["state"])]
+
+    def __str__(self):
+        return f"{self.workspace_id}: mfa {self.state}"

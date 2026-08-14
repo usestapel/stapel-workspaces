@@ -2,7 +2,7 @@
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 51 · extension points 5 · operations 27 · error codes 69.
+Contract: axes 1 · surface 56 · extension points 5 · operations 27 · error codes 69.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -29,6 +29,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Suspend a membership without removing it (idempotent) — instead of writing suspended_at directly.
 - unsuspend_member — stapel_workspaces.services.unsuspend_member
   Lift a membership suspension (idempotent) — counterpart of suspend_member.
+- verify_member_mfa — stapel_workspaces.services.verify_member_mfa
+  Ask auth about one member's second factor and store the answer — returns None when auth could not be reached, which never counts as compliant.
 ### predicate
 - can_create_workspace — stapel_workspaces.services.can_create_workspace
   May this account found a workspace on this instance (WORKSPACE_CREATE_POLICY) — ask before drawing a '+ New space' control, so the button and the door agree.
@@ -40,6 +42,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   True if the user's active membership grants a capability — the everyday authorization check.
 - is_guest — stapel_workspaces.permissions.is_guest
   THE canonical guest predicate (mandate-model vardict 2026-08-03): true for an authenticated user with no active mandate anywhere — an anonymous session qualifies by construction. Branch dashboards/onboarding on this, never on request.user.is_authenticated.
+- mfa_admission_blocked — stapel_workspaces.services.mfa_admission_blocked
+  Is this member barred by the workspace's require_mfa policy — the door the policy is enforced at, verifying on the spot when nobody has asked yet.
 - resend_cooldown_remaining — stapel_workspaces.services.resend_cooldown_remaining
   Seconds before the invited address may be mailed about this invitation again (0 = now) — ask before offering a resend affordance, rather than discovering the 429.
 - role_at_least — stapel_workspaces.permissions.role_at_least
@@ -87,12 +91,16 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Lift every no_mfa suspension in a workspace — call when require_mfa turns off.
 - lift_no_mfa_suspensions_for_user — stapel_workspaces.services.lift_no_mfa_suspensions_for_user
   Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled.
+- mfa_enforcement_for — stapel_workspaces.services.mfa_enforcement_for
+  The workspace's MFA enforcement record (pending/enforcing/enforced/failed) — read it, not the settings flag, to answer whether MFA actually holds here.
 - preferred_workspace_id_for — stapel_workspaces.services.preferred_workspace_id_for
   The caller's stated home workspace id, or '' — active-membership filtered, so it goes quiet during a suspension.
 - provision_member — stapel_workspaces.services.provision_member
   Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials).
 - record_audit — stapel_workspaces.audit.record_audit
   Append one line to a workspace's membership history (an event-store line, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget.
+- record_member_mfa — stapel_workspaces.services.record_member_mfa
+  Persist one member's compliance answer (and suspend them for no_mfa when it is a no) — the per-member half the sweep and the events share.
 - remove_member — stapel_workspaces.services.remove_member
   Delete a membership under the same lock and invariant as change_member_role — returns (workspace, user, role) of what went.
 - replay_legacy_rows — stapel_workspaces.audit.replay_legacy_rows
@@ -103,6 +111,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Reset a member's password on the org's order, with the audit emit and security-signal letter.
 - resolve_landing_workspace — stapel_workspaces.services.resolve_landing_workspace
   The canon landing-mandate policy (mandate-model vardict 2026-08-03) for a freshly (re)appearing account — call this from a user.registered subscriber instead of unconditionally minting a personal workspace; reads STREET_LANDING_MODE and is a deliberate no-op for an invited origin, so a subscriber cannot double-mint or race the invite's own membership.
+- retry_mfa_enforcement — stapel_workspaces.services.retry_mfa_enforcement
+  Idempotent re-sweep of every workspace not yet enforced — what manage.py enforce_workspace_mfa schedules.
 - revoke_invitation — stapel_workspaces.services.revoke_invitation
   Withdraw a live invitation under the same compare-and-set lock as accept/decline, recording WHO withdrew it (revoked_by).
 - role_rank — stapel_workspaces.capabilities.role_rank

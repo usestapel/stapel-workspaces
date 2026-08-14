@@ -375,7 +375,9 @@ class TestPredicatePerCallSite:
 
     def test_enforce_require_mfa_sweeps_only_active(self, org, fake_mfa_status):
         fake_mfa_status["strong"] = {str(org.owner.id), str(org.active.id)}
-        assert services.enforce_require_mfa(org.ws) is True
+        # The sweep answers with its enforcement record (WORK-01): "every
+        # active member was asked and answered" is a state, not a boolean.
+        assert services.enforce_require_mfa(org.ws).state == "enforced"
         assert sorted(fake_mfa_status["asked"]) == sorted(
             [str(org.owner.id), str(org.active.id)]
         )

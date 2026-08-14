@@ -72,6 +72,7 @@ from .capabilities import (
 from .dto import (
     AuditEventResponse,
     DisplayNameResponse,
+    MFAEnforcementStatus,
     InvitationClaimResponse,
     InvitationPreviewResponse,
     InvitationResponse,
@@ -218,11 +219,39 @@ def _workspace_owner_names(workspaces) -> dict:
     return services._fetch_profile_display_names(ws.owner_id for ws in workspaces)
 
 
+def _mfa_enforcement_to_dto(ws: Workspace) -> MFAEnforcementStatus | None:
+    """The workspace's MFA enforcement state, or None when the policy is off.
+
+    The honest answer to "is MFA required here" (WORK-01): the settings
+    block records the administrator's wish, this records what the sweep
+    actually achieved — including the members nobody has been able to ask
+    about, who are the ones an administrator has to act on.
+    """
+    if not services.security_settings_for(ws).require_mfa:
+        return None
+    record = services.mfa_enforcement_for(ws)
+    return MFAEnforcementStatus(
+        state=record.state,
+        attempts=record.attempts,
+        checked_members=record.checked_members,
+        noncompliant_members=record.noncompliant_members,
+        unverified_members=ws.members.active()
+        .filter(mfa_compliant__isnull=True)
+        .count(),
+        last_attempt_at=(
+            record.last_attempt_at.isoformat() if record.last_attempt_at else None
+        ),
+        completed_at=record.completed_at.isoformat() if record.completed_at else None,
+        last_error=record.last_error,
+    )
+
+
 def _workspace_to_dto(
     ws: Workspace,
     my_role: str | None = None,
     member_count: int | None = None,
     owner_names: dict | None = None,
+    mfa_enforcement: MFAEnforcementStatus | None = None,
 ) -> WorkspaceResponse:
     if member_count is None:
         # active(), not accepted(): a suspended membership counts for
@@ -255,6 +284,9 @@ def _workspace_to_dto(
             if owner_names is not None
             else _workspace_owner_names([ws])
         ).get(str(ws.owner_id), ""),
+        # Only the single-workspace responses carry it: the list endpoint
+        # would pay a per-row count for a block nothing on a switcher reads.
+        mfa_enforcement=mfa_enforcement,
     )
 
 
@@ -272,6 +304,7 @@ def _member_to_dto(m: WorkspaceMember, display_name: str | None = None) -> Membe
         suspended_at=m.suspended_at.isoformat() if m.suspended_at else None,
         suspension_reason=m.suspension_reason or None,
         display_name=display_name,
+        mfa_compliant=m.mfa_compliant,
     )
 
 
@@ -691,7 +724,11 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         membership.save(update_fields=["last_accessed_at"])
         return StapelResponse(
             self.get_response_serializer_class()(
-                _workspace_to_dto(ws, my_role=membership.role)
+                _workspace_to_dto(
+                    ws,
+                    my_role=membership.role,
+                    mfa_enforcement=_mfa_enforcement_to_dto(ws),
+                )
             )
         )
 
@@ -721,12 +758,16 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
     def _patch_security(self, request, ws, membership, data):
         """Step-up-guarded branch: the PATCH touches the security block.
 
-        Flipping ``require_mfa`` ON triggers the synchronous member sweep
-        (``auth.mfa_status`` per member; no strong factor → suspension with
-        reason ``no_mfa``); auth being unavailable aborts the sweep without
-        touching anyone (fail-open by suspension — spec §C3), the policy
-        itself still saves and the mfa-event consumer catches up. Flipping
-        it OFF lifts the ``no_mfa`` suspensions it caused.
+        Flipping ``require_mfa`` ON runs the sweep (``auth.mfa_status`` per
+        member; no strong factor → suspension with reason ``no_mfa``) and
+        answers with what the sweep ACHIEVED, in ``mfa_enforcement``: a
+        member auth could not be asked about leaves the workspace
+        ``enforcing``/``failed``, not ``enforced``, and stays out at the
+        door (``permissions.get_membership``) until somebody gets an
+        answer. Reporting a 200 as "MFA is now required" while half the
+        organization had never been checked is WORK-01, and the response
+        body is where it was invisible. Flipping the policy OFF lifts the
+        ``no_mfa`` suspensions it caused and forgets the stored answers.
         """
         was_require_mfa = services.security_settings_for(ws).require_mfa
         response = self._apply_patch(ws, membership, data)
@@ -737,7 +778,15 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
             services.enforce_require_mfa(ws)
         elif was_require_mfa and not now_require_mfa:
             services.lift_no_mfa_suspensions(ws)
-        return response
+        return StapelResponse(
+            self.get_response_serializer_class()(
+                _workspace_to_dto(
+                    ws,
+                    my_role=membership.role,
+                    mfa_enforcement=_mfa_enforcement_to_dto(ws),
+                )
+            )
+        )
 
     def _apply_patch(self, ws, membership, data):
         new_slug = getattr(data, "slug", None)

@@ -264,6 +264,18 @@
       "intent": "Take the workspace row lock every seat/owner write serializes on — call it before counting anything you are about to decide from."
     },
     {
+      "name": "mfa_admission_blocked",
+      "kind": "predicate",
+      "path": "stapel_workspaces.services.mfa_admission_blocked",
+      "intent": "Is this member barred by the workspace's require_mfa policy — the door the policy is enforced at, verifying on the spot when nobody has asked yet."
+    },
+    {
+      "name": "mfa_enforcement_for",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.mfa_enforcement_for",
+      "intent": "The workspace's MFA enforcement record (pending/enforcing/enforced/failed) — read it, not the settings flag, to answer whether MFA actually holds here."
+    },
+    {
       "name": "preferred_workspace_id_for",
       "kind": "factory",
       "path": "stapel_workspaces.services.preferred_workspace_id_for",
@@ -274,6 +286,12 @@
       "kind": "factory",
       "path": "stapel_workspaces.services.provision_member",
       "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
+    },
+    {
+      "name": "record_member_mfa",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.record_member_mfa",
+      "intent": "Persist one member's compliance answer (and suspend them for no_mfa when it is a no) — the per-member half the sweep and the events share."
     },
     {
       "name": "remove_member",
@@ -304,6 +322,12 @@
       "kind": "factory",
       "path": "stapel_workspaces.services.resolve_landing_workspace",
       "intent": "The canon landing-mandate policy (mandate-model vardict 2026-08-03) for a freshly (re)appearing account — call this from a user.registered subscriber instead of unconditionally minting a personal workspace; reads STREET_LANDING_MODE and is a deliberate no-op for an invited origin, so a subscriber cannot double-mint or race the invite's own membership."
+    },
+    {
+      "name": "retry_mfa_enforcement",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.retry_mfa_enforcement",
+      "intent": "Idempotent re-sweep of every workspace not yet enforced — what manage.py enforce_workspace_mfa schedules."
     },
     {
       "name": "revoke_invitation",
@@ -352,6 +376,12 @@
       "kind": "gate_function",
       "path": "stapel_workspaces.services.unsuspend_member",
       "intent": "Lift a membership suspension (idempotent) — counterpart of suspend_member."
+    },
+    {
+      "name": "verify_member_mfa",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.services.verify_member_mfa",
+      "intent": "Ask auth about one member's second factor and store the answer — returns None when auth could not be reached, which never counts as compliant."
     }
   ],
   "operations_total": 27,

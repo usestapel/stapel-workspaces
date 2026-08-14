@@ -393,6 +393,13 @@ class TestRequireMfaPatch:
         services.suspend_member(
             member, reason=SUSPENSION_NO_MFA, notify=False
         )
+        # The administrator turning the policy off has to get through the
+        # door the policy holds shut (WORK-01): under require_mfa an
+        # unverified member — the owner included — is not admitted, so the
+        # request that carries the switch-off comes from an account auth
+        # confirms. Enabling MFA is the other way out, and the one the
+        # policy exists to push people towards.
+        fake_mfa_status["strong"] = {str(user.pk)}
         grant_verification(user_id=str(user.pk), scope="sensitive", max_age=300)
         events = capture("workspace.member_unsuspended")
         sent_notifications.clear()

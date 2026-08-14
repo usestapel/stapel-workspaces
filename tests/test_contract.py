@@ -72,10 +72,13 @@ TRIAD = ("schema.json", "flows.json", "errors.json")
 # (5000 -> 5500) for the two preferred-workspace surface entries, and again
 # (5500 -> 6000) when the audit journal moved into the core event store and
 # its sink seam, anchor read and migration data path each earned a surface
-# entry. The budget stays enforced, just at 6000 — keep it in step with the
-# Makefile.
+# entry. Raised again (6000 -> 7000) for the security-audit findings
+# (WORK-01/02/03): the workspace lock and the serialized membership writes,
+# the MFA enforcement record with its verification/retry seams, and the
+# provisioning saga with its reconciliation. The budget stays enforced,
+# just at 7000 — keep it in step with the Makefile.
 ARTIFACTS = TRIAD + ("capabilities.json", "llms.txt")
-LLMS_TXT_BUDGET = "6000"
+LLMS_TXT_BUDGET = "7000"
 
 
 def _emit(out_dir: Path) -> None:
