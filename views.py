@@ -30,7 +30,6 @@ and the shape of the answer follows from what this module is:
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.db.models import CharField, F, Q, Value
 from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.utils import timezone
@@ -39,7 +38,6 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from stapel_core.comm import emit
 from stapel_core.comm.exceptions import (
     FunctionNotRegistered,
     FunctionRouteNotConfigured,
@@ -108,12 +106,7 @@ from .errors import (
     ERR_429_INVITATION_RESEND_COOLDOWN,
     ERR_503_AUTH_UNAVAILABLE,
 )
-from .events import (
-    EVENT_WORKSPACE_MEMBER_REMOVED,
-    EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
-)
 from .models import (
-    AuditAction,
     InvitationStatus,
     Role,
     Workspace,
@@ -892,30 +885,26 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
             return err
         # Entitlement seam (spec §D2): capability first ("may YOU", 403),
         # then the org's plan ceiling ("may the ORG", 402). Seats = accepted
-        # + pending live invitations + the invitations about to be created.
-        verdict = entitlements.check_org_entitlement(
-            ws,
-            entitlements.ENT_MEMBERS_MAX,
-            quantity=entitlements.member_seats_quantity(
-                ws, additional=len(data.emails)
-            ),
-        )
-        if not verdict.allowed:
-            return StapelErrorResponse(
-                402,
-                ERR_402_MEMBER_LIMIT_REACHED,
-                params={"limit": verdict.limit if verdict.limit is not None else 0},
-            )
-        invitations = [
-            services.create_invitation(
+        # + pending live invitations + the invitations about to be created,
+        # counted and taken in ONE locked transaction (WORK-02) — a check
+        # here and a write afterwards is a seat two batches can both sell.
+        try:
+            invitations = services.invite_members(
                 workspace=ws,
-                email=e,
+                emails=data.emails,
                 role=data.role,
                 invited_by=request.user,
                 display_name=getattr(data, "display_name", None),
             )
-            for e in data.emails
-        ]
+        except entitlements.EntitlementDenied as denied:
+            limit = denied.result.limit
+            return StapelErrorResponse(
+                402,
+                ERR_402_MEMBER_LIMIT_REACHED,
+                params={"limit": limit if limit is not None else 0},
+            )
+        except Workspace.DoesNotExist:
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         return StapelResponse(
             self.get_response_serializer_class()(
                 MemberInviteResponse(
@@ -1187,6 +1176,15 @@ class InvitationResendView(WorkspaceInvitationActionView):
             return _resend_cooldown_response(remaining)
         try:
             inv = services.resend_invitation(invitation=inv)
+        except entitlements.EntitlementDenied as denied:
+            # Lost the seat race: the plan filled up between the check
+            # above and the reservation inside the lock.
+            limit = denied.result.limit
+            return StapelErrorResponse(
+                402,
+                ERR_402_MEMBER_LIMIT_REACHED,
+                params={"limit": limit if limit is not None else 0},
+            )
         except services.InvitationResendCooldown as exc:
             # Lost the other race the lock guards: a concurrent resend
             # claimed the window between the read above and the lock.
@@ -1364,43 +1362,18 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         err = _rank_check(actor_membership.role, new_role) if actor_membership else None
         if err:
             return err
-        if member.role == Role.OWNER and new_role != Role.OWNER:
-            others = (
-                WorkspaceMember.objects.filter(
-                    workspace_id=workspace_id, role=Role.OWNER
-                )
-                .exclude(id=member.id)
-                .exists()
+        # The last-owner invariant is NOT decided here: `services.
+        # change_member_role` re-reads it under the workspace lock, because
+        # "another owner exists" stops being true the moment a concurrent
+        # demotion commits (WORK-02).
+        try:
+            member = services.change_member_role(
+                member=member, new_role=new_role, actor=request.user
             )
-            if not others:
-                return StapelErrorResponse(403, ERR_403_LAST_OWNER)
-        old_role = member.role
-        member.role = new_role
-        with transaction.atomic():
-            member.save(update_fields=["role"])
-            # Transactional outbox: leaves iff this transaction commits.
-            # Cross-service consumers (e.g. a rooms service re-evaluating a
-            # participant's rights) get the new role's capability grants
-            # inline (spec §A4).
-            emit(
-                EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
-                {
-                    "workspace_id": str(member.workspace_id),
-                    "user_id": str(member.user_id),
-                    "old_role": str(old_role),
-                    "new_role": str(member.role),
-                    "capabilities": capabilities_for(member.role),
-                },
-            )
-            services.record_audit(
-                workspace=member.workspace_id,
-                action=AuditAction.MEMBER_ROLE_CHANGED,
-                actor=request.user,
-                subject=member.user_id,
-                role=member.role,
-                old_role=str(old_role),
-                new_role=str(member.role),
-            )
+        except services.LastOwnerError:
+            return StapelErrorResponse(403, ERR_403_LAST_OWNER)
+        except WorkspaceMember.DoesNotExist:
+            return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         # Other services cache membership lookups — drop the stale role.
         invalidate_membership_cache(workspace_id, user_id)
         workspace_member_changed.send(
@@ -1428,44 +1401,16 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
             workspace_id, request.user.id, Role.OWNER
         ):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
-        if member.role == Role.OWNER:
-            others = (
-                WorkspaceMember.objects.filter(
-                    workspace_id=workspace_id, role=Role.OWNER
-                )
-                .exclude(id=member.id)
-                .exists()
+        # Same as the demotion above: the surviving-owner question is
+        # answered inside the workspace lock, not from this snapshot.
+        try:
+            workspace, removed_user, removed_role = services.remove_member(
+                member=member, actor=request.user
             )
-            if not others:
-                return StapelErrorResponse(403, ERR_403_LAST_OWNER)
-        workspace = member.workspace
-        removed_user = member.user
-        removed_role = member.role
-        with transaction.atomic():
-            member.delete()
-            # Transactional outbox: leaves iff this transaction commits.
-            # The cross-service kick signal (spec §A4) — e.g. a rooms
-            # service disconnects the user from an ongoing call.
-            emit(
-                EVENT_WORKSPACE_MEMBER_REMOVED,
-                {
-                    "workspace_id": str(workspace.id),
-                    "user_id": str(removed_user.pk),
-                    "role": str(removed_role),
-                    "removed_by": str(request.user.pk),
-                },
-            )
-            # The row is gone; the record of its going is not. An audit
-            # written outside this transaction could survive a rollback and
-            # claim a removal that never happened.
-            services.record_audit(
-                workspace=workspace,
-                action=AuditAction.MEMBER_REMOVED,
-                actor=request.user,
-                subject=removed_user,
-                subject_email=getattr(removed_user, "email", "") or "",
-                role=removed_role,
-            )
+        except services.LastOwnerError:
+            return StapelErrorResponse(403, ERR_403_LAST_OWNER)
+        except WorkspaceMember.DoesNotExist:
+            return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         # Other services cache membership lookups — drop the stale entry.
         invalidate_membership_cache(workspace_id, user_id)
         workspace_member_changed.send(

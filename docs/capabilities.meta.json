@@ -157,6 +157,10 @@
       "kind": "factory",
       "intent": "Create a single-use, TTL'd invitation and deliver it best-effort — as workspace.invitation.new_user when the address has no account yet, workspace.invitation when it does."
     },
+    "invite_members": {
+      "kind": "factory",
+      "intent": "Invite a batch of addresses — counts the plan's seats and writes the invitations in one locked transaction, so two batches cannot sell the same seat twice."
+    },
     "issue_invitation_login_grant": {
       "kind": "factory",
       "intent": "Mint an auth-backed login grant for a not-yet-registered invitee's claim step (0.7)."
@@ -180,6 +184,18 @@
     "accept_invitation": {
       "kind": "factory",
       "intent": "Resolve a pending invitation into a membership — entitlement check, first-login policies, emits together."
+    },
+    "lock_workspace": {
+      "kind": "gate_function",
+      "intent": "Take the workspace row lock every seat/owner write serializes on — call it before counting anything you are about to decide from."
+    },
+    "change_member_role": {
+      "kind": "factory",
+      "intent": "Write a member's new role with the last-owner invariant re-checked under the workspace lock — raises LastOwnerError instead of leaving an ownerless workspace."
+    },
+    "remove_member": {
+      "kind": "factory",
+      "intent": "Delete a membership under the same lock and invariant as change_member_role — returns (workspace, user, role) of what went."
     },
     "apply_first_login_policies": {
       "kind": "gate_function",

@@ -180,6 +180,12 @@
       "intent": "May this account found a workspace on this instance (WORKSPACE_CREATE_POLICY) — ask before drawing a '+ New space' control, so the button and the door agree."
     },
     {
+      "name": "change_member_role",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.change_member_role",
+      "intent": "Write a member's new role with the last-owner invariant re-checked under the workspace lock — raises LastOwnerError instead of leaving an ownerless workspace."
+    },
+    {
       "name": "check_display_name",
       "kind": "gate_function",
       "path": "stapel_workspaces.services.check_display_name",
@@ -222,6 +228,12 @@
       "intent": "User ids that own the instance — the OWNERs of DEFAULT_WORKSPACE_ID; empty when the deployment never declared one."
     },
     {
+      "name": "invite_members",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.invite_members",
+      "intent": "Invite a batch of addresses — counts the plan's seats and writes the invitations in one locked transaction, so two batches cannot sell the same seat twice."
+    },
+    {
       "name": "issue_invitation_login_grant",
       "kind": "factory",
       "path": "stapel_workspaces.services.issue_invitation_login_grant",
@@ -246,6 +258,12 @@
       "intent": "Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled."
     },
     {
+      "name": "lock_workspace",
+      "kind": "gate_function",
+      "path": "stapel_workspaces.services.lock_workspace",
+      "intent": "Take the workspace row lock every seat/owner write serializes on — call it before counting anything you are about to decide from."
+    },
+    {
       "name": "preferred_workspace_id_for",
       "kind": "factory",
       "path": "stapel_workspaces.services.preferred_workspace_id_for",
@@ -256,6 +274,12 @@
       "kind": "factory",
       "path": "stapel_workspaces.services.provision_member",
       "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
+    },
+    {
+      "name": "remove_member",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.remove_member",
+      "intent": "Delete a membership under the same lock and invariant as change_member_role — returns (workspace, user, role) of what went."
     },
     {
       "name": "resend_cooldown_remaining",

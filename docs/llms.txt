@@ -2,7 +2,7 @@
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that degrades to allow without billing installed, plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 47 · extension points 5 · operations 27 · error codes 69.
+Contract: axes 1 · surface 51 · extension points 5 · operations 27 · error codes 69.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -19,6 +19,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Ask stapel-profiles' own name canon by name (profiles.validate_display_name) what a display name may contain; returns that module's error.400.display_name_* key or None. Anything here that accepts or writes a name goes through it, and this module keeps no second, differently-strict copy — that drift is what it exists to stop. Best-effort: no provider means no canon applied here, never a locally invented rule.
 - enforce_require_mfa — stapel_workspaces.services.enforce_require_mfa
   Sweep a workspace's members via auth.mfa_status, suspend the unenrolled, fail-open on an auth hiccup.
+- lock_workspace — stapel_workspaces.services.lock_workspace
+  Take the workspace row lock every seat/owner write serializes on — call it before counting anything you are about to decide from.
 - require_capability — stapel_workspaces.permissions.require_capability
   Membership if the user holds a capability, else None — capability-gate for a view.
 - require_role — stapel_workspaces.permissions.require_role
@@ -53,6 +55,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Granted capability strings of a role — primitive behind role_has_capability.
 - capability_level — stapel_workspaces.capabilities.capability_level
   "standard"/"high" step-up level of a capability — check before gating on step-up.
+- change_member_role — stapel_workspaces.services.change_member_role
+  Write a member's new role with the last-owner invariant re-checked under the workspace lock — raises LastOwnerError instead of leaving an ownerless workspace.
 - create_invitation — stapel_workspaces.services.create_invitation
   Create a single-use, TTL'd invitation and deliver it best-effort — as workspace.invitation.new_user when the address has no account yet, workspace.invitation when it does.
 - create_workspace — stapel_workspaces.services.create_workspace
@@ -73,6 +77,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   One anchor page of a workspace's membership history, newest first, workspace-scoped unconditionally — the read behind GET <id>/audit; use it instead of querying the stream by hand.
 - instance_owner_ids — stapel_workspaces.services.instance_owner_ids
   User ids that own the instance — the OWNERs of DEFAULT_WORKSPACE_ID; empty when the deployment never declared one.
+- invite_members — stapel_workspaces.services.invite_members
+  Invite a batch of addresses — counts the plan's seats and writes the invitations in one locked transaction, so two batches cannot sell the same seat twice.
 - issue_invitation_login_grant — stapel_workspaces.services.issue_invitation_login_grant
   Mint an auth-backed login grant for a not-yet-registered invitee's claim step (0.7).
 - lift_deactivation_suspensions_for_user — stapel_workspaces.services.lift_deactivation_suspensions_for_user
@@ -87,6 +93,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials).
 - record_audit — stapel_workspaces.audit.record_audit
   Append one line to a workspace's membership history (an event-store line, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget.
+- remove_member — stapel_workspaces.services.remove_member
+  Delete a membership under the same lock and invariant as change_member_role — returns (workspace, user, role) of what went.
 - replay_legacy_rows — stapel_workspaces.audit.replay_legacy_rows
   Carry rows of the retired 0.24 audit table into the stream, ids and timestamps intact — the data path migration 0009 runs; not for new writes.
 - resend_invitation — stapel_workspaces.services.resend_invitation

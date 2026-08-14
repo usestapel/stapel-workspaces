@@ -462,6 +462,31 @@ class WorkspaceInvitation(models.Model):
 
     class Meta:
         db_table = "workspaces_invitation"
+        constraints = [
+            # ONE live invitation per address per workspace, stated to the
+            # database rather than trusted to the callers. Two unresolved
+            # rows for one address are two working tokens for one person
+            # and two reserved seats on the bill — and the second row was
+            # one concurrent invite batch away, since the seat count is
+            # read before the rows are written. Terminal rows (accepted,
+            # declined, revoked) are outside the condition: the history of
+            # everyone who was ever invited stays whole, and a fresh invite
+            # after any terminal state is a fresh row.
+            #
+            # An EXPIRED-but-unresolved row is inside it on purpose:
+            # `services.create_invitation` lands on that row and refreshes
+            # its TTL instead of inserting a twin, which is what "invite
+            # them again" means.
+            models.UniqueConstraint(
+                fields=["workspace", "email"],
+                condition=models.Q(
+                    accepted_at__isnull=True,
+                    declined_at__isnull=True,
+                    revoked_at__isnull=True,
+                ),
+                name="workspaces_invitation_one_live_per_email",
+            ),
+        ]
         indexes = [
             models.Index(fields=["email"]),
             models.Index(fields=["workspace", "accepted_at"]),

@@ -38,10 +38,13 @@ from .entitlements import (
     debit_provision_credits,
     member_seats_quantity,
 )
+from .capabilities import capabilities_for
 from .events import (
     EVENT_WORKSPACE_INVITATION_REVOKED,
     EVENT_WORKSPACE_MEMBER_PASSWORD_RESET,
     EVENT_WORKSPACE_MEMBER_PROVISIONED,
+    EVENT_WORKSPACE_MEMBER_REMOVED,
+    EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
     EVENT_WORKSPACE_MEMBER_SUSPENDED,
     EVENT_WORKSPACE_MEMBER_UNSUSPENDED,
     EVENT_WORKSPACE_PERSONAL_CREATED,
@@ -51,6 +54,7 @@ from .models import (
     SUSPENSION_ACCOUNT_DEACTIVATED,
     SUSPENSION_NO_MFA,
     AuditAction,
+    InvitationStatus,
     Role,
     Workspace,
     WorkspaceInvitation,
@@ -430,6 +434,89 @@ def _fetch_profile_display_names(user_ids) -> dict:
         return {}
 
 
+class LastOwnerError(Exception):
+    """The write would leave the workspace with no owner.
+
+    Raised by :func:`change_member_role` / :func:`remove_member` when the
+    invariant is re-checked under the workspace lock and no other owner is
+    left. The view renders it as ``error.403.last_owner_cannot_be_removed``.
+    """
+
+
+def lock_workspace(workspace) -> Workspace | None:
+    """Take the workspace's row lock — the mutex of every seat/owner write.
+
+    Accepts a :class:`~stapel_workspaces.models.Workspace` or its id and
+    returns the freshly locked row (``None`` when it is gone or
+    soft-deleted). Callers must already be inside ``transaction.atomic``.
+
+    Every path that changes WHO is in a workspace — invite, resend, accept,
+    provision, role change, removal — takes this lock BEFORE reading the
+    counts it decides on, and always in this order (workspace row first,
+    then the invitation/member row), so the paths cannot deadlock against
+    each other. Deciding on a count read outside the lock is deciding on a
+    snapshot another transaction is already invalidating: two last-owner
+    demotions each saw a second owner, two invite batches each saw the last
+    free seat, and both committed.
+
+    SQLite ignores ``SELECT ... FOR UPDATE`` (Django's backend has no
+    support flag for it), so the serialization this buys is real only on a
+    locking database. The decisions themselves are re-made inside the lock
+    either way, which is what the tests pin.
+    """
+    workspace_id = getattr(workspace, "pk", workspace)
+    return (
+        Workspace.objects.select_for_update()
+        .filter(pk=workspace_id, deleted_at__isnull=True)
+        .first()
+    )
+
+
+@transaction.atomic
+def invite_members(
+    *,
+    workspace: Workspace,
+    emails,
+    role: str,
+    invited_by,
+    display_name: str | None = None,
+) -> list[WorkspaceInvitation]:
+    """Reserve seats and create the batch's invitations in one transaction.
+
+    The seat ceiling is counted under :func:`lock_workspace` and the rows
+    are written before the lock is released, so a seat cannot be sold
+    twice: a second batch arriving at the same moment waits, then counts
+    the rows this one has already committed. The view's own check is a
+    hint that produces a readable 402 early; this one is the reservation.
+
+    Raises :class:`~stapel_workspaces.entitlements.EntitlementDenied` when
+    the plan cannot carry the batch, and ``Workspace.DoesNotExist`` when
+    the workspace disappeared between the view's read and the lock.
+    """
+    locked = lock_workspace(workspace)
+    if locked is None:
+        raise Workspace.DoesNotExist("workspace is gone")
+    emails = list(emails)
+    verdict = check_org_entitlement(
+        locked,
+        ENT_MEMBERS_MAX,
+        quantity=member_seats_quantity(locked, additional=len(emails)),
+    )
+    if not verdict.allowed:
+        raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
+    return [
+        create_invitation(
+            workspace=locked,
+            email=email,
+            role=role,
+            invited_by=invited_by,
+            display_name=display_name,
+        )
+        for email in emails
+    ]
+
+
+@transaction.atomic
 def create_invitation(
     *,
     workspace: Workspace,
@@ -438,19 +525,46 @@ def create_invitation(
     invited_by,
     display_name: str | None = None,
 ) -> WorkspaceInvitation:
-    invitation = WorkspaceInvitation.objects.create(
-        workspace=workspace,
-        email=email.lower().strip(),
-        role=role,
-        invited_by=invited_by,
-        token=token_urlsafe(32),
-        expires_at=timezone.now()
-        + timedelta(days=workspaces_settings.INVITATION_TTL_DAYS),
-        # A NAME HINT (this invite's "Name" field), not the canonical name —
-        # see WorkspaceMember.display_name_hint's docstring for why this
-        # module stores it at all despite the name living in stapel-profiles.
-        display_name_hint=(display_name or "").strip(),
+    """Create — or refresh — the workspace's live invitation for *email*.
+
+    One live invitation per address per workspace, and the database says
+    so (``workspaces_invitation_one_live_per_email``). Inviting an address
+    that already has an unresolved invitation used to insert a second row,
+    and each row reserved its own seat: an admin re-sending from the
+    invite modal instead of the resend button billed the org twice for one
+    person and handed out two working tokens for one seat. The re-invite
+    now lands on the existing row — role, name hint and TTL refreshed, the
+    letter sent again — so the address has exactly one way in.
+    """
+    email = email.lower().strip()
+    expires_at = timezone.now() + timedelta(
+        days=workspaces_settings.INVITATION_TTL_DAYS
     )
+    invitation = (
+        WorkspaceInvitation.objects.select_for_update()
+        .unresolved()
+        .filter(workspace=workspace, email=email)
+        .first()
+    )
+    if invitation is not None:
+        invitation.role = role
+        invitation.expires_at = expires_at
+        invitation.display_name_hint = (display_name or "").strip()
+        invitation.save(update_fields=["role", "expires_at", "display_name_hint"])
+    else:
+        invitation = WorkspaceInvitation.objects.create(
+            workspace=workspace,
+            email=email,
+            role=role,
+            invited_by=invited_by,
+            token=token_urlsafe(32),
+            expires_at=expires_at,
+            # A NAME HINT (this invite's "Name" field), not the canonical
+            # name — see WorkspaceMember.display_name_hint's docstring for
+            # why this module stores it at all despite the name living in
+            # stapel-profiles.
+            display_name_hint=(display_name or "").strip(),
+        )
     record_audit(
         workspace=workspace,
         action=AuditAction.INVITATION_CREATED,
@@ -812,11 +926,19 @@ def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation
 
     ``expires_at`` restarts from now (``INVITATION_TTL_DAYS``) — a resent
     invitation the invitee cannot use before it expires again is not a
-    resend. NB: this re-reserves the seat (a revived expired invitation is
-    ``pending()`` again); the ceiling is re-checked by the caller, not
-    here.
+    resend. Reviving an EXPIRED invitation re-takes a seat, so the plan
+    ceiling is re-counted here under :func:`lock_workspace` and
+    :class:`~stapel_workspaces.entitlements.EntitlementDenied` is raised
+    when it no longer fits. The view's own check answers the admin early;
+    this one is what a batch of simultaneous resends has to pass.
     """
     with transaction.atomic():
+        # Workspace row first, invitation row second — the lock order every
+        # seat/owner path in this module takes, so they queue instead of
+        # deadlocking.
+        workspace = lock_workspace(invitation.workspace_id)
+        if workspace is None:
+            raise ValueError("workspace is gone")
         locked = (
             WorkspaceInvitation.objects.select_for_update()
             .unresolved()
@@ -825,6 +947,16 @@ def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation
         )
         if locked is None:
             raise ValueError("invitation is not pending")
+        # A live invitation already holds its seat; a revived expired one
+        # has to be given one back, and only if the plan still has it.
+        if locked.status != InvitationStatus.PENDING:
+            verdict = check_org_entitlement(
+                workspace,
+                ENT_MEMBERS_MAX,
+                quantity=member_seats_quantity(workspace, additional=1),
+            )
+            if not verdict.allowed:
+                raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
         remaining = resend_cooldown_remaining(locked)
         if remaining:
             raise InvitationResendCooldown(remaining)
@@ -889,6 +1021,13 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
     # unresolved() as decline's — hand-written, it had lost the revoked_at
     # clause, so a revocation committing between the view's state check and
     # this lock lost the race and the invite was accepted anyway (0.10.0).
+    # Workspace row first, invitation row second (see lock_workspace): the
+    # seat this accept turns into a membership is counted under that lock,
+    # so a batch of invitees accepting at the same instant cannot each read
+    # the same last free seat and all take it.
+    workspace = lock_workspace(invitation.workspace_id)
+    if workspace is None:
+        raise ValueError("workspace is gone")
     locked = (
         WorkspaceInvitation.objects.select_for_update()
         .unresolved()
@@ -907,9 +1046,9 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
     ).exists()
     if not already_member:
         verdict = check_org_entitlement(
-            locked.workspace,
+            workspace,
             ENT_MEMBERS_MAX,
-            quantity=member_seats_quantity(locked.workspace),
+            quantity=member_seats_quantity(workspace),
         )
         if not verdict.allowed:
             raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
@@ -985,6 +1124,131 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
         action="added",
     )
     return member
+
+
+@transaction.atomic
+def change_member_role(*, member: WorkspaceMember, new_role: str, actor):
+    """Write a member's new role with the last-owner invariant held.
+
+    "Is there another owner" is answered INSIDE the workspace lock and
+    immediately before the write, because the answer is only true until
+    somebody else commits. Two admins demoting the two remaining owners at
+    the same moment each read "yes, one other owner exists" outside a lock,
+    and the workspace ended up with none — an organization nobody can
+    administer, recoverable only by hand in the database.
+
+    Raises :class:`LastOwnerError` when this write would take the last
+    owner away, and ``WorkspaceMember.DoesNotExist`` when the row (or the
+    workspace) went away first. Returns the saved member.
+    """
+    if lock_workspace(member.workspace_id) is None:
+        raise WorkspaceMember.DoesNotExist("workspace is gone")
+    locked = (
+        WorkspaceMember.objects.select_for_update()
+        .select_related("workspace", "user")
+        .filter(pk=member.pk)
+        .first()
+    )
+    if locked is None:
+        raise WorkspaceMember.DoesNotExist("member is gone")
+    if locked.role == Role.OWNER and new_role != Role.OWNER:
+        _assert_another_owner(locked)
+    old_role = locked.role
+    locked.role = new_role
+    locked.save(update_fields=["role"])
+    # Transactional outbox: leaves iff this transaction commits.
+    # Cross-service consumers (e.g. a rooms service re-evaluating a
+    # participant's rights) get the new role's capability grants inline
+    # (spec §A4).
+    emit(
+        EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
+        {
+            "workspace_id": str(locked.workspace_id),
+            "user_id": str(locked.user_id),
+            "old_role": str(old_role),
+            "new_role": str(locked.role),
+            "capabilities": capabilities_for(locked.role),
+        },
+    )
+    record_audit(
+        workspace=locked.workspace_id,
+        action=AuditAction.MEMBER_ROLE_CHANGED,
+        actor=actor,
+        subject=locked.user_id,
+        role=locked.role,
+        old_role=str(old_role),
+        new_role=str(locked.role),
+    )
+    return locked
+
+
+@transaction.atomic
+def remove_member(*, member: WorkspaceMember, actor):
+    """Delete a membership with the last-owner invariant held.
+
+    The serialized twin of :func:`change_member_role` — same lock, same
+    re-read, same reason: a removal and a demotion racing each other are
+    two writes that were each valid against a workspace that no longer
+    existed by the time they landed.
+
+    Raises :class:`LastOwnerError` / ``WorkspaceMember.DoesNotExist``.
+    Returns ``(workspace, user, role)`` of the membership that was removed.
+    """
+    if lock_workspace(member.workspace_id) is None:
+        raise WorkspaceMember.DoesNotExist("workspace is gone")
+    locked = (
+        WorkspaceMember.objects.select_for_update()
+        .select_related("workspace", "user")
+        .filter(pk=member.pk)
+        .first()
+    )
+    if locked is None:
+        raise WorkspaceMember.DoesNotExist("member is gone")
+    if locked.role == Role.OWNER:
+        _assert_another_owner(locked)
+    workspace = locked.workspace
+    removed_user = locked.user
+    removed_role = locked.role
+    locked.delete()
+    # Transactional outbox: leaves iff this transaction commits. The
+    # cross-service kick signal (spec §A4) — e.g. a rooms service
+    # disconnects the user from an ongoing call.
+    emit(
+        EVENT_WORKSPACE_MEMBER_REMOVED,
+        {
+            "workspace_id": str(workspace.id),
+            "user_id": str(removed_user.pk),
+            "role": str(removed_role),
+            "removed_by": str(getattr(actor, "pk", actor)),
+        },
+    )
+    # The row is gone; the record of its going is not. An audit written
+    # outside this transaction could survive a rollback and claim a removal
+    # that never happened.
+    record_audit(
+        workspace=workspace,
+        action=AuditAction.MEMBER_REMOVED,
+        actor=actor,
+        subject=removed_user,
+        subject_email=getattr(removed_user, "email", "") or "",
+        role=removed_role,
+    )
+    return workspace, removed_user, removed_role
+
+
+def _assert_another_owner(member: WorkspaceMember) -> None:
+    """Raise :class:`LastOwnerError` unless a second owner survives *member*.
+
+    Counted under the caller's workspace lock, never before it.
+    """
+    others = (
+        WorkspaceMember.objects.select_for_update()
+        .filter(workspace_id=member.workspace_id, role=Role.OWNER)
+        .exclude(pk=member.pk)
+        .exists()
+    )
+    if not others:
+        raise LastOwnerError("the last owner cannot be demoted or removed")
 
 
 # ---------------------------------------------------------------------------
@@ -1142,6 +1406,22 @@ def provision_member(
     generated_password = result.get("generated_password")
 
     with transaction.atomic():
+        # A provisioned member takes a seat like any other, so the seat is
+        # reserved under the workspace lock (WORK-02) — provisioning used
+        # to bypass the members.max ceiling entirely, which made it the
+        # cheapest way for an org to grow past the plan it pays for.
+        locked = lock_workspace(workspace)
+        if locked is None:
+            from .errors import ERR_404_WORKSPACE_NOT_FOUND
+
+            raise ProvisionError(ERR_404_WORKSPACE_NOT_FOUND)
+        verdict = check_org_entitlement(
+            locked,
+            ENT_MEMBERS_MAX,
+            quantity=member_seats_quantity(locked, additional=1),
+        )
+        if not verdict.allowed:
+            raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
         member = WorkspaceMember.objects.create(
             workspace=workspace,
             user_id=user_id,
