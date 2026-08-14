@@ -622,8 +622,9 @@ class WorkspaceListCreateView(BillingSeamMixin, SerializerSeamsMixin, APIView):
             return StapelErrorResponse(400, ERR_400_SLUG_TAKEN)
         # Entitlement seam (spec §D2): creating an ORGANIZATION (type=work)
         # is plan-gated on the creator — the would-be owner and billing
-        # anchor. Personal workspaces are never gated. Without billing
-        # installed the check degrades to allow.
+        # anchor. Personal workspaces are never gated. The seam fails
+        # closed: an unreachable billing raises BillingUnavailable (503
+        # via the mixin), it does not hand out an unlimited plan.
         if (data.type or WorkspaceType.WORK) == WorkspaceType.WORK:
             verdict = entitlements.check_entitlement(
                 request.user.pk, entitlements.ENT_ORG
@@ -1281,7 +1282,8 @@ class MemberProvisionView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     Gate stack, in order: HIGH step-up (``@requires_verification``, scope
     ``sensitive`` — the same store as admin step-up) → capability
     ``members.provision`` (403) → entitlement ``workspaces.provision_user``
-    (402; degrades to allow without billing) → optional per-user debit
+    (402; an unreachable billing answers 503, not allow) → optional
+    per-user debit
     (``STAPEL_WORKSPACES["PROVISION_USER_CREDITS"]`` > 0).
 
     Credentials: a synthetic account normally has no email — when the

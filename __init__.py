@@ -43,7 +43,9 @@ Mandate model (``stapel_workspaces.capabilities`` / ``.permissions``):
 
 Entitlement seam (``stapel_workspaces.entitlements``):
 - ``check_org_entitlement`` — ask billing whether the org's plan allows a
-  key; degrades to allow when billing is not installed.
+  key; fails CLOSED — an unreachable or unrouted billing raises
+  ``BillingUnavailable`` (503), not an unlimited plan, unless the
+  deployment declares ``STAPEL_WORKSPACES["ALLOW_UNBILLED"]``.
 
 Events (``stapel_workspaces.events``):
 - ``EVENT_WORKSPACE_PERSONAL_CREATED`` — comm action name emitted when a
