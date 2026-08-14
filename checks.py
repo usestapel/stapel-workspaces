@@ -8,6 +8,68 @@ than silently deny (or worse, grant) capabilities at runtime.
 from django.core import checks
 
 
+def _function_unreachable_reason(name: str) -> str | None:
+    """Why comm Function *name* cannot be called here, or None if it can.
+
+    "Is this seam wired" is a question about the transport this deployment
+    runs, and each transport addresses a function differently
+    (``stapel_core.comm``):
+
+    * ``inprocess`` — ``call()`` looks the name up in the process-local
+      registry, so a provider must be registered here;
+    * ``http`` — ``call()`` resolves a longest-prefix ``FUNCTION_ROUTES``
+      entry and ignores the registry entirely, so only a matching route
+      makes the function reachable — even in a process that also provides
+      it;
+    * ``nats`` — the subject IS the function name and no route table
+      exists (``comm/nats.py``); a deployment that serves the function with
+      ``manage.py serve_functions`` is wired, and nothing here can (or
+      should) prove the provider is up. That is what the runtime 503 is for;
+    * a dotted path — a custom transport does its own addressing.
+
+    Anything else is a transport ``call()`` cannot dispatch at all: it
+    raises ``FunctionRouteNotConfigured`` on every call, so the seam is as
+    unreachable as an unwired one.
+
+    Reading ``FUNCTION_ROUTES`` regardless of transport — which E011 and
+    W001 both did — reported a correctly wired NATS fleet as unwired.
+    """
+    from stapel_core.comm.config import comm_setting
+    from stapel_core.comm.exceptions import (
+        FunctionNotRegistered,
+        FunctionRouteNotConfigured,
+    )
+    from stapel_core.comm.functions import _route_for
+    from stapel_core.comm.registry import function_registry
+
+    transport = str(comm_setting("FUNCTION_TRANSPORT", "inprocess") or "")
+    if transport == "inprocess":
+        try:
+            function_registry.get(name)
+        except FunctionNotRegistered:
+            return (
+                f"the transport is 'inprocess' and no provider for {name} is "
+                "registered in this process"
+            )
+        return None
+    if transport == "http":
+        try:
+            _route_for(name)
+        except FunctionRouteNotConfigured:
+            return (
+                f"the transport is 'http' and no STAPEL_COMM['FUNCTION_ROUTES'] "
+                f"prefix matches {name}"
+            )
+        return None
+    if transport == "nats" or "." in transport:
+        return None
+    return (
+        f"STAPEL_COMM['FUNCTION_TRANSPORT'] is {transport!r}, which is not a "
+        "transport comm can dispatch on ('inprocess', 'nats', 'http', or a "
+        "dotted path to a transport callable)"
+    )
+
+
 @checks.register(checks.Tags.compatibility)
 def check_roles_overlay(app_configs, **kwargs):
     """E: the ROLES overlay must be well-formed and must not touch ``owner``."""
@@ -142,27 +204,14 @@ def check_profiles_name_write_wired(app_configs, **kwargs):
     process's surface degrades LOUDLY rather than blocking the start of
     everything else. Loud at deploy time beats loud at the first user.
     """
-    from stapel_core.comm.config import comm_setting
-    from stapel_core.comm.exceptions import (
-        FunctionNotRegistered,
-        FunctionRouteNotConfigured,
-    )
-    from stapel_core.comm.functions import _route_for
-    from stapel_core.comm.registry import function_registry
-
     from .services import SET_DISPLAY_NAME
 
-    transport = comm_setting("FUNCTION_TRANSPORT", "inprocess")
-    try:
-        if transport == "inprocess":
-            function_registry.get(SET_DISPLAY_NAME)
-        else:
-            _route_for(SET_DISPLAY_NAME)
-    except (FunctionNotRegistered, FunctionRouteNotConfigured):
+    reason = _function_unreachable_reason(SET_DISPLAY_NAME)
+    if reason is not None:
         return [checks.Warning(
-            f"{SET_DISPLAY_NAME} has no provider and no configured route — "
-            "PATCH <workspace>/members/<user_id>/name cannot write the "
-            "canonical display name in this deployment and will answer "
+            f"{SET_DISPLAY_NAME} is not reachable in this deployment ({reason}) "
+            "— PATCH <workspace>/members/<user_id>/name cannot write the "
+            "canonical display name and will answer "
             "error.503.profiles_not_configured on every request.",
             hint="Add stapel_profiles (>= 0.10) to INSTALLED_APPS in this "
                  "process, or add a STAPEL_COMM['FUNCTION_ROUTES'] entry for "
@@ -241,36 +290,33 @@ def check_billing_seam_wired(app_configs, **kwargs):
     either wires the seam or states that the instance sells nothing
     (``ALLOW_UNBILLED``), and finds out at deploy either way.
 
-    Two ways to be wired, because both topologies are real: billing in
-    INSTALLED_APPS (monolith — its ``ready()`` registers the Function), or
-    a ``billing.`` prefix in ``STAPEL_COMM["FUNCTION_ROUTES"]`` (split
-    services, where billing is legitimately absent from this process).
-    Neither is a liveness probe; a wired-but-down billing is exactly the
-    case the 503 exists for.
+    What "wired" means is whatever the deployment's FUNCTION_TRANSPORT
+    makes it mean — see :func:`_function_unreachable_reason`. Every
+    topology is real: billing in this process (monolith), billing behind an
+    http route, billing behind a NATS subject with no route table at all.
+    None of them is a liveness probe; a wired-but-down billing is exactly
+    the case the 503 exists for.
     """
-    from django.apps import apps
-
     from .conf import allow_unbilled
+    from .entitlements import CHECK_ENTITLEMENT
 
     if allow_unbilled():
         return []
-    if apps.is_installed("stapel_billing"):
-        return []
     try:
-        from stapel_core.comm.config import comm_setting
+        reason = _function_unreachable_reason(CHECK_ENTITLEMENT)
     except ImportError:  # pragma: no cover - comm ships with stapel-core
         return []
-    routes = comm_setting("FUNCTION_ROUTES", {}) or {}
-    if any(str(prefix).startswith("billing.") or "billing.".startswith(str(prefix))
-           for prefix in routes):
+    if reason is None:
         return []
     return [checks.Error(
-        "Plan ceilings fail closed, but this deployment has no billing seam: "
-        "stapel_billing is not installed and no STAPEL_COMM['FUNCTION_ROUTES'] "
-        "prefix matches 'billing.'. Creating an organization, inviting a "
+        f"Plan ceilings fail closed, but {CHECK_ENTITLEMENT} is not reachable "
+        f"in this deployment: {reason}. Creating an organization, inviting a "
         "member and provisioning a user will all answer 503.",
-        hint="Wire billing (install the app, or route 'billing.' to the "
-             "service that owns it), or declare that this instance sells "
-             "nothing with STAPEL_WORKSPACES['ALLOW_UNBILLED'] = True.",
+        hint="Wire billing for the transport this deployment runs — install "
+             "stapel_billing in this process (inprocess), route 'billing.' to "
+             "the service that owns it (http), or run that service's "
+             "`manage.py serve_functions` (nats) — or declare that this "
+             "instance sells nothing with "
+             "STAPEL_WORKSPACES['ALLOW_UNBILLED'] = True.",
         id="stapel_workspaces.E011",
     )]

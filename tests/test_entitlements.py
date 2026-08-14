@@ -150,26 +150,110 @@ class TestAllowUnbilled:
 
 
 class TestBillingSeamCheck:
-    """E011: a closed seam nobody wired is a deploy-time failure, not a 503."""
+    """E011: a closed seam nobody wired is a deploy-time failure, not a 503.
 
-    def test_error_when_unwired_and_not_declared(self):
+    "Wired" is a question about the transport this deployment runs, not about
+    one transport's route table: ``FUNCTION_ROUTES`` exists only for the http
+    transport (``stapel_core.comm.config``), so reading it under nats asked
+    the wrong witness and blocked the boot of a correctly wired fleet.
+    """
+
+    def test_error_when_no_provider_in_process(self, no_billing):
         from stapel_workspaces.checks import check_billing_seam_wired
 
         assert [e.id for e in check_billing_seam_wired(None)] == [
             "stapel_workspaces.E011"
         ]
 
-    def test_silent_when_declared_unbilled(self):
+    def test_silent_when_a_provider_is_registered_in_process(self):
+        """The monolith: billing's ``ready()`` published the Function here."""
+        from stapel_workspaces.checks import check_billing_seam_wired
+
+        # The autouse ``billing_seam`` fixture is that provider.
+        assert check_billing_seam_wired(None) == []
+
+    def test_silent_when_declared_unbilled(self, no_billing):
         from stapel_workspaces.checks import check_billing_seam_wired
 
         with override_settings(STAPEL_WORKSPACES=_settings(ALLOW_UNBILLED=True)):
             assert check_billing_seam_wired(None) == []
 
-    def test_silent_when_routed(self):
+    def test_silent_when_routed(self, no_billing):
         from stapel_workspaces.checks import check_billing_seam_wired
 
-        with override_settings(STAPEL_COMM={"FUNCTION_ROUTES": {"billing.": "http://b"}}):
+        with override_settings(STAPEL_COMM={
+            "FUNCTION_TRANSPORT": "http",
+            "FUNCTION_ROUTES": {"billing.": "http://b"},
+        }):
             assert check_billing_seam_wired(None) == []
+
+    def test_error_when_http_transport_has_no_billing_route(self):
+        """The genuinely unwired http deployment still fails, provider or not.
+
+        With ``FUNCTION_TRANSPORT="http"`` ``call()`` never consults the
+        registry (``stapel_core.comm.functions.call``), so a locally
+        registered provider — the autouse fixture here — does not make the
+        seam reachable. Only a matching route does.
+        """
+        from stapel_workspaces.checks import check_billing_seam_wired
+
+        with override_settings(STAPEL_COMM={
+            "FUNCTION_TRANSPORT": "http",
+            "FUNCTION_ROUTES": {"cdn.": "http://cdn"},
+        }):
+            assert [e.id for e in check_billing_seam_wired(None)] == [
+                "stapel_workspaces.E011"
+            ]
+
+    def test_silent_under_nats_without_any_routes(self, no_billing):
+        """NATS needs no route table: the subject IS the function name.
+
+        A split fleet that serves billing with ``manage.py serve_functions``
+        over NATS is wired; E011 used to fire on it and refuse the boot.
+        """
+        from stapel_workspaces.checks import check_billing_seam_wired
+
+        with override_settings(STAPEL_COMM={"FUNCTION_TRANSPORT": "nats"}):
+            assert check_billing_seam_wired(None) == []
+
+    def test_silent_under_a_custom_transport(self, no_billing):
+        """A dotted-path transport does its own addressing (gRPC, a mesh...)."""
+        from stapel_workspaces.checks import check_billing_seam_wired
+
+        with override_settings(STAPEL_COMM={
+            "FUNCTION_TRANSPORT": "acme.transport.call",
+        }):
+            assert check_billing_seam_wired(None) == []
+
+    def test_error_when_the_transport_cannot_dispatch_at_all(self):
+        """An unknown transport: every entitlement call raises, so 503s follow."""
+        from stapel_workspaces.checks import check_billing_seam_wired
+
+        with override_settings(STAPEL_COMM={"FUNCTION_TRANSPORT": "kafka"}):
+            assert [e.id for e in check_billing_seam_wired(None)] == [
+                "stapel_workspaces.E011"
+            ]
+
+
+class TestProfilesNameWriteCheck:
+    """W001 reads the same evidence as E011, and used to read it the same way."""
+
+    def test_silent_under_nats_without_any_routes(self):
+        from stapel_workspaces.checks import check_profiles_name_write_wired
+
+        with override_settings(STAPEL_COMM={"FUNCTION_TRANSPORT": "nats"}):
+            assert check_profiles_name_write_wired(None) == []
+
+    def test_warns_when_http_has_no_profiles_route(self):
+        from stapel_workspaces.checks import check_profiles_name_write_wired
+
+        with override_settings(STAPEL_COMM={
+            "FUNCTION_TRANSPORT": "http",
+            "FUNCTION_ROUTES": {"cdn.": "http://cdn"},
+        }):
+            assert [w.id for w in check_profiles_name_write_wired(None)] == [
+                "stapel_workspaces.W001"
+            ]
 
 
 @pytest.mark.django_db

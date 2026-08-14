@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+## [0.25.1] — 2026-08-15
+
+### Fixed — `E011` asked the route table a question only http can answer
+
+`stapel_workspaces.E011` (new in 0.25.0) decided "nothing is wired" by
+looking for a `billing.` prefix in `STAPEL_COMM["FUNCTION_ROUTES"]`. That
+table exists **only for the http transport**: under
+`FUNCTION_TRANSPORT="nats"` the subject IS the function name and no routes
+are configured at all (`stapel_core/comm/nats.py`), so a fleet correctly
+serving billing through `manage.py serve_functions` got E011 and
+`manage.py check` refused the boot. The seam worked; the check read the
+wrong evidence.
+
+Reachability is now asked per transport, the way `comm.call()` dispatches:
+
+| `FUNCTION_TRANSPORT` | wired means |
+| --- | --- |
+| `inprocess` | a provider for `billing.check_entitlement` is registered in this process |
+| `http` | a `FUNCTION_ROUTES` prefix matches the function name |
+| `nats` | nothing to wire — no route table exists |
+| dotted path | the custom transport does its own addressing |
+| anything else | `call()` cannot dispatch it, so the seam is unreachable |
+
+Two consequences beyond the NATS unblock, both deliberate. A process that
+runs `FUNCTION_TRANSPORT="http"` **and** installs `stapel_billing` still
+needs a route: `call()` never consults the registry under http, so the old
+`apps.is_installed()` short-circuit was silent about a deployment whose
+every entitlement call would 503. And an `inprocess` deployment that
+registers the provider without the app (a host publishing its own
+`billing.check_entitlement`) is now correctly seen as wired.
+
+`stapel_workspaces.W001` (the `profiles.set_display_name` write) read the
+same evidence the same way and is fixed with the same helper — it warned
+about a healthy NATS deployment.
+
+No behavior changed in the seam itself: `check_entitlement` still fails
+closed, and `ALLOW_UNBILLED` is still the one way to declare an instance
+that sells nothing.
+
 ## [0.25.0] — 2026-08-14
 
 ### Changed — BREAKING: the billing seam fails closed
