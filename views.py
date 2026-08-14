@@ -2054,13 +2054,11 @@ class InternalMembershipView(SerializerSeamsMixin, APIView):
     def get(self, request, workspace_id, user_id):  # noqa: R007
         # Only accepted, non-suspended memberships count — a suspended
         # member must read as not-a-member to authorization consumers
-        # (suspension closes access to the org entirely, spec §C3).
-        member = (
-            WorkspaceMember.objects.active()
-            .filter(workspace_id=workspace_id, user_id=user_id)
-            .select_related("user")
-            .first()
-        )
+        # (suspension closes access to the org entirely, spec §C3) — and
+        # the same is true of a member whose MFA the workspace requires and
+        # nobody has confirmed, which is why this goes through the
+        # admission seam rather than round it (WORK-01).
+        member = get_membership(workspace_id, user_id)
         if not member:
             return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         return StapelResponse(

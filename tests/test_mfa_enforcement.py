@@ -23,6 +23,7 @@ Four things are pinned here:
 """
 
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 
 from stapel_core.comm.exceptions import FunctionCallError
@@ -355,3 +356,47 @@ class TestTheApiSaysWhatHolds:
         by_user = {m["user_id"]: m for m in resp.json()["items"]}
         assert by_user[str(user.pk)]["mfa_compliant"] is True
         assert by_user[str(other_user.pk)]["mfa_compliant"] is False
+
+
+@pytest.mark.django_db
+class TestTheCrossServiceAnswersAgree:
+    """The door is one door: comm and the internal endpoint use it too.
+
+    Another service asking "is this person a member" is asking an admission
+    question, and a member whose second factor the workspace requires and
+    nobody has confirmed must not be answered "yes, with these
+    capabilities" there while the HTTP surface refuses them.
+    """
+
+    def test_check_membership_refuses_an_unverified_member(
+        self, user, other_user, mfa_status
+    ):
+        from stapel_workspaces.functions import check_membership
+
+        ws = _mfa_workspace(user)
+        _member(ws, other_user)
+        mfa_status["fail"] = True
+
+        answer = check_membership(
+            {"workspace_id": str(ws.id), "user_id": str(other_user.pk)}
+        )
+
+        assert answer == {"is_member": False, "role": None, "capabilities": []}
+
+    @override_settings(
+        MIDDLEWARE=["stapel_core.django.jwt.middleware.ServiceAPIKeyMiddleware"],
+        SERVICE_API_KEY="test-service-key",
+    )
+    def test_the_internal_endpoint_refuses_an_unverified_member(
+        self, api_client, user, other_user, mfa_status
+    ):
+        ws = _mfa_workspace(user)
+        _member(ws, other_user)
+        mfa_status["fail"] = True
+
+        resp = api_client.get(
+            f"{BASE}/internal/{ws.id}/members/{other_user.pk}",
+            HTTP_X_API_KEY="test-service-key",
+        )
+
+        assert resp.status_code == 404

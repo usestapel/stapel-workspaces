@@ -72,17 +72,13 @@ def check_membership(payload: dict) -> dict:
     the member's role — raw registry values, wildcards included.
     """
     from .capabilities import capabilities_for
-    from .models import WorkspaceMember
+    from .permissions import get_membership
 
-    member = (
-        WorkspaceMember.objects.active()
-        .filter(
-            workspace_id=payload["workspace_id"],
-            user_id=payload["user_id"],
-        )
-        .only("role")
-        .first()
-    )
+    # Through the admission seam, not around it: this is another service
+    # asking "may this person act here", and a workspace whose require_mfa
+    # policy has not been proven for them must answer no here too (WORK-01).
+    # The predicate is unchanged — get_membership selects active().
+    member = get_membership(payload["workspace_id"], payload["user_id"])
     if member is None:
         return {"is_member": False, "role": None, "capabilities": []}
     return {
