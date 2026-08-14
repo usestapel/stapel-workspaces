@@ -1,3 +1,4 @@
+# stapel: cutover-phase
 # The membership journal moves into the core event store (see audit.py for
 # why the bespoke table was a defect, not a design). Deletion-driven: the
 # same migration that retires the table carries its rows out — original
