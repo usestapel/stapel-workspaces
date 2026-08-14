@@ -1,5 +1,45 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed — the membership journal moves into the core event store; the bespoke table is gone
+
+0.24.0 built `WorkspaceAuditEvent` — an append-only table with its own
+pagination, no retention and no aggregation — one floor above
+`stapel_core.eventstore`, the platform's append-only stream primitive that
+already had cursor reads, retention, rollups and a pluggable backend, and
+that the privilege gateway's audit already writes to. That is this fleet's
+most-repeated defect shape (a mechanism built in core, a consumer that never
+picked it up), and this release deletes the instance of it:
+
+- Lines are written to the event-store stream
+  `STAPEL_WORKSPACES["AUDIT_STREAM"]` (default `workspace.audit`) through a
+  new deployment-owned sink seam `STAPEL_WORKSPACES["AUDIT_SINK"]` — the
+  same callable contract as `STAPEL_GATEWAY["AUDIT_SINK"]`, so one custom
+  sink serves both. The vocabulary (`models.AuditAction`), the write
+  discipline (`audit.record_audit`, still the one write path, still
+  never-raising) and the read mandate (`members.view`) stay in this module;
+  the storage stops being its business.
+- **`GET <workspace_id>/audit` does not change shape.** Same envelope, same
+  ISO-timestamp anchors, same item fields and ids — the read path goes
+  through the store's new anchor adapter, which speaks the released
+  `AnchorPagination` wire contract (pinned by
+  `tests/test_audit.py::test_the_released_anchor_envelope_survives_the_storage_change`).
+  One deliberate edge change: a malformed `anchor` now answers an empty page
+  (the malformed-`user_id` rule) where 0.24 answered a 500.
+- Migration `0009` is deletion-driven WITH the data path: it replays every
+  `workspaces_audit_event` row into the configured store (original
+  timestamps become the event `ts`, original UUID ids stay the line's `id`,
+  so pre-migration pages read back identically), then drops the table.
+  Deployments need `stapel_core.django.eventstore` in `INSTALLED_APPS`
+  (already true of any deployment on core's `COMMON_INSTALLED_APPS`).
+- Retention, rollups and backend routing arrive for free via
+  `STAPEL_EVENTSTORE` (`RETENTION["workspace.audit"]`, `ROUTES`), and the
+  journal shows up in core's cross-module `manage.py audit_trail`.
+
+Requires stapel-core with the event-store journal reads (`query(reverse=)`,
+`eventstore.anchor`) — the same branch, unreleased.
+
 ## [0.24.1] — 2026-08-13
 
 ### Fixed — the audit contract advertised a shape the endpoint never sends

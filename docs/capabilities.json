@@ -48,6 +48,30 @@
   ],
   "surface": [
     {
+      "name": "eventstore_sink",
+      "kind": "factory",
+      "path": "stapel_workspaces.audit.eventstore_sink",
+      "intent": "The default journal sink: append to the core event store and flush, so a sibling worker's read right after the transition already sees the line. Swap via STAPEL_WORKSPACES[\"AUDIT_SINK\"] (gateway-shaped callable) to ship the journal elsewhere."
+    },
+    {
+      "name": "history_page",
+      "kind": "factory",
+      "path": "stapel_workspaces.audit.history_page",
+      "intent": "One anchor page of a workspace's membership history, newest first, workspace-scoped unconditionally — the read behind GET <id>/audit; use it instead of querying the stream by hand."
+    },
+    {
+      "name": "record_audit",
+      "kind": "factory",
+      "path": "stapel_workspaces.audit.record_audit",
+      "intent": "Append one line to a workspace's membership history (an event-store line since 0.25, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
+    },
+    {
+      "name": "replay_legacy_rows",
+      "kind": "factory",
+      "path": "stapel_workspaces.audit.replay_legacy_rows",
+      "intent": "Carry rows of the retired 0.24 audit table into the stream, ids and timestamps intact — the data path migration 0009 runs; not for new writes."
+    },
+    {
       "name": "capabilities_for",
       "kind": "factory",
       "path": "stapel_workspaces.capabilities.capabilities_for",
@@ -232,12 +256,6 @@
       "kind": "factory",
       "path": "stapel_workspaces.services.provision_member",
       "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
-    },
-    {
-      "name": "record_audit",
-      "kind": "factory",
-      "path": "stapel_workspaces.services.record_audit",
-      "intent": "Append one line to a workspace's membership history — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
     },
     {
       "name": "resend_cooldown_remaining",

@@ -36,6 +36,7 @@ from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import permissions, status
+from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from stapel_core.comm import emit
@@ -61,7 +62,7 @@ from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 from stapel_core.verification import requires_verification
 
-from . import entitlements, services
+from . import audit, entitlements, services
 from .capabilities import (
     BUILTIN_ROLES,
     capabilities_for,
@@ -116,7 +117,6 @@ from .models import (
     InvitationStatus,
     Role,
     Workspace,
-    WorkspaceAuditEvent,
     WorkspaceInvitation,
     WorkspaceMember,
     WorkspaceType,
@@ -2204,45 +2204,78 @@ class WorkspaceAuditView(SerializerSeamsMixin, APIView):
         if err:
             return err
 
-        rows = WorkspaceAuditEvent.objects.filter(workspace_id=ws.id)
+        # The history lives in the core event store (see audit.py), read
+        # through the store's anchor adapter — which speaks this endpoint's
+        # released wire contract, so the storage change is invisible on the
+        # wire: same envelope, same anchors, same items.
         action = (request.query_params.get("action") or "").strip()
-        if action:
-            rows = rows.filter(action=action)
+        subject_id = None
+        empty = False
         subject = (request.query_params.get("user_id") or "").strip()
         if subject:
             try:
-                rows = rows.filter(subject_id=UUID(subject))
+                subject_id = UUID(subject)
             except (TypeError, ValueError):
                 # A malformed id matches nobody. Ignoring the filter would
                 # hand back the WHOLE history under a request that asked for
                 # one person's — the loudest possible wrong answer.
-                rows = rows.none()
+                empty = True
+        limit = AuditPagination()._get_limit(request)
+        try:
+            page = (
+                None
+                if empty
+                else audit.history_page(
+                    ws.id,
+                    action=action,
+                    subject_id=subject_id,
+                    anchor=(request.query_params.get("anchor") or "").strip() or None,
+                    direction=request.query_params.get("direction", "next"),
+                    limit=limit,
+                )
+            )
+        except ValueError:
+            # A garbage anchor gets the same treatment as the malformed user
+            # filter above: match nothing. Restarting from page one would
+            # silently hand back rows the caller already walked past.
+            page = None
 
-        paginator = AuditPagination()
-        page = paginator.paginate_queryset(rows, request, view=self)
+        events = page.events if page else []
+        payloads = [e.payload for e in events]
         # ONE profiles call for every person named on the page, actors and
         # subjects together — the same batch shape the member list uses.
         names = services._fetch_profile_display_names(
-            [r.actor_id for r in page if r.actor_id]
-            + [r.subject_id for r in page if r.subject_id]
+            [p["actor_id"] for p in payloads if p.get("actor_id")]
+            + [p["subject_id"] for p in payloads if p.get("subject_id")]
         )
         dtos = [
             AuditEventResponse(
-                id=r.id,
-                action=r.action,
-                actor_id=r.actor_id,
-                actor_display_name=names.get(str(r.actor_id), "") if r.actor_id else "",
-                subject_id=r.subject_id,
+                id=UUID(p["id"]),
+                action=p["action"],
+                actor_id=UUID(p["actor_id"]) if p.get("actor_id") else None,
+                actor_display_name=names.get(p.get("actor_id"), "") if p.get("actor_id") else "",
+                subject_id=UUID(p["subject_id"]) if p.get("subject_id") else None,
                 subject_display_name=(
-                    names.get(str(r.subject_id), "") if r.subject_id else ""
+                    names.get(p.get("subject_id"), "") if p.get("subject_id") else ""
                 ),
-                subject_email=r.subject_email,
-                role=r.role,
-                metadata=r.metadata or {},
-                created_at=r.created_at.isoformat(),
+                subject_email=p.get("subject_email", ""),
+                role=p.get("role", ""),
+                metadata=p.get("metadata") or {},
+                created_at=e.ts.isoformat(),
             )
-            for r in page
+            for e, p in zip(events, payloads)
         ]
-        return paginator.get_paginated_response(
-            self.get_response_serializer_class()(dtos, many=True).data
+        items = self.get_response_serializer_class()(dtos, many=True).data
+        # The exact AnchorPagination envelope, hand-assembled: the paginator
+        # class above still DECLARES the schema, the adapter now produces the
+        # values (its flags follow the same contract).
+        return Response(
+            {
+                "items": items,
+                "next_anchor": page.next_anchor if page else None,
+                "prev_anchor": page.prev_anchor if page else None,
+                "has_next": page.has_next if page else False,
+                "has_prev": page.has_prev if page else False,
+                "count": len(items),
+            }
         )

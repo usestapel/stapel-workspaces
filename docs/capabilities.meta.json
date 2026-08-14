@@ -74,6 +74,10 @@
     {
       "select": "functions",
       "path": "services.py"
+    },
+    {
+      "select": "functions",
+      "path": "audit.py"
     }
   ],
   "surface": {
@@ -251,7 +255,19 @@
     },
     "record_audit": {
       "kind": "factory",
-      "intent": "Append one line to a workspace's membership history — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
+      "intent": "Append one line to a workspace's membership history (an event-store line, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
+    },
+    "eventstore_sink": {
+      "kind": "factory",
+      "intent": "The default journal sink: append to the core event store and flush, so a sibling worker's read right after the transition already sees the line. Swap via STAPEL_WORKSPACES[\"AUDIT_SINK\"] (gateway-shaped callable) to ship the journal elsewhere."
+    },
+    "history_page": {
+      "kind": "factory",
+      "intent": "One anchor page of a workspace's membership history, newest first, workspace-scoped unconditionally — the read behind GET <id>/audit; use it instead of querying the stream by hand."
+    },
+    "replay_legacy_rows": {
+      "kind": "factory",
+      "intent": "Carry rows of the retired 0.24 audit table into the stream, ids and timestamps intact — the data path migration 0009 runs; not for new writes."
     }
   }
 }

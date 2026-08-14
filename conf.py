@@ -161,6 +161,22 @@ DEFAULTS = {
     # cloud whose members can each spin up their own org — a gap nobody would
     # notice until it was populated. An explicit value always wins.
     "WORKSPACE_CREATE_POLICY": "",
+    # WHERE THE MEMBERSHIP JOURNAL GOES — callable(stream, payload, *,
+    # project, container), the same sink contract the privilege gateway's
+    # STAPEL_GATEWAY["AUDIT_SINK"] uses, so one custom sink (a SIEM
+    # shipper, a syslog writer) can serve both seams. The default appends
+    # to stapel_core.eventstore and flushes; see audit.eventstore_sink for
+    # why the flush is part of the contract here. A deployment that swaps
+    # the sink away from the event store takes over serving the history
+    # too: GET <workspace_id>/audit reads the event store and only the
+    # event store.
+    "AUDIT_SINK": "stapel_workspaces.audit.eventstore_sink",
+    # The event-store stream membership history is written to and read
+    # from. One stream per journal, not per workspace: the workspace is a
+    # payload field (`workspace_id`) the read side filters on, the way
+    # every other stream consumer slices. Retention/rollup/backends key on
+    # this name via STAPEL_EVENTSTORE (RETENTION, ROUTES).
+    "AUDIT_STREAM": "workspace.audit",
 }
 
 #: The three answers `WORKSPACE_CREATE_POLICY` may take, plus "" for derived.
@@ -174,6 +190,11 @@ CREATE_POLICIES = frozenset(
 workspaces_settings = AppSettings(
     "STAPEL_WORKSPACES",
     defaults=DEFAULTS,
+    import_strings=("AUDIT_SINK",),
+    # The sink decides what code runs on every membership transition — a
+    # stray same-named env var must never swap it silently (the gateway
+    # applies the same rule to its AUDIT_SINK).
+    no_env=("AUDIT_SINK",),
 )
 
 #: Values an environment variable may spell "yes" with. AppSettings resolves

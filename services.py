@@ -46,73 +46,19 @@ from .events import (
     EVENT_WORKSPACE_MEMBER_UNSUSPENDED,
     EVENT_WORKSPACE_PERSONAL_CREATED,
 )
+from .audit import record_audit  # noqa: F401 - the one write path; see audit.py
 from .models import (
     SUSPENSION_ACCOUNT_DEACTIVATED,
     SUSPENSION_NO_MFA,
     AuditAction,
     Role,
     Workspace,
-    WorkspaceAuditEvent,
     WorkspaceInvitation,
     WorkspaceMember,
     WorkspaceType,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def record_audit(
-    *,
-    workspace,
-    action: str,
-    actor=None,
-    subject=None,
-    subject_email: str = "",
-    role: str = "",
-    **metadata,
-) -> WorkspaceAuditEvent:
-    """Append one line to a workspace's membership history.
-
-    THE ONE WRITE PATH, and it is called from the SERVICE that owns each
-    transition rather than from the views — the same rule the emits already
-    follow, for the same reason: a second door into a transition would come
-    with a second chance to forget the record. ``tests/test_audit.py`` pins
-    that every emitted membership event has a matching audit action, so a
-    future transition cannot ship emitting-but-not-recording.
-
-    *actor* and *subject* accept a user object or a bare id — call sites hold
-    one or the other and normalising here beats `getattr(x, "pk", x)` at ten
-    of them.
-
-    Never raises into the caller: an audit line is a record OF the change, not
-    a precondition FOR it, and failing a removal because history could not be
-    written would be the tail wagging the dog. A failure is logged loudly —
-    silence here would make the history quietly incomplete, which is worse
-    than a gap somebody can see.
-    """
-
-    def _id(value):
-        if value is None:
-            return None
-        return getattr(value, "pk", value)
-
-    try:
-        return WorkspaceAuditEvent.objects.create(
-            workspace_id=getattr(workspace, "pk", workspace),
-            action=action,
-            actor_id=_id(actor),
-            subject_id=_id(subject),
-            subject_email=(subject_email or "").lower().strip(),
-            role=role or "",
-            metadata={k: v for k, v in metadata.items() if v is not None},
-        )
-    except Exception:  # noqa: BLE001 - see the docstring
-        logger.exception(
-            "workspaces: could not record audit action %s for workspace %s",
-            action,
-            getattr(workspace, "pk", workspace),
-        )
-        return None
 
 
 def _make_unique_slug(name: str) -> str:
