@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-08-14
+
 ### Changed — BREAKING: the billing seam fails closed
 
 **Read this before upgrading if you run stapel-workspaces without

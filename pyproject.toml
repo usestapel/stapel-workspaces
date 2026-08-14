@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-workspaces"
-version = "0.24.1"
+version = "0.25.0"
 description = "Team workspaces and RBAC Django app for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,7 +25,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "stapel-core>=0.23.1,<1.0",  # core owns + ships its own error catalogs (0.22), and the reference resolves them (0.23.1)
+    "stapel-core>=0.24.0,<1.0",  # the audit journal is a stream in core's event store now: eventstore.anchor + query(reverse=) + subject-scoped purge all arrived in 0.24.0
 ]
 
 [project.urls]
