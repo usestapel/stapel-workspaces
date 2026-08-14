@@ -2,6 +2,61 @@
 
 ## [Unreleased]
 
+### Fixed — the three HIGH findings of the 2026-08-11 security audit
+
+**WORK-01 — `require_mfa` said "done" for work it had not done.** Turning
+the policy on saved the flag, ran a sweep whose Boolean result the view
+threw away, and answered 200; the sweep stopped at the first auth error, so
+an organization could be told MFA was required with none of its members
+checked, and anyone joining afterwards walked in unexamined. The policy now
+has state (`WorkspaceMFAEnforcement`: pending → enforcing → enforced/failed,
+with attempts, coverage and the last auth error) and per-member evidence
+(`WorkspaceMember.mfa_compliant`, where NULL means "nobody has asked" — the
+value the old code could not express). Enforcement moved to the door:
+`permissions.get_membership` — and with it `workspaces.check_membership`
+and the internal membership endpoint — refuses a member whose factor is
+unconfirmed while the policy is on, verifying on the spot and storing the
+answer. `retry_mfa_enforcement` + `manage.py enforce_workspace_mfa` are the
+durable half; `mfa_enforcement` on the workspace detail/PATCH response and
+`mfa_compliant` on the roster are the visible one. An auth outage still
+suspends nobody — it simply stops admitting the unverified.
+
+**WORK-02 — owner, seat and invitation invariants raced.** Each was decided
+on a snapshot and enforced afterwards: two demotions each saw "another
+owner exists" and left none, two invite batches each saw the last free
+seat, provisioning counted no seats at all, and two live invitations for
+one address meant two working tokens and two billed seats. Every mutating
+path now takes the workspace row lock first (`services.lock_workspace`) and
+re-reads what it decides from inside it — `change_member_role` /
+`remove_member` re-check the surviving owner, `invite_members` counts and
+writes the batch in one transaction, accept/resend/provision reserve their
+seat there. The database states the one invariant it can: a partial unique
+constraint on (workspace, email) for unresolved invitations, with the
+re-invite refreshing the existing row (migration `0010` revokes
+pre-existing duplicates first).
+
+**WORK-03 — provisioning and login grants leaked control.** Provisioning is
+a saga on `WorkspaceProvisionOperation` with a stable operation id: a
+completed operation replays into the member it already made, a resumed one
+keeps the account auth minted, and a failure compensates — refund
+attempted, and what billing cannot take stays as `compensating` for
+`manage.py reconcile_provisioning`. The claim endpoint mints ONE live login
+grant per invitation (`INVITATION_LOGIN_GRANT_TTL_SECONDS`, claimed by a
+conditional UPDATE), so a leaked invite link is no longer an endless supply
+of sign-in credentials; a second claim answers
+`error.429.invitation_grant_pending` with `Retry-After`. The
+provisioned-account letter no longer carries the generated password unless
+`PROVISION_EMAIL_INITIAL_PASSWORD` is set.
+
+Known limits, recorded rather than papered over: real parallel execution of
+the WORK-02 races needs PostgreSQL (SQLite ignores `SELECT ... FOR UPDATE`,
+so the tests pin the decision-under-lock and the one-transaction
+reservation); binding a login grant to workspace/purpose/TTL and replacing
+the provisioned password with a one-time activation link both need
+stapel-auth seams that do not exist yet; and `billing.credit` is not
+published by stapel-billing, so a refund usually cannot be made from here —
+which is why the debt is a queue instead of a log line.
+
 ### Changed — the membership journal moves into the core event store; the bespoke table is gone
 
 0.24.0 built `WorkspaceAuditEvent` — an append-only table with its own
