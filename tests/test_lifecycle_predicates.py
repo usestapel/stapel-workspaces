@@ -54,6 +54,7 @@ none in this repository.
 """
 
 import ast
+import pathlib
 import uuid
 from datetime import timedelta
 from pathlib import Path
@@ -182,10 +183,16 @@ class TestNoRawLifecycleFilters:
         violation — a real red on a file this repo does not own, which sends
         the reader hunting a defect that is not there.
         """
-        venv = PACKAGE_ROOT / ".venv"
+        # A synthetic root, NOT PACKAGE_ROOT: when the package is installed
+        # non-editable, PACKAGE_ROOT is itself under site-packages, and the
+        # "ours" path built from it would be flagged by the very rule under
+        # test. The assertions are about path SHAPE, so they must not depend
+        # on how this checkout happens to be installed.
+        root = pathlib.Path("/synthetic/repo")
+        venv = root / ".venv"
         installed = venv / "lib" / "python3.12" / "site-packages" / "sibling.py"
-        vendored = PACKAGE_ROOT / "vendor" / "site-packages" / "other.py"
-        ours = PACKAGE_ROOT / "services.py"
+        vendored = root / "vendor" / "site-packages" / "other.py"
+        ours = root / "services.py"
 
         assert _is_foreign_source(installed, {venv})
         assert _is_foreign_source(vendored, set())
