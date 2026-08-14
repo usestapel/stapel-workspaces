@@ -30,15 +30,14 @@ and the shape of the answer follows from what this module is:
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.db.models import CharField, F, Q, Value
 from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import permissions, status
+from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from stapel_core.comm import emit
 from stapel_core.comm.exceptions import (
     FunctionNotRegistered,
     FunctionRouteNotConfigured,
@@ -61,7 +60,7 @@ from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
 from stapel_core.verification import requires_verification
 
-from . import entitlements, services
+from . import audit, entitlements, services
 from .capabilities import (
     BUILTIN_ROLES,
     capabilities_for,
@@ -73,6 +72,7 @@ from .capabilities import (
 from .dto import (
     AuditEventResponse,
     DisplayNameResponse,
+    MFAEnforcementStatus,
     InvitationClaimResponse,
     InvitationPreviewResponse,
     InvitationResponse,
@@ -104,19 +104,15 @@ from .errors import (
     ERR_404_MEMBER_NOT_FOUND,
     ERR_404_WORKSPACE_NOT_FOUND,
     ERR_409_EMAIL_ALREADY_REGISTERED,
+    ERR_429_INVITATION_GRANT_PENDING,
     ERR_429_INVITATION_RESEND_COOLDOWN,
     ERR_503_AUTH_UNAVAILABLE,
-)
-from .events import (
-    EVENT_WORKSPACE_MEMBER_REMOVED,
-    EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
+    ERR_503_BILLING_UNAVAILABLE,
 )
 from .models import (
-    AuditAction,
     InvitationStatus,
     Role,
     Workspace,
-    WorkspaceAuditEvent,
     WorkspaceInvitation,
     WorkspaceMember,
     WorkspaceType,
@@ -168,6 +164,22 @@ class SerializerSeamsMixin:
 
     def get_response_serializer_class(self):
         return self.response_serializer_class
+
+
+class BillingSeamMixin:
+    """Turns an unaskable plan ceiling into 503 for the whole view.
+
+    Mixed in rather than written as an ``except`` at each call site because
+    the seam is consulted from views AND from inside ``services`` under the
+    workspace lock, and the set of call sites grows: a view that gains a
+    method later inherits the mapping instead of re-deriving it. The 402
+    denials stay per-call-site — those carry a limit the screen renders.
+    """
+
+    def handle_exception(self, exc):
+        if isinstance(exc, entitlements.BillingUnavailable):
+            return StapelErrorResponse(503, ERR_503_BILLING_UNAVAILABLE)
+        return super().handle_exception(exc)
 
 
 def _capability_check(membership, capability: str):
@@ -225,11 +237,39 @@ def _workspace_owner_names(workspaces) -> dict:
     return services._fetch_profile_display_names(ws.owner_id for ws in workspaces)
 
 
+def _mfa_enforcement_to_dto(ws: Workspace) -> MFAEnforcementStatus | None:
+    """The workspace's MFA enforcement state, or None when the policy is off.
+
+    The honest answer to "is MFA required here" (WORK-01): the settings
+    block records the administrator's wish, this records what the sweep
+    actually achieved — including the members nobody has been able to ask
+    about, who are the ones an administrator has to act on.
+    """
+    if not services.security_settings_for(ws).require_mfa:
+        return None
+    record = services.mfa_enforcement_for(ws)
+    return MFAEnforcementStatus(
+        state=record.state,
+        attempts=record.attempts,
+        checked_members=record.checked_members,
+        noncompliant_members=record.noncompliant_members,
+        unverified_members=ws.members.active()
+        .filter(mfa_compliant__isnull=True)
+        .count(),
+        last_attempt_at=(
+            record.last_attempt_at.isoformat() if record.last_attempt_at else None
+        ),
+        completed_at=record.completed_at.isoformat() if record.completed_at else None,
+        last_error=record.last_error,
+    )
+
+
 def _workspace_to_dto(
     ws: Workspace,
     my_role: str | None = None,
     member_count: int | None = None,
     owner_names: dict | None = None,
+    mfa_enforcement: MFAEnforcementStatus | None = None,
 ) -> WorkspaceResponse:
     if member_count is None:
         # active(), not accepted(): a suspended membership counts for
@@ -262,6 +302,9 @@ def _workspace_to_dto(
             if owner_names is not None
             else _workspace_owner_names([ws])
         ).get(str(ws.owner_id), ""),
+        # Only the single-workspace responses carry it: the list endpoint
+        # would pay a per-row count for a block nothing on a switcher reads.
+        mfa_enforcement=mfa_enforcement,
     )
 
 
@@ -279,6 +322,7 @@ def _member_to_dto(m: WorkspaceMember, display_name: str | None = None) -> Membe
         suspended_at=m.suspended_at.isoformat() if m.suspended_at else None,
         suspension_reason=m.suspension_reason or None,
         display_name=display_name,
+        mfa_compliant=m.mfa_compliant,
     )
 
 
@@ -462,7 +506,7 @@ def _invitation_terminal_error(inv: WorkspaceInvitation):
 
 
 @extend_schema(tags=["Workspaces"])
-class WorkspaceListCreateView(SerializerSeamsMixin, APIView):
+class WorkspaceListCreateView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     # GET is a live guest path: an app header asks "which workspaces am I in?"
     # for every session, guest included, to decide what to draw (meettoday's
@@ -698,7 +742,11 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         membership.save(update_fields=["last_accessed_at"])
         return StapelResponse(
             self.get_response_serializer_class()(
-                _workspace_to_dto(ws, my_role=membership.role)
+                _workspace_to_dto(
+                    ws,
+                    my_role=membership.role,
+                    mfa_enforcement=_mfa_enforcement_to_dto(ws),
+                )
             )
         )
 
@@ -728,12 +776,16 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
     def _patch_security(self, request, ws, membership, data):
         """Step-up-guarded branch: the PATCH touches the security block.
 
-        Flipping ``require_mfa`` ON triggers the synchronous member sweep
-        (``auth.mfa_status`` per member; no strong factor → suspension with
-        reason ``no_mfa``); auth being unavailable aborts the sweep without
-        touching anyone (fail-open by suspension — spec §C3), the policy
-        itself still saves and the mfa-event consumer catches up. Flipping
-        it OFF lifts the ``no_mfa`` suspensions it caused.
+        Flipping ``require_mfa`` ON runs the sweep (``auth.mfa_status`` per
+        member; no strong factor → suspension with reason ``no_mfa``) and
+        answers with what the sweep ACHIEVED, in ``mfa_enforcement``: a
+        member auth could not be asked about leaves the workspace
+        ``enforcing``/``failed``, not ``enforced``, and stays out at the
+        door (``permissions.get_membership``) until somebody gets an
+        answer. Reporting a 200 as "MFA is now required" while half the
+        organization had never been checked is WORK-01, and the response
+        body is where it was invisible. Flipping the policy OFF lifts the
+        ``no_mfa`` suspensions it caused and forgets the stored answers.
         """
         was_require_mfa = services.security_settings_for(ws).require_mfa
         response = self._apply_patch(ws, membership, data)
@@ -744,7 +796,15 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
             services.enforce_require_mfa(ws)
         elif was_require_mfa and not now_require_mfa:
             services.lift_no_mfa_suspensions(ws)
-        return response
+        return StapelResponse(
+            self.get_response_serializer_class()(
+                _workspace_to_dto(
+                    ws,
+                    my_role=membership.role,
+                    mfa_enforcement=_mfa_enforcement_to_dto(ws),
+                )
+            )
+        )
 
     def _apply_patch(self, ws, membership, data):
         new_slug = getattr(data, "slug", None)
@@ -860,7 +920,7 @@ class MemberListView(SerializerSeamsMixin, APIView):
 
 
 @extend_schema(tags=["Members"])
-class MemberInviteView(SerializerSeamsMixin, APIView):
+class MemberInviteView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     # `members.invite` capability check in the body — a guest has no
     # membership and therefore no role that could carry it.
@@ -892,30 +952,26 @@ class MemberInviteView(SerializerSeamsMixin, APIView):
             return err
         # Entitlement seam (spec §D2): capability first ("may YOU", 403),
         # then the org's plan ceiling ("may the ORG", 402). Seats = accepted
-        # + pending live invitations + the invitations about to be created.
-        verdict = entitlements.check_org_entitlement(
-            ws,
-            entitlements.ENT_MEMBERS_MAX,
-            quantity=entitlements.member_seats_quantity(
-                ws, additional=len(data.emails)
-            ),
-        )
-        if not verdict.allowed:
-            return StapelErrorResponse(
-                402,
-                ERR_402_MEMBER_LIMIT_REACHED,
-                params={"limit": verdict.limit if verdict.limit is not None else 0},
-            )
-        invitations = [
-            services.create_invitation(
+        # + pending live invitations + the invitations about to be created,
+        # counted and taken in ONE locked transaction (WORK-02) — a check
+        # here and a write afterwards is a seat two batches can both sell.
+        try:
+            invitations = services.invite_members(
                 workspace=ws,
-                email=e,
+                emails=data.emails,
                 role=data.role,
                 invited_by=request.user,
                 display_name=getattr(data, "display_name", None),
             )
-            for e in data.emails
-        ]
+        except entitlements.EntitlementDenied as denied:
+            limit = denied.result.limit
+            return StapelErrorResponse(
+                402,
+                ERR_402_MEMBER_LIMIT_REACHED,
+                params={"limit": limit if limit is not None else 0},
+            )
+        except Workspace.DoesNotExist:
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         return StapelResponse(
             self.get_response_serializer_class()(
                 MemberInviteResponse(
@@ -1049,7 +1105,7 @@ class WorkspaceInvitationListView(SerializerSeamsMixin, APIView):
         return paginator.get_paginated_response(items)
 
 
-class WorkspaceInvitationActionView(SerializerSeamsMixin, APIView):
+class WorkspaceInvitationActionView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     """Shared resolution for the admin-side invitation actions (#109).
 
     Both actions answer with the SAME 404 for an unknown invitation UUID
@@ -1187,6 +1243,15 @@ class InvitationResendView(WorkspaceInvitationActionView):
             return _resend_cooldown_response(remaining)
         try:
             inv = services.resend_invitation(invitation=inv)
+        except entitlements.EntitlementDenied as denied:
+            # Lost the seat race: the plan filled up between the check
+            # above and the reservation inside the lock.
+            limit = denied.result.limit
+            return StapelErrorResponse(
+                402,
+                ERR_402_MEMBER_LIMIT_REACHED,
+                params={"limit": limit if limit is not None else 0},
+            )
         except services.InvitationResendCooldown as exc:
             # Lost the other race the lock guards: a concurrent resend
             # claimed the window between the read above and the lock.
@@ -1202,7 +1267,7 @@ class InvitationResendView(WorkspaceInvitationActionView):
 
 
 @extend_schema(tags=["Members"])
-class MemberProvisionView(SerializerSeamsMixin, APIView):
+class MemberProvisionView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     """Provision an org-created (synthetic) member (org-program spec §C1).
 
     The org mints its own login/password account: full username is
@@ -1364,43 +1429,18 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         err = _rank_check(actor_membership.role, new_role) if actor_membership else None
         if err:
             return err
-        if member.role == Role.OWNER and new_role != Role.OWNER:
-            others = (
-                WorkspaceMember.objects.filter(
-                    workspace_id=workspace_id, role=Role.OWNER
-                )
-                .exclude(id=member.id)
-                .exists()
+        # The last-owner invariant is NOT decided here: `services.
+        # change_member_role` re-reads it under the workspace lock, because
+        # "another owner exists" stops being true the moment a concurrent
+        # demotion commits (WORK-02).
+        try:
+            member = services.change_member_role(
+                member=member, new_role=new_role, actor=request.user
             )
-            if not others:
-                return StapelErrorResponse(403, ERR_403_LAST_OWNER)
-        old_role = member.role
-        member.role = new_role
-        with transaction.atomic():
-            member.save(update_fields=["role"])
-            # Transactional outbox: leaves iff this transaction commits.
-            # Cross-service consumers (e.g. a rooms service re-evaluating a
-            # participant's rights) get the new role's capability grants
-            # inline (spec §A4).
-            emit(
-                EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
-                {
-                    "workspace_id": str(member.workspace_id),
-                    "user_id": str(member.user_id),
-                    "old_role": str(old_role),
-                    "new_role": str(member.role),
-                    "capabilities": capabilities_for(member.role),
-                },
-            )
-            services.record_audit(
-                workspace=member.workspace_id,
-                action=AuditAction.MEMBER_ROLE_CHANGED,
-                actor=request.user,
-                subject=member.user_id,
-                role=member.role,
-                old_role=str(old_role),
-                new_role=str(member.role),
-            )
+        except services.LastOwnerError:
+            return StapelErrorResponse(403, ERR_403_LAST_OWNER)
+        except WorkspaceMember.DoesNotExist:
+            return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         # Other services cache membership lookups — drop the stale role.
         invalidate_membership_cache(workspace_id, user_id)
         workspace_member_changed.send(
@@ -1428,44 +1468,16 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
             workspace_id, request.user.id, Role.OWNER
         ):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
-        if member.role == Role.OWNER:
-            others = (
-                WorkspaceMember.objects.filter(
-                    workspace_id=workspace_id, role=Role.OWNER
-                )
-                .exclude(id=member.id)
-                .exists()
+        # Same as the demotion above: the surviving-owner question is
+        # answered inside the workspace lock, not from this snapshot.
+        try:
+            workspace, removed_user, removed_role = services.remove_member(
+                member=member, actor=request.user
             )
-            if not others:
-                return StapelErrorResponse(403, ERR_403_LAST_OWNER)
-        workspace = member.workspace
-        removed_user = member.user
-        removed_role = member.role
-        with transaction.atomic():
-            member.delete()
-            # Transactional outbox: leaves iff this transaction commits.
-            # The cross-service kick signal (spec §A4) — e.g. a rooms
-            # service disconnects the user from an ongoing call.
-            emit(
-                EVENT_WORKSPACE_MEMBER_REMOVED,
-                {
-                    "workspace_id": str(workspace.id),
-                    "user_id": str(removed_user.pk),
-                    "role": str(removed_role),
-                    "removed_by": str(request.user.pk),
-                },
-            )
-            # The row is gone; the record of its going is not. An audit
-            # written outside this transaction could survive a rollback and
-            # claim a removal that never happened.
-            services.record_audit(
-                workspace=workspace,
-                action=AuditAction.MEMBER_REMOVED,
-                actor=request.user,
-                subject=removed_user,
-                subject_email=getattr(removed_user, "email", "") or "",
-                role=removed_role,
-            )
+        except services.LastOwnerError:
+            return StapelErrorResponse(403, ERR_403_LAST_OWNER)
+        except WorkspaceMember.DoesNotExist:
+            return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         # Other services cache membership lookups — drop the stale entry.
         invalidate_membership_cache(workspace_id, user_id)
         workspace_member_changed.send(
@@ -1830,7 +1842,7 @@ class RoleListView(SerializerSeamsMixin, APIView):
 
 
 @extend_schema(tags=["Members"])
-class InvitationAcceptView(SerializerSeamsMixin, APIView):
+class InvitationAcceptView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     # Gated in the body by the email match: an invitation is personal, and the
     # caller's address must equal the invited one. An anonymous account has no
@@ -1995,6 +2007,11 @@ class InvitationClaimView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
     meaningless, so this seam never degrades to allow. The invitation is
     NOT consumed here: accept stays a separate, deliberate step after
     setup. Neither the invite token nor the grant token is ever logged.
+
+    ONE live grant at a time (WORK-03): while the previous grant is inside
+    its TTL this answers 429 ``error.429.invitation_grant_pending`` with a
+    ``Retry-After``, so a leaked invite link cannot be replayed into an
+    endless supply of sign-in credentials for the invited mailbox.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -2023,6 +2040,17 @@ class InvitationClaimView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
             grant_token = services.issue_invitation_login_grant(
                 invitation=inv, language=language
             )
+        except services.LoginGrantAlreadyIssued as live:
+            # One live grant per invitation (WORK-03): the link already
+            # minted is still valid, and the invitee is told when they may
+            # ask for another.
+            resp = StapelErrorResponse(
+                429,
+                ERR_429_INVITATION_GRANT_PENDING,
+                params={"retry_after": live.retry_after},
+            )
+            resp["Retry-After"] = str(live.retry_after)
+            return resp
         except (FunctionNotRegistered, FunctionRouteNotConfigured):
             return StapelErrorResponse(503, ERR_503_AUTH_UNAVAILABLE)
         return StapelResponse(
@@ -2043,13 +2071,11 @@ class InternalMembershipView(SerializerSeamsMixin, APIView):
     def get(self, request, workspace_id, user_id):  # noqa: R007
         # Only accepted, non-suspended memberships count — a suspended
         # member must read as not-a-member to authorization consumers
-        # (suspension closes access to the org entirely, spec §C3).
-        member = (
-            WorkspaceMember.objects.active()
-            .filter(workspace_id=workspace_id, user_id=user_id)
-            .select_related("user")
-            .first()
-        )
+        # (suspension closes access to the org entirely, spec §C3) — and
+        # the same is true of a member whose MFA the workspace requires and
+        # nobody has confirmed, which is why this goes through the
+        # admission seam rather than round it (WORK-01).
+        member = get_membership(workspace_id, user_id)
         if not member:
             return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         return StapelResponse(
@@ -2204,45 +2230,78 @@ class WorkspaceAuditView(SerializerSeamsMixin, APIView):
         if err:
             return err
 
-        rows = WorkspaceAuditEvent.objects.filter(workspace_id=ws.id)
+        # The history lives in the core event store (see audit.py), read
+        # through the store's anchor adapter — which speaks this endpoint's
+        # released wire contract, so the storage change is invisible on the
+        # wire: same envelope, same anchors, same items.
         action = (request.query_params.get("action") or "").strip()
-        if action:
-            rows = rows.filter(action=action)
+        subject_id = None
+        empty = False
         subject = (request.query_params.get("user_id") or "").strip()
         if subject:
             try:
-                rows = rows.filter(subject_id=UUID(subject))
+                subject_id = UUID(subject)
             except (TypeError, ValueError):
                 # A malformed id matches nobody. Ignoring the filter would
                 # hand back the WHOLE history under a request that asked for
                 # one person's — the loudest possible wrong answer.
-                rows = rows.none()
+                empty = True
+        limit = AuditPagination()._get_limit(request)
+        try:
+            page = (
+                None
+                if empty
+                else audit.history_page(
+                    ws.id,
+                    action=action,
+                    subject_id=subject_id,
+                    anchor=(request.query_params.get("anchor") or "").strip() or None,
+                    direction=request.query_params.get("direction", "next"),
+                    limit=limit,
+                )
+            )
+        except ValueError:
+            # A garbage anchor gets the same treatment as the malformed user
+            # filter above: match nothing. Restarting from page one would
+            # silently hand back rows the caller already walked past.
+            page = None
 
-        paginator = AuditPagination()
-        page = paginator.paginate_queryset(rows, request, view=self)
+        events = page.events if page else []
+        payloads = [e.payload for e in events]
         # ONE profiles call for every person named on the page, actors and
         # subjects together — the same batch shape the member list uses.
         names = services._fetch_profile_display_names(
-            [r.actor_id for r in page if r.actor_id]
-            + [r.subject_id for r in page if r.subject_id]
+            [p["actor_id"] for p in payloads if p.get("actor_id")]
+            + [p["subject_id"] for p in payloads if p.get("subject_id")]
         )
         dtos = [
             AuditEventResponse(
-                id=r.id,
-                action=r.action,
-                actor_id=r.actor_id,
-                actor_display_name=names.get(str(r.actor_id), "") if r.actor_id else "",
-                subject_id=r.subject_id,
+                id=UUID(p["id"]),
+                action=p["action"],
+                actor_id=UUID(p["actor_id"]) if p.get("actor_id") else None,
+                actor_display_name=names.get(p.get("actor_id"), "") if p.get("actor_id") else "",
+                subject_id=UUID(p["subject_id"]) if p.get("subject_id") else None,
                 subject_display_name=(
-                    names.get(str(r.subject_id), "") if r.subject_id else ""
+                    names.get(p.get("subject_id"), "") if p.get("subject_id") else ""
                 ),
-                subject_email=r.subject_email,
-                role=r.role,
-                metadata=r.metadata or {},
-                created_at=r.created_at.isoformat(),
+                subject_email=p.get("subject_email", ""),
+                role=p.get("role", ""),
+                metadata=p.get("metadata") or {},
+                created_at=e.ts.isoformat(),
             )
-            for r in page
+            for e, p in zip(events, payloads)
         ]
-        return paginator.get_paginated_response(
-            self.get_response_serializer_class()(dtos, many=True).data
+        items = self.get_response_serializer_class()(dtos, many=True).data
+        # The exact AnchorPagination envelope, hand-assembled: the paginator
+        # class above still DECLARES the schema, the adapter now produces the
+        # values (its flags follow the same contract).
+        return Response(
+            {
+                "items": items,
+                "next_anchor": page.next_anchor if page else None,
+                "prev_anchor": page.prev_anchor if page else None,
+                "has_next": page.has_next if page else False,
+                "has_prev": page.has_prev if page else False,
+                "count": len(items),
+            }
         )

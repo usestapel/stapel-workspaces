@@ -8,7 +8,7 @@
     "/workspaces/api/v1/": {
       "get": {
         "operationId": "workspaces_api_v1_retrieve",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Workspaces"
         ],
@@ -41,7 +41,7 @@
       },
       "post": {
         "operationId": "workspaces_api_v1_create",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Workspaces"
         ],
@@ -734,7 +734,8 @@
                     "value": {
                       "id": "0192...",
                       "role": "admin",
-                      "display_name": "Ada Lovelace"
+                      "display_name": "Ada Lovelace",
+                      "mfa_compliant": true
                     }
                   }
                 }
@@ -808,7 +809,8 @@
                     "value": {
                       "id": "0192...",
                       "role": "admin",
-                      "display_name": "Ada Lovelace"
+                      "display_name": "Ada Lovelace",
+                      "mfa_compliant": true
                     }
                   }
                 }
@@ -1007,7 +1009,7 @@
     "/workspaces/api/v1/{workspace_id}/members/invite": {
       "post": {
         "operationId": "workspaces_api_v1_members_invite_create",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
             "in": "path",
@@ -1202,7 +1204,8 @@
                     "value": {
                       "id": "0192...",
                       "role": "admin",
-                      "display_name": "Ada Lovelace"
+                      "display_name": "Ada Lovelace",
+                      "mfa_compliant": true
                     }
                   }
                 }
@@ -1311,7 +1314,7 @@
     "/workspaces/api/v1/invitations/{token}/claim": {
       "post": {
         "operationId": "workspaces_api_v1_invitations_claim_create",
-        "description": "Mint a login grant for a not-yet-registered invitee (spec §B2-B3).\n\nAllowAny — the whole point is that no account exists yet. Only valid\nfor ``email_registered == false``: an existing account gets 409 and the\nfrontend switches to login. The grant comes from auth's\n``auth.issue_login_grant`` comm Function (``create_if_missing`` — the\nverified account materializes on exchange); if that Function is not\nwired, the answer is an honest 503 — an invite flow without auth is\nmeaningless, so this seam never degrades to allow. The invitation is\nNOT consumed here: accept stays a separate, deliberate step after\nsetup. Neither the invite token nor the grant token is ever logged.\n\n**Permissions:** `AllowAny`",
+        "description": "Mint a login grant for a not-yet-registered invitee (spec §B2-B3).\n\nAllowAny — the whole point is that no account exists yet. Only valid\nfor ``email_registered == false``: an existing account gets 409 and the\nfrontend switches to login. The grant comes from auth's\n``auth.issue_login_grant`` comm Function (``create_if_missing`` — the\nverified account materializes on exchange); if that Function is not\nwired, the answer is an honest 503 — an invite flow without auth is\nmeaningless, so this seam never degrades to allow. The invitation is\nNOT consumed here: accept stays a separate, deliberate step after\nsetup. Neither the invite token nor the grant token is ever logged.\n\nONE live grant at a time (WORK-03): while the previous grant is inside\nits TTL this answers 429 ``error.429.invitation_grant_pending`` with a\n``Retry-After``, so a leaked invite link cannot be replayed into an\nendless supply of sign-in credentials for the invited mailbox.\n\n**Permissions:** `AllowAny`",
         "parameters": [
           {
             "in": "path",
@@ -1377,7 +1380,7 @@
     "/workspaces/api/v1/invitations/accept": {
       "post": {
         "operationId": "workspaces_api_v1_invitations_accept_create",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
         "tags": [
           "Members"
         ],
@@ -1418,7 +1421,8 @@
                     "value": {
                       "id": "0192...",
                       "role": "admin",
-                      "display_name": "Ada Lovelace"
+                      "display_name": "Ada Lovelace",
+                      "mfa_compliant": true
                     }
                   }
                 }
@@ -1832,6 +1836,56 @@
           "workspace_id"
         ]
       },
+      "MFAEnforcementStatus": {
+        "type": "object",
+        "description": "How far the workspace's require_mfa policy has actually got.",
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "pending / enforcing / enforced / failed. Only \"enforced\" means every active member's second factor has been confirmed — a settings flag saying require_mfa=true says somebody asked for it, not that it holds",
+            "example": "enforcing"
+          },
+          "attempts": {
+            "type": "integer",
+            "description": "How many sweeps have run since the policy was switched on",
+            "example": 3
+          },
+          "checked_members": {
+            "type": "integer",
+            "description": "Members auth answered about in the last sweep",
+            "example": 12
+          },
+          "noncompliant_members": {
+            "type": "integer",
+            "description": "Of those, members with no strong factor — suspended with reason no_mfa",
+            "example": 2
+          },
+          "unverified_members": {
+            "type": "integer",
+            "description": "Active members whose factor nobody has confirmed yet. They are NOT admitted while the policy is on; this is the number an administrator has to get to zero",
+            "example": 1
+          },
+          "last_attempt_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 time of the last sweep; null before the first",
+            "example": "2026-08-11T10:00:00Z"
+          },
+          "completed_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 time coverage last became complete; null while it is not"
+          },
+          "last_error": {
+            "type": "string",
+            "description": "What auth answered when the last sweep failed, verbatim; empty otherwise. Never credential material",
+            "example": "FunctionCallError: mfa_status timed out"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
       "MemberInviteRequest": {
         "type": "object",
         "description": "Invite payload.",
@@ -2005,6 +2059,12 @@
             "nullable": true,
             "description": "Best-effort display name — a live lookup in stapel-profiles when it is installed and has one, else the name typed at invite/provision time (never both, never invented when neither exists). Null when nobody has one yet",
             "example": "Ada Lovelace"
+          },
+          "mfa_compliant": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Whether this member was PROVEN to hold a strong second factor — true, false, or null for \"nobody has asked yet\". Under a require_mfa policy the null is what an administrator acts on: those members are not admitted until the answer arrives",
+            "example": true
           }
         },
         "required": [
@@ -2496,6 +2556,15 @@
             "type": "string",
             "description": "The owner's display name, best-effort from stapel-profiles (empty when it has none, is not installed, or is unreachable — never invented). Exists because a workspace NAME stopped identifying one: a person can belong to several spaces all called \"Personal\" — one per company that made them one — and ownership can be handed over, so \"Personal\" answers nothing on its own. Pickers draw it as the second line under the name. Resolved here rather than in each client, which would otherwise each need a profiles batch of its own for a caption",
             "example": "Victor P."
+          },
+          "mfa_enforcement": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MFAEnforcementStatus"
+              }
+            ],
+            "nullable": true,
+            "description": "State of the security.require_mfa policy — present on the single-workspace responses (GET/PATCH detail) when the policy is on, null otherwise. The settings block says what was asked for; this says what actually holds, so an administrator who switched MFA on is not told \"done\" while half the organization was never checked"
           }
         },
         "required": [

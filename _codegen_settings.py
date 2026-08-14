@@ -101,6 +101,11 @@ def settings_kwargs(
             # (generate_error_keys, used by the errors.json drift gate).
             "stapel_core.django.apps.CommonDjangoConfig",
             "stapel_core.django.users",
+            # The membership journal's storage (audit.py writes the
+            # workspace.audit stream; the default backend is this app's
+            # table). Models only — it mounts no URLs, so the emitted
+            # contract is unchanged by its presence.
+            "stapel_core.django.eventstore",
             "rest_framework",
             "drf_spectacular",
             "stapel_workspaces",
@@ -137,6 +142,7 @@ def settings_kwargs(
         MIGRATION_MODULES={
             "users": None,
             "workspaces": None,
+            "stapel_eventstore": None,
         },
     )
     if not contract and profiles_co_mounted():

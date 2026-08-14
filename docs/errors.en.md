@@ -1,6 +1,6 @@
 # Errors — English
 
-`69` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`71` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -66,10 +66,12 @@
 | `error.422.unprocessable_entity` | 422 | — | `wait_and_retry` | Unprocessable entity |
 | `error.423.locked` | 423 | — | `wait_and_retry` | Resource is locked |
 | `error.423.verification_locked` | 423 | — | `wait_and_retry` | Too many failed attempts — verification locked |
+| `error.429.invitation_grant_pending` | 429 | `retry_after` | `wait_and_retry` | A sign-in link for this invitation is still valid; you can request another one in {retry_after} seconds |
 | `error.429.invitation_resend_cooldown` | 429 | `retry_after` | `wait_and_retry` | This invitation was emailed recently; you can send it again in {retry_after} seconds |
 | `error.429.rate_limit` | 429 | `retry_after_minutes` | `wait_and_retry` | Too many attempts. Try again in {retry_after_minutes} minutes. |
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Too many requests. Please try again later. |
 | `error.500.internal` | 500 | — | `contact_support` | Something went wrong |
 | `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | The authentication service is unavailable; try again later |
+| `error.503.billing_unavailable` | 503 | — | `wait_and_retry` | The billing service is unavailable; try again later |
 | `error.503.profiles_not_configured` | 503 | — | `contact_support` | This deployment has no profiles service configured, so a display name cannot be written here |
 | `error.503.profiles_unavailable` | 503 | — | `wait_and_retry` | The profiles service is unavailable; try again later |

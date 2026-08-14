@@ -23,6 +23,7 @@ from stapel_workspaces.errors import (
     ERR_400_INVALID_PROVISION_USERNAME,
     ERR_400_INVALID_ROLE,
     ERR_402_ENTITLEMENT_REQUIRED,
+    ERR_503_BILLING_UNAVAILABLE,
     ERR_403_MISSING_CAPABILITY,
     ERR_503_AUTH_UNAVAILABLE,
 )
@@ -40,6 +41,9 @@ def _ws(user, name="Acme"):
 
 
 def _register(name, provider):
+    # Displaces the suite-wide stand-in from conftest where there is one: a
+    # function name has exactly one provider, and this one is scripted.
+    function_registry._providers.pop(name, None)
     function_registry.register(name, provider)
 
 
@@ -246,9 +250,33 @@ class TestProvisionEmailNuance:
         assert kwargs["email"] == "jdoe@corp.example"
         variables = kwargs["variables"]
         assert variables["username"] == f"{ws.slug}/jdoe"
-        assert variables["initial_password"] == "srv-generated-1"
         assert variables["login_url"] == "https://app.example.com/login"
         assert variables["workspace_name"] == ws.name
+        # The generated password does NOT ride the letter by default
+        # (WORK-03): it reaches the administrator once, in the response,
+        # instead of living in a mailbox for the life of that mailbox.
+        assert "initial_password" not in variables
+        assert resp.json()["generated_password"] == "srv-generated-1"
+
+    def test_a_deployment_can_still_mail_the_password(
+        self, authed_client, user, sensitive_grant, fake_auth_provision,
+        monkeypatch, settings,
+    ):
+        """The opt-in for orgs whose provisioned users have no other channel."""
+        sent = []
+        monkeypatch.setattr(
+            "stapel_core.notifications.request_notification",
+            lambda notification_type, **kwargs: sent.append(
+                (notification_type, kwargs)
+            )
+            or True,
+        )
+        settings.STAPEL_WORKSPACES = {"PROVISION_EMAIL_INITIAL_PASSWORD": True}
+        ws = _ws(user)
+        resp = _provision(authed_client, ws, {"email": "jdoe@corp.example"})
+        assert resp.status_code == 201, resp.content
+        (_, kwargs), = sent
+        assert kwargs["variables"]["initial_password"] == "srv-generated-1"
 
 
 @pytest.mark.django_db
@@ -410,11 +438,32 @@ class TestProvisionDebit:
             workspace=ws, provisioned=True
         ).exists()
 
-    def test_billing_absent_degrades_to_allow(
+    def test_billing_absent_refuses_to_provision_uncharged(
         self, authed_client, user, sensitive_grant, fake_auth_provision,
         settings,
     ):
+        """A debit nobody can take must not become a free provisioning.
+
+        The plan ceiling and the charge are one decision: closing only the
+        check half would still hand out paid capacity for nothing whenever
+        billing is unreachable.
+        """
         settings.STAPEL_WORKSPACES = {"PROVISION_USER_CREDITS": 5}
+        ws = _ws(user)
+        resp = _provision(authed_client, ws)  # no billing.debit registered
+        assert resp.status_code == 503, resp.content
+        assert resp.json()["localizable_error"] == ERR_503_BILLING_UNAVAILABLE
+        assert not WorkspaceMember.objects.filter(
+            workspace=ws, provisioned=True
+        ).exists()
+
+    def test_allow_unbilled_provisions_uncharged(
+        self, authed_client, user, sensitive_grant, fake_auth_provision,
+        settings,
+    ):
+        settings.STAPEL_WORKSPACES = {
+            "PROVISION_USER_CREDITS": 5, "ALLOW_UNBILLED": True
+        }
         ws = _ws(user)
         resp = _provision(authed_client, ws)  # no billing.debit registered
         assert resp.status_code == 201, resp.content

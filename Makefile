@@ -27,8 +27,16 @@ PYTHON ?= python3
 # 0.19, and 5000 -> 5500 in 0.20, for the same reason it was raised the first
 # time: the surface grew (0.20 adds the per-user preferred-workspace pair —
 # the explicit choice DEFAULT_WORKSPACE_ID documents itself as yielding to),
-# and the honest description of it grew with it. contract-check below
-# enforces the same ceiling; it does not disable the check.
+# and the honest description of it grew with it; 5500 -> 6000 with the
+# audit journal's move into the core event store (the sink seam, the
+# anchor read and the migration data path each earned a surface entry);
+# 6000 -> 7000 for the security-audit findings (WORK-01/02/03), which add
+# the workspace lock and the two serialized membership writes, the MFA
+# enforcement record with its verification and retry seams, and the
+# provisioning saga with its reconciliation — mechanisms whose whole value
+# is that a reader knows when to reach for them.
+# contract-check below enforces the same ceiling; it does not disable the
+# check.
 #
 # README.md is the SIXTH artifact (tracker #257): assembled by
 # stapel_tools.readme from docs/readme.md (the human half — what this module
@@ -38,7 +46,7 @@ PYTHON ?= python3
 contract:
 	$(PYTHON) -m stapel_workspaces._codegen --out docs
 	$(PYTHON) -m stapel_workspaces._capabilities --out docs
-	$(PYTHON) -m stapel_tools.llms_txt . --out docs --budget 5500
+	$(PYTHON) -m stapel_tools.llms_txt . --out docs --budget 7000
 	$(PYTHON) -m stapel_tools.readme .
 
 # Drift gate: regenerate into a temp dir and diff against the committed docs/*.json
@@ -47,7 +55,7 @@ contract-check:
 	@tmp=$$(mktemp -d); \
 	$(PYTHON) -m stapel_workspaces._codegen --out "$$tmp" || { rm -rf "$$tmp"; exit 1; }; \
 	$(PYTHON) -m stapel_workspaces._capabilities --out "$$tmp" || { rm -rf "$$tmp"; exit 1; }; \
-	$(PYTHON) -m stapel_tools.llms_txt . --out "$$tmp" --budget 5500 || { rm -rf "$$tmp"; exit 1; }; \
+	$(PYTHON) -m stapel_tools.llms_txt . --out "$$tmp" --budget 7000 || { rm -rf "$$tmp"; exit 1; }; \
 	rc=0; \
 	for f in schema.json flows.json errors.json capabilities.json llms.txt; do \
 		if ! diff -q "docs/$$f" "$$tmp/$$f" >/dev/null 2>&1; then \

@@ -39,6 +39,10 @@
     "hash": "715ff9f7621c1ce5",
     "text": "Ya existe una cuenta con este correo electrónico: inicia sesión en su lugar"
   },
+  "error.429.invitation_grant_pending": {
+    "hash": "dbf76a961fd53606",
+    "text": "El enlace de acceso de esta invitación sigue siendo válido; puedes solicitar otro en {retry_after} segundos"
+  },
   "error.429.invitation_resend_cooldown": {
     "hash": "7dda645b6f6944ca",
     "text": "Esta invitación se envió por correo hace poco; puedes volver a enviarla en {retry_after} segundos"
@@ -46,6 +50,10 @@
   "error.503.auth_unavailable": {
     "hash": "c01407bc09695de1",
     "text": "El servicio de autenticación no está disponible; inténtalo de nuevo más tarde"
+  },
+  "error.503.billing_unavailable": {
+    "hash": "be3d5bb85dbffc20",
+    "text": "El servicio de facturación no está disponible; inténtalo de nuevo más tarde"
   },
   "error.503.profiles_not_configured": {
     "hash": "cfb307774d3fcea7",

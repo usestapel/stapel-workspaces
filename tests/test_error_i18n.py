@@ -84,6 +84,8 @@ _MACHINE_RU = {
         "Аккаунт с этим email уже существует — войдите в него",
     "error.503.auth_unavailable":
         "Сервис аутентификации недоступен; повторите попытку позже",
+    "error.503.billing_unavailable":
+        "Сервис биллинга недоступен; повторите попытку позже",
     # 0.8 security harden (org-program spec §C1/§C3, Wave 3).
     "error.403.membership_suspended":
         "Ваше членство в этом рабочем пространстве приостановлено ({reason})",
@@ -101,6 +103,10 @@ _MACHINE_RU = {
     "error.429.invitation_resend_cooldown":
         "Это приглашение недавно отправлялось; отправить снова можно через "
         "{retry_after} с",
+    # Single-use login grant (WORK-03).
+    "error.429.invitation_grant_pending":
+        "Ссылка для входа по этому приглашению ещё действует; запросить "
+        "новую можно через {retry_after} с",
 }
 
 _MACHINE_ES = {
@@ -119,6 +125,9 @@ _MACHINE_ES = {
         "su lugar",
     "error.503.auth_unavailable":
         "El servicio de autenticación no está disponible; inténtalo de nuevo "
+        "más tarde",
+    "error.503.billing_unavailable":
+        "El servicio de facturación no está disponible; inténtalo de nuevo "
         "más tarde",
     # 0.8 security harden (org-program spec C1/C3, Wave 3).
     "error.403.membership_suspended":
@@ -139,6 +148,10 @@ _MACHINE_ES = {
     "error.429.invitation_resend_cooldown":
         "Esta invitación se envió por correo hace poco; puedes volver a "
         "enviarla en {retry_after} segundos",
+    # Single-use login grant (WORK-03).
+    "error.429.invitation_grant_pending":
+        "El enlace de acceso de esta invitación sigue siendo válido; puedes "
+        "solicitar otro en {retry_after} segundos",
 }
 
 #: language -> machine-translation table, consulted for the keys the

@@ -248,6 +248,21 @@ class WorkspaceMember(models.Model):
     #: ``Profile.display_name`` (35) so a hint is never silently truncated on
     #: the day it lands there for real.
     display_name_hint = models.CharField(max_length=35, blank=True, default="")
+    #: Whether this member was PROVEN to hold a strong second factor, and
+    #: when (org-program spec §C3 / WORK-01). Three values, and the third
+    #: is the one that matters: True = auth answered yes, False = auth
+    #: answered no (the membership is suspended for ``no_mfa``), NULL =
+    #: **nobody has asked yet**.
+    #:
+    #: The policy used to have no third value. A sweep that stopped at the
+    #: first auth error left the rest of the org untouched and
+    #: indistinguishable from an org that had passed — the endpoint said
+    #: "MFA is required now" and half the members had never been checked.
+    #: NULL under a ``require_mfa`` policy is therefore not admission: see
+    #: ``permissions.get_membership``, which verifies on the spot and
+    #: refuses while the answer is unknown.
+    mfa_compliant = models.BooleanField(null=True, blank=True, default=None)
+    mfa_verified_at = models.DateTimeField(null=True, blank=True)
     #: The person's EXPLICIT choice of home workspace — the choice
     #: ``STAPEL_WORKSPACES["DEFAULT_WORKSPACE_ID"]`` already promises to yield
     #: to ("a DEFAULT, not a cage: a person still switches spaces, and their
@@ -450,6 +465,19 @@ class WorkspaceInvitation(models.Model):
     #: one admin holding ``members.invite`` could drive an unbounded number
     #: of letters at one address through this fleet's mail infrastructure.
     last_sent_at = models.DateTimeField(null=True, blank=True)
+    #: When a login grant was last minted for this invitation, and how many
+    #: have been (WORK-03). The claim endpoint mints an auth login grant for
+    #: an address with no account yet; before this, a pending invitation
+    #: could be claimed again and again, so one leaked invite link was an
+    #: unbounded supply of session-bearing grants for that mailbox — each
+    #: single-use in auth, and each mintable afresh here.
+    #:
+    #: One live grant at a time: a second claim inside the grant's TTL is
+    #: refused (``error.429.invitation_grant_pending``), and after the TTL a
+    #: genuine "I lost the email" retry still works. Counting them is what
+    #: makes the abuse visible afterwards.
+    login_grant_issued_at = models.DateTimeField(null=True, blank=True)
+    login_grant_count = models.PositiveIntegerField(default=0)
     #: The invite modal's "Name" field (a NAME HINT, not the canonical name —
     #: see ``WorkspaceMember.display_name_hint``, which this is copied onto at
     #: accept time). Optional: an invite without one behaves exactly as
@@ -462,6 +490,31 @@ class WorkspaceInvitation(models.Model):
 
     class Meta:
         db_table = "workspaces_invitation"
+        constraints = [
+            # ONE live invitation per address per workspace, stated to the
+            # database rather than trusted to the callers. Two unresolved
+            # rows for one address are two working tokens for one person
+            # and two reserved seats on the bill — and the second row was
+            # one concurrent invite batch away, since the seat count is
+            # read before the rows are written. Terminal rows (accepted,
+            # declined, revoked) are outside the condition: the history of
+            # everyone who was ever invited stays whole, and a fresh invite
+            # after any terminal state is a fresh row.
+            #
+            # An EXPIRED-but-unresolved row is inside it on purpose:
+            # `services.create_invitation` lands on that row and refreshes
+            # its TTL instead of inserting a twin, which is what "invite
+            # them again" means.
+            models.UniqueConstraint(
+                fields=["workspace", "email"],
+                condition=models.Q(
+                    accepted_at__isnull=True,
+                    declined_at__isnull=True,
+                    revoked_at__isnull=True,
+                ),
+                name="workspaces_invitation_one_live_per_email",
+            ),
+        ]
         indexes = [
             models.Index(fields=["email"]),
             models.Index(fields=["workspace", "accepted_at"]),
@@ -493,6 +546,11 @@ class AuditAction(models.TextChoices):
     a log: nobody can filter it, translate it, or notice that a new lifecycle
     transition shipped without a line. ``tests/test_audit.py`` fails the build
     if this list and the module's emitted events ever disagree.
+
+    The lines themselves live in the core event store (stream
+    ``STAPEL_WORKSPACES["AUDIT_STREAM"]`` — see ``audit.py``), not in a
+    table here: the vocabulary is this module's contract, the storage is the
+    platform's.
     """
 
     INVITATION_CREATED = "invitation_created", "Invitation created"
@@ -513,60 +571,157 @@ class AuditAction(models.TextChoices):
     MEMBER_UNSUSPENDED = "member_unsuspended", "Member reinstated"
 
 
-class WorkspaceAuditEvent(models.Model):
-    """One line of a workspace's membership history.
+class MFAEnforcementState(models.TextChoices):
+    """How far a workspace's ``require_mfa`` policy has actually got.
 
-    WHY A TABLE AND NOT THE COMM EVENTS THIS MODULE ALREADY EMITS. Those are
-    fire-and-forget notifications to other services: nothing keeps them, and
-    half the transitions the owner asked to track (an invitation created, an
-    invitation accepted, an account born from one) emit nothing at all. An
-    admin asking "who let this person in, and when" needs a record that
-    outlives the delivery.
+    The policy used to be a boolean in a JSON blob and a best-effort sweep
+    that returned True or False into a caller that ignored it: an
+    administrator who turned MFA on got a 200 whether every member had been
+    checked, half of them had, or auth had been unreachable from the first
+    call onward (WORK-01).
 
-    APPEND-ONLY BY CONSTRUCTION: no update path, no delete path, no editable
-    surface. A history somebody can edit answers a different question from the
-    one it is asked.
+    ``pending``
+        The policy is on and no sweep has run yet.
+    ``enforcing``
+        A sweep has run but coverage is incomplete — members remain whose
+        factor nobody has confirmed (a new joiner, an attempt that stopped
+        at an auth error).
+    ``enforced``
+        Every active member has been asked and answered: compliant, or
+        suspended for ``no_mfa``. This is the only state in which the
+        workspace may be reported as enforcing MFA.
+    ``failed``
+        The last attempt hit an auth error. Distinct from ``enforcing``
+        because it carries ``last_error`` and is what the retry sweep and
+        the administrator's screen are looking for.
+    """
 
-    ``actor`` is who DID it and ``subject`` is who it happened TO, and they are
-    genuinely different columns — "Anna removed Boris" and "Boris left" are the
-    same row shape with the two swapped. ``actor`` is null for a transition
-    nobody performed (an invitation accepted by its own recipient records them
-    as the actor; a suspension applied by a policy sweep has none).
+    PENDING = "pending", "Pending"
+    ENFORCING = "enforcing", "Enforcing"
+    ENFORCED = "enforced", "Enforced"
+    FAILED = "failed", "Failed"
+
+
+class WorkspaceMFAEnforcement(models.Model):
+    """The durable state of one workspace's ``require_mfa`` enforcement.
+
+    One row per workspace, created when the policy is switched on and kept
+    afterwards (a workspace that turned MFA off and on again keeps its
+    history of attempts). It exists so three questions have answers that
+    survive the request that asked them: has the sweep finished, when was
+    it last tried, and what did auth say when it did not.
+
+    :func:`~stapel_workspaces.services.retry_mfa_enforcement` is the
+    durable half — an idempotent sweep over every row that is not
+    ``enforced`` — and ``manage.py enforce_workspace_mfa`` is how a
+    deployment schedules it.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.OneToOneField(
+        Workspace, on_delete=models.CASCADE, related_name="mfa_enforcement"
+    )
+    state = models.CharField(
+        max_length=16,
+        choices=MFAEnforcementState.choices,
+        default=MFAEnforcementState.PENDING,
+    )
+    #: When the policy was last switched on (the clock a compliance report
+    #: measures "how long has this org been half-enforced" against).
+    requested_at = models.DateTimeField(auto_now_add=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    #: When coverage first became complete. Cleared whenever it stops being.
+    completed_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    #: The last auth failure, verbatim, for the administrator's screen. Never
+    #: a credential — ``auth.mfa_status`` answers with a boolean and errors
+    #: with a message about the call, not about the factor.
+    last_error = models.TextField(blank=True, default="")
+    #: Coverage of the last attempt: members asked, and of those, members
+    #: without a strong factor (i.e. suspended for no_mfa).
+    checked_members = models.PositiveIntegerField(default=0)
+    noncompliant_members = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "workspaces_mfa_enforcement"
+        indexes = [models.Index(fields=["state"])]
+
+    def __str__(self):
+        return f"{self.workspace_id}: mfa {self.state}"
+
+
+class ProvisionState(models.TextChoices):
+    """Where one provisioning operation got to (WORK-03).
+
+    Provisioning spends money in billing, mints an account in auth and
+    writes a membership here — three services, no shared transaction. It
+    used to be a straight line with no record, so a failure anywhere left
+    an orphan nobody could find: a charge with no account, or an account
+    with no membership and no way to tell it from a half-finished retry.
+
+    The states are what a compensating saga needs to be resumable:
+    ``started`` (nothing external yet), ``charged``, ``account_created``,
+    ``completed``, and the two the failure path uses — ``compensating``
+    (something is owed back) and ``compensated``/``failed`` (settled).
+    """
+
+    STARTED = "started", "Started"
+    CHARGED = "charged", "Charged"
+    ACCOUNT_CREATED = "account_created", "Account created"
+    COMPLETED = "completed", "Completed"
+    COMPENSATING = "compensating", "Compensating"
+    COMPENSATED = "compensated", "Compensated"
+    FAILED = "failed", "Failed"
+
+
+class WorkspaceProvisionOperation(models.Model):
+    """One provisioning attempt, keyed by a stable operation id.
+
+    The id is derived from (workspace, username) unless the caller supplies
+    one, so a retry of the same provisioning IS the same operation: it does
+    not charge twice, and once it has completed it answers with the member
+    it already made instead of a second account.
+
+    The row also outlives the request, which is the point — a charge that
+    could not be refunded is a ``compensating`` row a human or
+    ``manage.py reconcile_provisioning`` can act on, rather than a log line.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workspace = models.ForeignKey(
-        Workspace, on_delete=models.CASCADE, related_name="audit_events"
+        Workspace, on_delete=models.CASCADE, related_name="provision_operations"
     )
-    action = models.CharField(max_length=40, choices=AuditAction.choices)
-    #: Who performed it. A bare UUID like every other cross-service user
-    #: reference in this module — never an FK into the auth service's table.
-    actor_id = models.UUIDField(null=True, blank=True)
-    #: Whom it happened to. Null for an invitation to an address that has no
-    #: account yet — that is what `subject_email` is for.
-    subject_id = models.UUIDField(null=True, blank=True)
-    #: The invited address, when the row is about an invitation. Kept even
-    #: after the account exists: it is what the invitation was SENT to, which
-    #: is the fact an admin is auditing.
-    subject_email = models.EmailField(blank=True, default="")
-    #: Role involved, when the action carries one (invited-as, provisioned-as,
-    #: the role held at removal). Free-form: the role registry is a deployment
-    #: setting, not a fixed enum.
-    role = models.CharField(max_length=40, blank=True, default="")
-    #: Anything else the action needs, named per action rather than smeared
-    #: into one text column: `old_role`/`new_role` for a role change,
-    #: `reason` for a suspension.
-    metadata = models.JSONField(default=dict, blank=True)
+    #: Idempotency key: the caller's, or uuid5(workspace, username).
+    operation_id = models.CharField(max_length=64)
+    username = models.CharField(max_length=255)
+    state = models.CharField(
+        max_length=20, choices=ProvisionState.choices, default=ProvisionState.STARTED
+    )
+    #: The auth account, once it exists — what a reconciliation needs to
+    #: find an orphan account whose membership never landed.
+    user_id = models.UUIDField(null=True, blank=True)
+    credits = models.PositiveIntegerField(default=0)
+    #: Which attempt of this operation is running. A resume (the process
+    #: died mid-flight) keeps the number; a retry after a compensated
+    #: failure raises it, so the fresh charge is a fresh charge and not a
+    #: duplicate billing would rightly dedupe away.
+    attempt = models.PositiveIntegerField(default=1)
+    #: Credits still owed back to the org. Non-zero means somebody paid for
+    #: a provisioning that did not happen.
+    credits_to_refund = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = "workspaces_audit_event"
-        # Newest first is the only order this is ever read in.
-        ordering = ["-created_at", "-id"]
-        indexes = [
-            models.Index(fields=["workspace", "-created_at"]),
-            models.Index(fields=["subject_id"]),
+        db_table = "workspaces_provision_operation"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "operation_id"],
+                name="workspaces_provision_operation_unique",
+            ),
         ]
+        indexes = [models.Index(fields=["state"])]
 
-    def __str__(self) -> str:  # pragma: no cover - admin/debug convenience
-        return f"{self.action} @ {self.workspace_id}"
+    def __str__(self):
+        return f"{self.username}: {self.state}"

@@ -109,6 +109,52 @@ DEFAULTS = {
     "INVITATION_ROTATE_TOKEN_ON_RESEND": False,
     # Credits debited per provisioned org user (0 = free).
     "PROVISION_USER_CREDITS": 0,
+    # Whether this deployment may run its plan ceilings WITHOUT billing.
+    #
+    # Default False, and the reason is that the seam cannot tell the two
+    # situations apart. When `billing.check_entitlement` raises a comm
+    # wiring error, that error means "nothing answered" — and "nothing
+    # answered" is what a deployment that never bought billing looks like
+    # AND what a billing service that crashed, scaled to zero, lost its
+    # FUNCTION_ROUTES entry or sits behind a gateway rendering JSON 404s
+    # looks like. Treating the pair as "unlimited" made an outage the most
+    # generous plan on the price list: every seat ceiling, every org
+    # gate and every per-user debit evaporated, and the loudest artifact
+    # anywhere on that path was a debug log.
+    #
+    # So the wiring errors now refuse (503, `error.503.billing_unavailable`)
+    # and a deployment that genuinely has no billing says so once, here.
+    # "I do not sell seats" is a fact only the operator knows; no probe can
+    # infer it, because in the split-repo topology billing is legitimately
+    # absent from THIS service's INSTALLED_APPS whether it exists or not.
+    "ALLOW_UNBILLED": False,
+    # Whether the workspace.provisioned_account letter carries the
+    # server-generated initial password.
+    #
+    # Default False, and the reason belongs here. A provisioned account's
+    # password is a credential the org owns until first login; putting it
+    # in an email leaves it sitting in a mailbox (and in every mail hop's
+    # logs) for the life of that mailbox, which is exactly the exposure the
+    # first-login policy is meant to close in one use. The letter still
+    # goes out — username, workspace, login URL — and the password reaches
+    # the administrator once, in the provisioning response, to hand over on
+    # a channel they choose.
+    #
+    # A deployment whose provisioned users have no other channel at all
+    # (no phone, no in-person handover) sets this True and accepts the
+    # trade. The real answer is a one-time activation link instead of a
+    # password, which needs an issuance seam stapel-auth does not publish
+    # yet (WORK-03).
+    "PROVISION_EMAIL_INITIAL_PASSWORD": False,
+    # How long one invitation login grant stays "live" here, in seconds.
+    #
+    # The claim endpoint mints a single-use grant in auth for an address
+    # with no account yet. Auth's own grant expires in 15 minutes; this key
+    # is how long THIS side refuses to mint another one for the same
+    # invitation, so a leaked invite link cannot be replayed into an
+    # unbounded supply of grants. Past the window a genuine "the email
+    # never arrived" retry works again. 0 disables the limit.
+    "INVITATION_LOGIN_GRANT_TTL_SECONDS": 900,
     # Mandate axis for an un-invited ("street") registration — the policy
     # `resolve_landing_workspace(user, origin=...)` reads for every origin
     # OTHER than "invited" (org-program #85, mandate-model vardict 2026-08-03).
@@ -161,6 +207,22 @@ DEFAULTS = {
     # cloud whose members can each spin up their own org — a gap nobody would
     # notice until it was populated. An explicit value always wins.
     "WORKSPACE_CREATE_POLICY": "",
+    # WHERE THE MEMBERSHIP JOURNAL GOES — callable(stream, payload, *,
+    # project, container), the same sink contract the privilege gateway's
+    # STAPEL_GATEWAY["AUDIT_SINK"] uses, so one custom sink (a SIEM
+    # shipper, a syslog writer) can serve both seams. The default appends
+    # to stapel_core.eventstore and flushes; see audit.eventstore_sink for
+    # why the flush is part of the contract here. A deployment that swaps
+    # the sink away from the event store takes over serving the history
+    # too: GET <workspace_id>/audit reads the event store and only the
+    # event store.
+    "AUDIT_SINK": "stapel_workspaces.audit.eventstore_sink",
+    # The event-store stream membership history is written to and read
+    # from. One stream per journal, not per workspace: the workspace is a
+    # payload field (`workspace_id`) the read side filters on, the way
+    # every other stream consumer slices. Retention/rollup/backends key on
+    # this name via STAPEL_EVENTSTORE (RETENTION, ROUTES).
+    "AUDIT_STREAM": "workspace.audit",
 }
 
 #: The three answers `WORKSPACE_CREATE_POLICY` may take, plus "" for derived.
@@ -174,6 +236,16 @@ CREATE_POLICIES = frozenset(
 workspaces_settings = AppSettings(
     "STAPEL_WORKSPACES",
     defaults=DEFAULTS,
+    import_strings=("AUDIT_SINK",),
+    # The sink decides what code runs on every membership transition — a
+    # stray same-named env var must never swap it silently (the gateway
+    # applies the same rule to its AUDIT_SINK).
+    # ALLOW_UNBILLED joins it for the same reason one step further out: it
+    # is the only key here that can turn an outage back into unlimited
+    # plan, its name is generic enough to collide in a shared pod, and it
+    # can only ever be flipped ON by a stray value. "This instance sells
+    # nothing" is a deployment declaration, so it is stated in settings.
+    no_env=("AUDIT_SINK", "ALLOW_UNBILLED"),
 )
 
 #: Values an environment variable may spell "yes" with. AppSettings resolves
@@ -202,6 +274,46 @@ def resend_cooldown_seconds() -> int:
         return max(0, int(str(value).strip()))
     except (TypeError, ValueError):
         return 0
+
+
+def email_initial_password() -> bool:
+    """``PROVISION_EMAIL_INITIAL_PASSWORD`` as a bool (see that key)."""
+    value = workspaces_settings.PROVISION_EMAIL_INITIAL_PASSWORD
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY
+    return bool(value)
+
+
+def login_grant_ttl_seconds() -> int:
+    """``INVITATION_LOGIN_GRANT_TTL_SECONDS`` as an int; 0 when disabled.
+
+    Same string/int tolerance as :func:`resend_cooldown_seconds` — an env
+    var arrives as text and a mis-typed limit must not silently become "no
+    limit at all".
+    """
+    value = workspaces_settings.INVITATION_LOGIN_GRANT_TTL_SECONDS
+    if isinstance(value, bool) or value is None:
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    try:
+        return max(0, int(str(value).strip()))
+    except (TypeError, ValueError):
+        return 0
+
+
+def allow_unbilled() -> bool:
+    """``ALLOW_UNBILLED`` as a bool (see that key).
+
+    Goes through :data:`_TRUTHY` like every other boolean here: this one
+    decides whether an unreachable billing service means "unlimited", so an
+    operator who writes ``ALLOW_UNBILLED=false`` in the environment must get
+    False rather than the True that ``bool("false")`` would hand them.
+    """
+    value = workspaces_settings.ALLOW_UNBILLED
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY
+    return bool(value)
 
 
 def rotate_token_on_resend() -> bool:
@@ -237,6 +349,8 @@ def workspace_create_policy() -> str:
 
 __all__ = [
     "workspaces_settings",
+    "email_initial_password",
+    "login_grant_ttl_seconds",
     "resend_cooldown_seconds",
     "rotate_token_on_resend",
     "workspace_create_policy",

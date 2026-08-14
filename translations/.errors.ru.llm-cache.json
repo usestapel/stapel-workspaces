@@ -39,6 +39,10 @@
     "hash": "715ff9f7621c1ce5",
     "text": "Аккаунт с этим email уже существует — войдите в него"
   },
+  "error.429.invitation_grant_pending": {
+    "hash": "dbf76a961fd53606",
+    "text": "Ссылка для входа по этому приглашению ещё действует; запросить новую можно через {retry_after} с"
+  },
   "error.429.invitation_resend_cooldown": {
     "hash": "7dda645b6f6944ca",
     "text": "Это приглашение недавно отправлялось; отправить снова можно через {retry_after} с"
@@ -46,6 +50,10 @@
   "error.503.auth_unavailable": {
     "hash": "c01407bc09695de1",
     "text": "Сервис аутентификации недоступен; повторите попытку позже"
+  },
+  "error.503.billing_unavailable": {
+    "hash": "be3d5bb85dbffc20",
+    "text": "Сервис биллинга недоступен; повторите попытку позже"
   },
   "error.503.profiles_unavailable": {
     "hash": "6e6b8bb24b8025cb",

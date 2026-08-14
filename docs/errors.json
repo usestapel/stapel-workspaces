@@ -468,6 +468,15 @@
     "en": "Too many failed attempts — verification locked"
   },
   {
+    "code": "error.429.invitation_grant_pending",
+    "status": 429,
+    "params": [
+      "retry_after"
+    ],
+    "remediation": "wait_and_retry",
+    "en": "A sign-in link for this invitation is still valid; you can request another one in {retry_after} seconds"
+  },
+  {
     "code": "error.429.invitation_resend_cooldown",
     "status": 429,
     "params": [
@@ -505,6 +514,13 @@
     "params": [],
     "remediation": "wait_and_retry",
     "en": "The authentication service is unavailable; try again later"
+  },
+  {
+    "code": "error.503.billing_unavailable",
+    "status": 503,
+    "params": [],
+    "remediation": "wait_and_retry",
+    "en": "The billing service is unavailable; try again later"
   },
   {
     "code": "error.503.profiles_not_configured",

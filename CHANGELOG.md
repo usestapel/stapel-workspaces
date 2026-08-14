@@ -1,5 +1,131 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed — BREAKING: the billing seam fails closed
+
+**Read this before upgrading if you run stapel-workspaces without
+stapel-billing.** The entitlement seam used to treat "nothing answered
+`billing.check_entitlement`" as ALLOW, on the reading that an unbilled
+deployment is unrestricted by construction. The seam cannot tell that
+situation apart from a billing service that crashed, scaled to zero, lost
+its `FUNCTION_ROUTES` entry or sits behind a gateway rendering JSON 404s —
+on NATS a `NoRespondersError` arrives as the very same
+`FunctionNotRegistered`. The price of one outage was therefore every seat
+ceiling, every org gate and every per-user debit at once, announced only by
+a `logger.debug`.
+
+Those two comm wiring errors now raise `BillingUnavailable`, which the API
+answers with **503 `error.503.billing_unavailable`** (not 402: nobody yet
+knows whether the plan allowed it, so this is a server fault to page on,
+not an upsell to show a customer). `billing.debit` closes the same way —
+provisioning paid capacity and charging nobody was the same finding as
+letting the check through.
+
+**Upgrade note.** A deployment that genuinely sells nothing declares it
+once: `STAPEL_WORKSPACES["ALLOW_UNBILLED"] = True`, which restores the old
+allow for the wiring errors only. You will not discover this in
+production — the new `stapel_workspaces.E011` system check fails
+`manage.py check` at boot when plan ceilings are enforced and neither
+`stapel_billing` is installed nor a `billing.` prefix is routed. The key
+is `no_env`: set it in `STAPEL_WORKSPACES`, not in the environment, so that
+no stray same-named variable in a shared pod can open the paywall. (It also
+goes through the same `_TRUTHY` coercion as its neighbours, so it cannot
+read `"false"` as True the way `bool("false")` would.)
+
+### Fixed — the three HIGH findings of the 2026-08-11 security audit
+
+**WORK-01 — `require_mfa` said "done" for work it had not done.** Turning
+the policy on saved the flag, ran a sweep whose Boolean result the view
+threw away, and answered 200; the sweep stopped at the first auth error, so
+an organization could be told MFA was required with none of its members
+checked, and anyone joining afterwards walked in unexamined. The policy now
+has state (`WorkspaceMFAEnforcement`: pending → enforcing → enforced/failed,
+with attempts, coverage and the last auth error) and per-member evidence
+(`WorkspaceMember.mfa_compliant`, where NULL means "nobody has asked" — the
+value the old code could not express). Enforcement moved to the door:
+`permissions.get_membership` — and with it `workspaces.check_membership`
+and the internal membership endpoint — refuses a member whose factor is
+unconfirmed while the policy is on, verifying on the spot and storing the
+answer. `retry_mfa_enforcement` + `manage.py enforce_workspace_mfa` are the
+durable half; `mfa_enforcement` on the workspace detail/PATCH response and
+`mfa_compliant` on the roster are the visible one. An auth outage still
+suspends nobody — it simply stops admitting the unverified.
+
+**WORK-02 — owner, seat and invitation invariants raced.** Each was decided
+on a snapshot and enforced afterwards: two demotions each saw "another
+owner exists" and left none, two invite batches each saw the last free
+seat, provisioning counted no seats at all, and two live invitations for
+one address meant two working tokens and two billed seats. Every mutating
+path now takes the workspace row lock first (`services.lock_workspace`) and
+re-reads what it decides from inside it — `change_member_role` /
+`remove_member` re-check the surviving owner, `invite_members` counts and
+writes the batch in one transaction, accept/resend/provision reserve their
+seat there. The database states the one invariant it can: a partial unique
+constraint on (workspace, email) for unresolved invitations, with the
+re-invite refreshing the existing row (migration `0010` revokes
+pre-existing duplicates first).
+
+**WORK-03 — provisioning and login grants leaked control.** Provisioning is
+a saga on `WorkspaceProvisionOperation` with a stable operation id: a
+completed operation replays into the member it already made, a resumed one
+keeps the account auth minted, and a failure compensates — refund
+attempted, and what billing cannot take stays as `compensating` for
+`manage.py reconcile_provisioning`. The claim endpoint mints ONE live login
+grant per invitation (`INVITATION_LOGIN_GRANT_TTL_SECONDS`, claimed by a
+conditional UPDATE), so a leaked invite link is no longer an endless supply
+of sign-in credentials; a second claim answers
+`error.429.invitation_grant_pending` with `Retry-After`. The
+provisioned-account letter no longer carries the generated password unless
+`PROVISION_EMAIL_INITIAL_PASSWORD` is set.
+
+Known limits, recorded rather than papered over: real parallel execution of
+the WORK-02 races needs PostgreSQL (SQLite ignores `SELECT ... FOR UPDATE`,
+so the tests pin the decision-under-lock and the one-transaction
+reservation); binding a login grant to workspace/purpose/TTL and replacing
+the provisioned password with a one-time activation link both need
+stapel-auth seams that do not exist yet; and `billing.credit` is not
+published by stapel-billing, so a refund usually cannot be made from here —
+which is why the debt is a queue instead of a log line.
+
+### Changed — the membership journal moves into the core event store; the bespoke table is gone
+
+0.24.0 built `WorkspaceAuditEvent` — an append-only table with its own
+pagination, no retention and no aggregation — one floor above
+`stapel_core.eventstore`, the platform's append-only stream primitive that
+already had cursor reads, retention, rollups and a pluggable backend, and
+that the privilege gateway's audit already writes to. That is this fleet's
+most-repeated defect shape (a mechanism built in core, a consumer that never
+picked it up), and this release deletes the instance of it:
+
+- Lines are written to the event-store stream
+  `STAPEL_WORKSPACES["AUDIT_STREAM"]` (default `workspace.audit`) through a
+  new deployment-owned sink seam `STAPEL_WORKSPACES["AUDIT_SINK"]` — the
+  same callable contract as `STAPEL_GATEWAY["AUDIT_SINK"]`, so one custom
+  sink serves both. The vocabulary (`models.AuditAction`), the write
+  discipline (`audit.record_audit`, still the one write path, still
+  never-raising) and the read mandate (`members.view`) stay in this module;
+  the storage stops being its business.
+- **`GET <workspace_id>/audit` does not change shape.** Same envelope, same
+  ISO-timestamp anchors, same item fields and ids — the read path goes
+  through the store's new anchor adapter, which speaks the released
+  `AnchorPagination` wire contract (pinned by
+  `tests/test_audit.py::test_the_released_anchor_envelope_survives_the_storage_change`).
+  One deliberate edge change: a malformed `anchor` now answers an empty page
+  (the malformed-`user_id` rule) where 0.24 answered a 500.
+- Migration `0009` is deletion-driven WITH the data path: it replays every
+  `workspaces_audit_event` row into the configured store (original
+  timestamps become the event `ts`, original UUID ids stay the line's `id`,
+  so pre-migration pages read back identically), then drops the table.
+  Deployments need `stapel_core.django.eventstore` in `INSTALLED_APPS`
+  (already true of any deployment on core's `COMMON_INSTALLED_APPS`).
+- Retention, rollups and backend routing arrive for free via
+  `STAPEL_EVENTSTORE` (`RETENTION["workspace.audit"]`, `ROUTES`), and the
+  journal shows up in core's cross-module `manage.py audit_trail`.
+
+Requires stapel-core with the event-store journal reads (`query(reverse=)`,
+`eventstore.anchor`) — the same branch, unreleased.
+
 ## [0.24.1] — 2026-08-13
 
 ### Fixed — the audit contract advertised a shape the endpoint never sends

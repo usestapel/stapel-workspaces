@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`69` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`71` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -66,10 +66,12 @@
 | `error.422.unprocessable_entity` | 422 | — | `wait_and_retry` | Невозможно обработать данные запроса |
 | `error.423.locked` | 423 | — | `wait_and_retry` | Ресурс заблокирован |
 | `error.423.verification_locked` | 423 | — | `wait_and_retry` | Слишком много неудачных попыток — подтверждение заблокировано |
+| `error.429.invitation_grant_pending` | 429 | `retry_after` | `wait_and_retry` | Ссылка для входа по этому приглашению ещё действует; запросить новую можно через {retry_after} с |
 | `error.429.invitation_resend_cooldown` | 429 | `retry_after` | `wait_and_retry` | Это приглашение недавно отправлялось; отправить снова можно через {retry_after} с |
 | `error.429.rate_limit` | 429 | `retry_after_minutes` | `wait_and_retry` | Слишком много попыток. Повторите попытку через {retry_after_minutes} мин. |
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Слишком много запросов. Пожалуйста, повторите попытку позже. |
 | `error.500.internal` | 500 | — | `contact_support` | Что-то пошло не так |
 | `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | Сервис аутентификации недоступен; повторите попытку позже |
+| `error.503.billing_unavailable` | 503 | — | `wait_and_retry` | Сервис биллинга недоступен; повторите попытку позже |
 | `error.503.profiles_not_configured` | 503 | — | `contact_support` | В этой инсталляции не настроен сервис профилей — отображаемое имя здесь записать нельзя |
 | `error.503.profiles_unavailable` | 503 | — | `wait_and_retry` | Сервис профилей недоступен; повторите попытку позже |

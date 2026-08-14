@@ -6,11 +6,21 @@ the organization" (``permissions.has_capability``). Semantically the checks
 are distinguishable (402 vs 403) and a view runs the capability check first.
 
 The seam is a comm Function, ``billing.check_entitlement``, owned by
-stapel-billing. Without billing installed (OSS default) the two comm wiring
-errors — ``FunctionNotRegistered`` / ``FunctionRouteNotConfigured`` — degrade
-to ALLOW: an unbilled deployment is unrestricted by construction. A billing
-that is installed but *failing* (``FunctionCallError``) is NOT swallowed:
-payment enforcement is security-relevant, the error propagates to the caller.
+stapel-billing. It fails CLOSED. The two comm wiring errors —
+``FunctionNotRegistered`` / ``FunctionRouteNotConfigured`` — raise
+:class:`BillingUnavailable`, which views answer with 503
+``error.503.billing_unavailable``; a billing that is installed but *failing*
+(``FunctionCallError``) propagates as it always did.
+
+The wiring errors used to mean ALLOW, on the reading that "nothing answered"
+is what an unbilled OSS deployment looks like. It is also what a crashed,
+scaled-to-zero or mis-routed billing service looks like — ``NoRespondersError``
+on NATS and a JSON 404 from a gateway both arrive here as
+``FunctionNotRegistered`` — so the price of one outage was every seat ceiling
+and every org gate at once. A deployment that really sells nothing declares it
+with ``STAPEL_WORKSPACES["ALLOW_UNBILLED"]``, which restores the old ALLOW for
+the wiring errors only; ``manage.py check`` says so at boot either way
+(``stapel_workspaces.E011``).
 """
 from __future__ import annotations
 
@@ -23,6 +33,8 @@ from stapel_core.comm.exceptions import (
     FunctionRouteNotConfigured,
 )
 
+from .conf import allow_unbilled
+
 logger = logging.getLogger(__name__)
 
 #: Entitlement keys enforced by this module (catalog lives in billing plans).
@@ -32,6 +44,11 @@ ENT_PROVISION_USER = "workspaces.provision_user"
 
 CHECK_ENTITLEMENT = "billing.check_entitlement"
 DEBIT = "billing.debit"
+#: The compensating half of :data:`DEBIT`. stapel-billing does not publish
+#: this Function yet, so the refund normally cannot be made from here — see
+#: :func:`refund_provision_credits`, which is written so that "cannot" is a
+#: recorded debt rather than a lost one.
+CREDIT = "billing.credit"
 
 
 @dataclass
@@ -49,7 +66,7 @@ class EntitlementResult:
     reason: str | None = None
 
 
-#: OSS default: billing not installed → everything is allowed.
+#: What an ``ALLOW_UNBILLED`` deployment gets instead of a verdict.
 ALLOWED = EntitlementResult(allowed=True, reason="billing_not_installed")
 
 
@@ -66,22 +83,45 @@ class EntitlementDenied(Exception):
         super().__init__(f"entitlement {key!r} denied: {result.reason or 'limit'}")
 
 
+class BillingUnavailable(Exception):
+    """Raised when the billing seam could not be asked at all.
+
+    Distinct from :class:`EntitlementDenied` because it is a verdict about
+    the deployment, not about the customer: nobody yet knows whether the
+    plan allowed this. Views answer 503 ``error.503.billing_unavailable``.
+    """
+
+    #: The reason string a caller/log sees, mirroring billing's vocabulary.
+    reason = "billing_unavailable"
+
+    def __init__(self, key: str, cause: Exception):
+        self.key = key
+        self.cause = cause
+        super().__init__(
+            f"billing seam unavailable for {key!r}: {type(cause).__name__}"
+        )
+
+
 def check_entitlement(user_id, key: str, *, quantity: int = 1) -> EntitlementResult:
     """Ask billing whether the subscription anchored on *user_id* allows *key*.
 
     ``quantity`` is the would-be total (billing knows the limit, the caller
-    counts usage — spec §D1). Degrades to ALLOW when billing is absent.
+    counts usage — spec §D1). Raises :class:`BillingUnavailable` when the
+    seam cannot be reached, unless the deployment declared ``ALLOW_UNBILLED``.
     """
     try:
         result = call(
             CHECK_ENTITLEMENT,
             {"user_id": str(user_id), "key": key, "quantity": quantity},
         )
-    except (FunctionNotRegistered, FunctionRouteNotConfigured):
-        logger.debug(
-            "billing.check_entitlement unavailable — allowing %r (OSS default)",
-            key,
-        )
+    except (FunctionNotRegistered, FunctionRouteNotConfigured) as unreachable:
+        if not allow_unbilled():
+            # Warning, not debug: on a billed deployment this is the paywall
+            # being unaskable, which is the thing an operator has to see.
+            logger.warning(
+                "billing.check_entitlement unavailable — refusing %r", key
+            )
+            raise BillingUnavailable(key, unreachable) from unreachable
         return ALLOWED
     result = result or {}
     return EntitlementResult(
@@ -112,9 +152,13 @@ def debit_provision_credits(
     call must not debit twice. The username rides in ``metadata`` (audit),
     never any credential material.
 
-    Degrades to a no-op when billing is not installed (OSS default, same
-    two wiring errors as :func:`check_entitlement`). A billing that answers
-    ``ok: false`` (e.g. insufficient credits) raises
+    Raises :class:`BillingUnavailable` when the seam cannot be reached —
+    provisioning paid capacity and charging nobody is the same finding as
+    letting the check through, and closing only the check half would leave
+    the money half open. An ``ALLOW_UNBILLED`` deployment keeps the no-op:
+    there, uncharged is the product meaning rather than a degrade.
+
+    A billing that answers ``ok: false`` (e.g. insufficient credits) raises
     :class:`EntitlementDenied` — the view turns it into the 402 envelope.
     A billing that is installed but *failing* propagates, as everywhere in
     this module.
@@ -134,10 +178,15 @@ def debit_provision_credits(
                 "description": f"Provisioned org user {username}",
             },
         )
-    except (FunctionNotRegistered, FunctionRouteNotConfigured):
-        logger.debug(
-            "billing.debit unavailable — provisioning uncharged (OSS default)"
-        )
+    except (FunctionNotRegistered, FunctionRouteNotConfigured) as unreachable:
+        if not allow_unbilled():
+            logger.warning(
+                "billing.debit unavailable — refusing to provision uncharged"
+            )
+            raise BillingUnavailable(
+                ENT_PROVISION_USER, unreachable
+            ) from unreachable
+        logger.debug("billing.debit unavailable — provisioning uncharged")
         return
     result = result or {}
     if not result.get("ok"):
@@ -145,6 +194,57 @@ def debit_provision_credits(
             ENT_PROVISION_USER,
             EntitlementResult(allowed=False, reason=result.get("reason")),
         )
+
+
+def refund_provision_credits(
+    workspace, *, operation_id, credits: int, reason: str = ""
+) -> bool:
+    """Give back what a failed provisioning charged (WORK-03).
+
+    The compensating step of the provisioning saga. Returns True when
+    billing accepted the refund, False when it could not be made — the
+    caller keeps the debt on the operation row and
+    ``manage.py reconcile_provisioning`` retries it, so an unrefundable
+    charge is a queue with a number in it instead of a line in a log.
+
+    Idempotency key mirrors the debit's, prefixed: replaying the refund of
+    one operation is one refund.
+
+    NOTE: ``billing.credit`` is not published by stapel-billing today, so
+    the honest answer here is usually False. That is deliberate — silently
+    treating "no refund seam" as "nothing owed" is how the orphan charge
+    the audit found stayed invisible in the first place.
+    """
+    try:
+        result = call(
+            CREDIT,
+            {
+                "user_id": str(workspace.owner_id),
+                "credits": int(credits),
+                "idempotency_key": f"ws-provision-refund:{operation_id}",
+                "metadata": {
+                    "workspace_id": str(workspace.id),
+                    "action": "workspaces.provision_user.refund",
+                    "reason": reason,
+                },
+                "description": "Refund for a provisioning that did not complete",
+            },
+        )
+    except (FunctionNotRegistered, FunctionRouteNotConfigured):
+        logger.warning(
+            "billing.credit unavailable — %s credits owed back to workspace %s "
+            "for provisioning operation %s remain recorded for reconciliation",
+            credits,
+            workspace.pk,
+            operation_id,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "billing.credit failed for provisioning operation %s", operation_id
+        )
+        return False
+    return bool((result or {}).get("ok"))
 
 
 def member_seats_quantity(workspace, *, additional: int = 0) -> int:

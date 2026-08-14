@@ -74,6 +74,10 @@
     {
       "select": "functions",
       "path": "services.py"
+    },
+    {
+      "select": "functions",
+      "path": "audit.py"
     }
   ],
   "surface": {
@@ -153,6 +157,10 @@
       "kind": "factory",
       "intent": "Create a single-use, TTL'd invitation and deliver it best-effort — as workspace.invitation.new_user when the address has no account yet, workspace.invitation when it does."
     },
+    "invite_members": {
+      "kind": "factory",
+      "intent": "Invite a batch of addresses — counts the plan's seats and writes the invitations in one locked transaction, so two batches cannot sell the same seat twice."
+    },
     "issue_invitation_login_grant": {
       "kind": "factory",
       "intent": "Mint an auth-backed login grant for a not-yet-registered invitee's claim step (0.7)."
@@ -177,6 +185,18 @@
       "kind": "factory",
       "intent": "Resolve a pending invitation into a membership — entitlement check, first-login policies, emits together."
     },
+    "lock_workspace": {
+      "kind": "gate_function",
+      "intent": "Take the workspace row lock every seat/owner write serializes on — call it before counting anything you are about to decide from."
+    },
+    "change_member_role": {
+      "kind": "factory",
+      "intent": "Write a member's new role with the last-owner invariant re-checked under the workspace lock — raises LastOwnerError instead of leaving an ownerless workspace."
+    },
+    "remove_member": {
+      "kind": "factory",
+      "intent": "Delete a membership under the same lock and invariant as change_member_role — returns (workspace, user, role) of what went."
+    },
     "apply_first_login_policies": {
       "kind": "gate_function",
       "intent": "Demand an org's first-login steps of an account, failing closed."
@@ -188,6 +208,10 @@
     "provision_member": {
       "kind": "factory",
       "intent": "Create an org-provisioned member end to end (debit, auth.provision_user, membership, credentials)."
+    },
+    "reconcile_provision_operations": {
+      "kind": "factory",
+      "intent": "Retry the refunds a failed provisioning could not make — the queue manage.py reconcile_provisioning drains, so an orphan charge is a number somebody can act on."
     },
     "reset_member_password": {
       "kind": "factory",
@@ -204,6 +228,26 @@
     "enforce_require_mfa": {
       "kind": "gate_function",
       "intent": "Sweep a workspace's members via auth.mfa_status, suspend the unenrolled, fail-open on an auth hiccup."
+    },
+    "mfa_enforcement_for": {
+      "kind": "factory",
+      "intent": "The workspace's MFA enforcement record (pending/enforcing/enforced/failed) — read it, not the settings flag, to answer whether MFA actually holds here."
+    },
+    "verify_member_mfa": {
+      "kind": "gate_function",
+      "intent": "Ask auth about one member's second factor and store the answer — returns None when auth could not be reached, which never counts as compliant."
+    },
+    "record_member_mfa": {
+      "kind": "factory",
+      "intent": "Persist one member's compliance answer (and suspend them for no_mfa when it is a no) — the per-member half the sweep and the events share."
+    },
+    "retry_mfa_enforcement": {
+      "kind": "factory",
+      "intent": "Idempotent re-sweep of every workspace not yet enforced — what manage.py enforce_workspace_mfa schedules."
+    },
+    "mfa_admission_blocked": {
+      "kind": "predicate",
+      "intent": "Is this member barred by the workspace's require_mfa policy — the door the policy is enforced at, verifying on the spot when nobody has asked yet."
     },
     "lift_no_mfa_suspensions": {
       "kind": "factory",
@@ -251,7 +295,19 @@
     },
     "record_audit": {
       "kind": "factory",
-      "intent": "Append one line to a workspace's membership history — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
+      "intent": "Append one line to a workspace's membership history (an event-store line, through the deployment's AUDIT_SINK) — call it from the service that OWNS a transition, never from a view, so a second door cannot come with a second chance to forget."
+    },
+    "eventstore_sink": {
+      "kind": "factory",
+      "intent": "The default journal sink: append to the core event store and flush, so a sibling worker's read right after the transition already sees the line. Swap via STAPEL_WORKSPACES[\"AUDIT_SINK\"] (gateway-shaped callable) to ship the journal elsewhere."
+    },
+    "history_page": {
+      "kind": "factory",
+      "intent": "One anchor page of a workspace's membership history, newest first, workspace-scoped unconditionally — the read behind GET <id>/audit; use it instead of querying the stream by hand."
+    },
+    "replay_legacy_rows": {
+      "kind": "factory",
+      "intent": "Carry rows of the retired 0.24 audit table into the stream, ids and timestamps intact — the data path migration 0009 runs; not for new writes."
     }
   }
 }

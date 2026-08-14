@@ -8,7 +8,7 @@ from secrets import token_urlsafe
 
 import requests
 from django.conf import settings
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -25,6 +25,8 @@ from stapel_core.signals import workspace_member_changed
 from .conf import (
     CREATE_POLICY_CLOSED,
     CREATE_POLICY_OPEN,
+    email_initial_password,
+    login_grant_ttl_seconds,
     resend_cooldown_seconds,
     rotate_token_on_resend,
     workspace_create_policy,
@@ -37,82 +39,37 @@ from .entitlements import (
     check_org_entitlement,
     debit_provision_credits,
     member_seats_quantity,
+    refund_provision_credits,
 )
+from .capabilities import capabilities_for
 from .events import (
     EVENT_WORKSPACE_INVITATION_REVOKED,
     EVENT_WORKSPACE_MEMBER_PASSWORD_RESET,
     EVENT_WORKSPACE_MEMBER_PROVISIONED,
+    EVENT_WORKSPACE_MEMBER_REMOVED,
+    EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
     EVENT_WORKSPACE_MEMBER_SUSPENDED,
     EVENT_WORKSPACE_MEMBER_UNSUSPENDED,
     EVENT_WORKSPACE_PERSONAL_CREATED,
 )
+from .audit import record_audit  # noqa: F401 - the one write path; see audit.py
 from .models import (
     SUSPENSION_ACCOUNT_DEACTIVATED,
     SUSPENSION_NO_MFA,
     AuditAction,
+    InvitationStatus,
+    MFAEnforcementState,
+    ProvisionState,
     Role,
     Workspace,
-    WorkspaceAuditEvent,
     WorkspaceInvitation,
     WorkspaceMember,
+    WorkspaceMFAEnforcement,
+    WorkspaceProvisionOperation,
     WorkspaceType,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def record_audit(
-    *,
-    workspace,
-    action: str,
-    actor=None,
-    subject=None,
-    subject_email: str = "",
-    role: str = "",
-    **metadata,
-) -> WorkspaceAuditEvent:
-    """Append one line to a workspace's membership history.
-
-    THE ONE WRITE PATH, and it is called from the SERVICE that owns each
-    transition rather than from the views — the same rule the emits already
-    follow, for the same reason: a second door into a transition would come
-    with a second chance to forget the record. ``tests/test_audit.py`` pins
-    that every emitted membership event has a matching audit action, so a
-    future transition cannot ship emitting-but-not-recording.
-
-    *actor* and *subject* accept a user object or a bare id — call sites hold
-    one or the other and normalising here beats `getattr(x, "pk", x)` at ten
-    of them.
-
-    Never raises into the caller: an audit line is a record OF the change, not
-    a precondition FOR it, and failing a removal because history could not be
-    written would be the tail wagging the dog. A failure is logged loudly —
-    silence here would make the history quietly incomplete, which is worse
-    than a gap somebody can see.
-    """
-
-    def _id(value):
-        if value is None:
-            return None
-        return getattr(value, "pk", value)
-
-    try:
-        return WorkspaceAuditEvent.objects.create(
-            workspace_id=getattr(workspace, "pk", workspace),
-            action=action,
-            actor_id=_id(actor),
-            subject_id=_id(subject),
-            subject_email=(subject_email or "").lower().strip(),
-            role=role or "",
-            metadata={k: v for k, v in metadata.items() if v is not None},
-        )
-    except Exception:  # noqa: BLE001 - see the docstring
-        logger.exception(
-            "workspaces: could not record audit action %s for workspace %s",
-            action,
-            getattr(workspace, "pk", workspace),
-        )
-        return None
 
 
 def _make_unique_slug(name: str) -> str:
@@ -484,6 +441,89 @@ def _fetch_profile_display_names(user_ids) -> dict:
         return {}
 
 
+class LastOwnerError(Exception):
+    """The write would leave the workspace with no owner.
+
+    Raised by :func:`change_member_role` / :func:`remove_member` when the
+    invariant is re-checked under the workspace lock and no other owner is
+    left. The view renders it as ``error.403.last_owner_cannot_be_removed``.
+    """
+
+
+def lock_workspace(workspace) -> Workspace | None:
+    """Take the workspace's row lock — the mutex of every seat/owner write.
+
+    Accepts a :class:`~stapel_workspaces.models.Workspace` or its id and
+    returns the freshly locked row (``None`` when it is gone or
+    soft-deleted). Callers must already be inside ``transaction.atomic``.
+
+    Every path that changes WHO is in a workspace — invite, resend, accept,
+    provision, role change, removal — takes this lock BEFORE reading the
+    counts it decides on, and always in this order (workspace row first,
+    then the invitation/member row), so the paths cannot deadlock against
+    each other. Deciding on a count read outside the lock is deciding on a
+    snapshot another transaction is already invalidating: two last-owner
+    demotions each saw a second owner, two invite batches each saw the last
+    free seat, and both committed.
+
+    SQLite ignores ``SELECT ... FOR UPDATE`` (Django's backend has no
+    support flag for it), so the serialization this buys is real only on a
+    locking database. The decisions themselves are re-made inside the lock
+    either way, which is what the tests pin.
+    """
+    workspace_id = getattr(workspace, "pk", workspace)
+    return (
+        Workspace.objects.select_for_update()
+        .filter(pk=workspace_id, deleted_at__isnull=True)
+        .first()
+    )
+
+
+@transaction.atomic
+def invite_members(
+    *,
+    workspace: Workspace,
+    emails,
+    role: str,
+    invited_by,
+    display_name: str | None = None,
+) -> list[WorkspaceInvitation]:
+    """Reserve seats and create the batch's invitations in one transaction.
+
+    The seat ceiling is counted under :func:`lock_workspace` and the rows
+    are written before the lock is released, so a seat cannot be sold
+    twice: a second batch arriving at the same moment waits, then counts
+    the rows this one has already committed. The view's own check is a
+    hint that produces a readable 402 early; this one is the reservation.
+
+    Raises :class:`~stapel_workspaces.entitlements.EntitlementDenied` when
+    the plan cannot carry the batch, and ``Workspace.DoesNotExist`` when
+    the workspace disappeared between the view's read and the lock.
+    """
+    locked = lock_workspace(workspace)
+    if locked is None:
+        raise Workspace.DoesNotExist("workspace is gone")
+    emails = list(emails)
+    verdict = check_org_entitlement(
+        locked,
+        ENT_MEMBERS_MAX,
+        quantity=member_seats_quantity(locked, additional=len(emails)),
+    )
+    if not verdict.allowed:
+        raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
+    return [
+        create_invitation(
+            workspace=locked,
+            email=email,
+            role=role,
+            invited_by=invited_by,
+            display_name=display_name,
+        )
+        for email in emails
+    ]
+
+
+@transaction.atomic
 def create_invitation(
     *,
     workspace: Workspace,
@@ -492,19 +532,46 @@ def create_invitation(
     invited_by,
     display_name: str | None = None,
 ) -> WorkspaceInvitation:
-    invitation = WorkspaceInvitation.objects.create(
-        workspace=workspace,
-        email=email.lower().strip(),
-        role=role,
-        invited_by=invited_by,
-        token=token_urlsafe(32),
-        expires_at=timezone.now()
-        + timedelta(days=workspaces_settings.INVITATION_TTL_DAYS),
-        # A NAME HINT (this invite's "Name" field), not the canonical name —
-        # see WorkspaceMember.display_name_hint's docstring for why this
-        # module stores it at all despite the name living in stapel-profiles.
-        display_name_hint=(display_name or "").strip(),
+    """Create — or refresh — the workspace's live invitation for *email*.
+
+    One live invitation per address per workspace, and the database says
+    so (``workspaces_invitation_one_live_per_email``). Inviting an address
+    that already has an unresolved invitation used to insert a second row,
+    and each row reserved its own seat: an admin re-sending from the
+    invite modal instead of the resend button billed the org twice for one
+    person and handed out two working tokens for one seat. The re-invite
+    now lands on the existing row — role, name hint and TTL refreshed, the
+    letter sent again — so the address has exactly one way in.
+    """
+    email = email.lower().strip()
+    expires_at = timezone.now() + timedelta(
+        days=workspaces_settings.INVITATION_TTL_DAYS
     )
+    invitation = (
+        WorkspaceInvitation.objects.select_for_update()
+        .unresolved()
+        .filter(workspace=workspace, email=email)
+        .first()
+    )
+    if invitation is not None:
+        invitation.role = role
+        invitation.expires_at = expires_at
+        invitation.display_name_hint = (display_name or "").strip()
+        invitation.save(update_fields=["role", "expires_at", "display_name_hint"])
+    else:
+        invitation = WorkspaceInvitation.objects.create(
+            workspace=workspace,
+            email=email,
+            role=role,
+            invited_by=invited_by,
+            token=token_urlsafe(32),
+            expires_at=expires_at,
+            # A NAME HINT (this invite's "Name" field), not the canonical
+            # name — see WorkspaceMember.display_name_hint's docstring for
+            # why this module stores it at all despite the name living in
+            # stapel-profiles.
+            display_name_hint=(display_name or "").strip(),
+        )
     record_audit(
         workspace=workspace,
         action=AuditAction.INVITATION_CREATED,
@@ -669,6 +736,57 @@ def _send_invitation_notification(
 ISSUE_LOGIN_GRANT = "auth.issue_login_grant"
 
 
+class LoginGrantAlreadyIssued(Exception):
+    """A live login grant already exists for this invitation (WORK-03).
+
+    Carries ``retry_after`` seconds — the remainder of the grant's TTL,
+    after which a genuine "the email never arrived" retry is allowed again.
+    """
+
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
+        super().__init__(f"a login grant is live for {retry_after}s")
+
+
+def _claim_login_grant_window(invitation: WorkspaceInvitation) -> int:
+    """Atomically take the invitation's single live-grant slot.
+
+    A conditional UPDATE, not a read-then-write: the row is claimed by the
+    statement that finds it unclaimed (or expired), so two simultaneous
+    claims of one invite token mint one grant and the loser is told when to
+    come back. Returns 0 when the slot was taken here, else the seconds
+    remaining.
+    """
+    ttl = login_grant_ttl_seconds()
+    if ttl <= 0:
+        return 0
+    now = timezone.now()
+    cutoff = now - timedelta(seconds=ttl)
+    claimed = (
+        WorkspaceInvitation.objects.filter(pk=invitation.pk)
+        .filter(
+            models.Q(login_grant_issued_at__isnull=True)
+            | models.Q(login_grant_issued_at__lt=cutoff)
+        )
+        .update(
+            login_grant_issued_at=now,
+            login_grant_count=models.F("login_grant_count") + 1,
+        )
+    )
+    if claimed:
+        return 0
+    issued_at = (
+        WorkspaceInvitation.objects.filter(pk=invitation.pk)
+        .values_list("login_grant_issued_at", flat=True)
+        .first()
+    )
+    if issued_at is None:
+        return 0
+    remaining = ttl - (now - issued_at).total_seconds()
+    return max(1, int(remaining + 0.999)) if remaining > 0 else 0
+
+
+@transaction.atomic
 def issue_invitation_login_grant(
     *, invitation: WorkspaceInvitation, language: str | None = None
 ) -> str:
@@ -678,6 +796,23 @@ def issue_invitation_login_grant(
     verified account materializes when the holder exchanges the grant at
     auth's ``/grant/exchange/``. The invitation is deliberately NOT
     consumed: accept stays a separate, conscious step after account setup.
+
+    ONE LIVE GRANT AT A TIME (WORK-03). The grant is single-use in auth,
+    but nothing here stopped the same invite token from minting another
+    one, and another: a link that leaked out of a mailbox was an unbounded
+    supply of session-bearing credentials for that address. The slot is
+    claimed by a conditional UPDATE inside this transaction — so two
+    simultaneous claims produce one grant, and an auth failure rolls the
+    claim back rather than burning the window — and it reopens after
+    ``STAPEL_WORKSPACES["INVITATION_LOGIN_GRANT_TTL_SECONDS"]``, which is
+    what makes "the email never arrived" still workable. Raises
+    :class:`LoginGrantAlreadyIssued` while a grant is live.
+
+    What cannot be fixed from this side: auth's ``ISSUE_LOGIN_GRANT_SCHEMA``
+    takes only the email (``additionalProperties: false``), so the grant
+    cannot be bound to this workspace, this invitation or a purpose, and
+    its TTL is auth's own. Binding it needs a stapel-auth change; the
+    window above is the containment this repository can give.
 
     comm wiring errors (``FunctionNotRegistered`` /
     ``FunctionRouteNotConfigured``) propagate to the caller — an invite
@@ -704,6 +839,9 @@ def issue_invitation_login_grant(
     hint on the membership row exactly the same way either way (see
     ``accept_invitation``).
     """
+    remaining = _claim_login_grant_window(invitation)
+    if remaining:
+        raise LoginGrantAlreadyIssued(remaining)
     payload: dict = {
         "email": invitation.email,
         "verified_email": True,
@@ -866,11 +1004,19 @@ def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation
 
     ``expires_at`` restarts from now (``INVITATION_TTL_DAYS``) — a resent
     invitation the invitee cannot use before it expires again is not a
-    resend. NB: this re-reserves the seat (a revived expired invitation is
-    ``pending()`` again); the ceiling is re-checked by the caller, not
-    here.
+    resend. Reviving an EXPIRED invitation re-takes a seat, so the plan
+    ceiling is re-counted here under :func:`lock_workspace` and
+    :class:`~stapel_workspaces.entitlements.EntitlementDenied` is raised
+    when it no longer fits. The view's own check answers the admin early;
+    this one is what a batch of simultaneous resends has to pass.
     """
     with transaction.atomic():
+        # Workspace row first, invitation row second — the lock order every
+        # seat/owner path in this module takes, so they queue instead of
+        # deadlocking.
+        workspace = lock_workspace(invitation.workspace_id)
+        if workspace is None:
+            raise ValueError("workspace is gone")
         locked = (
             WorkspaceInvitation.objects.select_for_update()
             .unresolved()
@@ -879,6 +1025,16 @@ def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation
         )
         if locked is None:
             raise ValueError("invitation is not pending")
+        # A live invitation already holds its seat; a revived expired one
+        # has to be given one back, and only if the plan still has it.
+        if locked.status != InvitationStatus.PENDING:
+            verdict = check_org_entitlement(
+                workspace,
+                ENT_MEMBERS_MAX,
+                quantity=member_seats_quantity(workspace, additional=1),
+            )
+            if not verdict.allowed:
+                raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
         remaining = resend_cooldown_remaining(locked)
         if remaining:
             raise InvitationResendCooldown(remaining)
@@ -943,6 +1099,13 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
     # unresolved() as decline's — hand-written, it had lost the revoked_at
     # clause, so a revocation committing between the view's state check and
     # this lock lost the race and the invite was accepted anyway (0.10.0).
+    # Workspace row first, invitation row second (see lock_workspace): the
+    # seat this accept turns into a membership is counted under that lock,
+    # so a batch of invitees accepting at the same instant cannot each read
+    # the same last free seat and all take it.
+    workspace = lock_workspace(invitation.workspace_id)
+    if workspace is None:
+        raise ValueError("workspace is gone")
     locked = (
         WorkspaceInvitation.objects.select_for_update()
         .unresolved()
@@ -961,9 +1124,9 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
     ).exists()
     if not already_member:
         verdict = check_org_entitlement(
-            locked.workspace,
+            workspace,
             ENT_MEMBERS_MAX,
-            quantity=member_seats_quantity(locked.workspace),
+            quantity=member_seats_quantity(workspace),
         )
         if not verdict.allowed:
             raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
@@ -1041,6 +1204,131 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
     return member
 
 
+@transaction.atomic
+def change_member_role(*, member: WorkspaceMember, new_role: str, actor):
+    """Write a member's new role with the last-owner invariant held.
+
+    "Is there another owner" is answered INSIDE the workspace lock and
+    immediately before the write, because the answer is only true until
+    somebody else commits. Two admins demoting the two remaining owners at
+    the same moment each read "yes, one other owner exists" outside a lock,
+    and the workspace ended up with none — an organization nobody can
+    administer, recoverable only by hand in the database.
+
+    Raises :class:`LastOwnerError` when this write would take the last
+    owner away, and ``WorkspaceMember.DoesNotExist`` when the row (or the
+    workspace) went away first. Returns the saved member.
+    """
+    if lock_workspace(member.workspace_id) is None:
+        raise WorkspaceMember.DoesNotExist("workspace is gone")
+    locked = (
+        WorkspaceMember.objects.select_for_update()
+        .select_related("workspace", "user")
+        .filter(pk=member.pk)
+        .first()
+    )
+    if locked is None:
+        raise WorkspaceMember.DoesNotExist("member is gone")
+    if locked.role == Role.OWNER and new_role != Role.OWNER:
+        _assert_another_owner(locked)
+    old_role = locked.role
+    locked.role = new_role
+    locked.save(update_fields=["role"])
+    # Transactional outbox: leaves iff this transaction commits.
+    # Cross-service consumers (e.g. a rooms service re-evaluating a
+    # participant's rights) get the new role's capability grants inline
+    # (spec §A4).
+    emit(
+        EVENT_WORKSPACE_MEMBER_ROLE_CHANGED,
+        {
+            "workspace_id": str(locked.workspace_id),
+            "user_id": str(locked.user_id),
+            "old_role": str(old_role),
+            "new_role": str(locked.role),
+            "capabilities": capabilities_for(locked.role),
+        },
+    )
+    record_audit(
+        workspace=locked.workspace_id,
+        action=AuditAction.MEMBER_ROLE_CHANGED,
+        actor=actor,
+        subject=locked.user_id,
+        role=locked.role,
+        old_role=str(old_role),
+        new_role=str(locked.role),
+    )
+    return locked
+
+
+@transaction.atomic
+def remove_member(*, member: WorkspaceMember, actor):
+    """Delete a membership with the last-owner invariant held.
+
+    The serialized twin of :func:`change_member_role` — same lock, same
+    re-read, same reason: a removal and a demotion racing each other are
+    two writes that were each valid against a workspace that no longer
+    existed by the time they landed.
+
+    Raises :class:`LastOwnerError` / ``WorkspaceMember.DoesNotExist``.
+    Returns ``(workspace, user, role)`` of the membership that was removed.
+    """
+    if lock_workspace(member.workspace_id) is None:
+        raise WorkspaceMember.DoesNotExist("workspace is gone")
+    locked = (
+        WorkspaceMember.objects.select_for_update()
+        .select_related("workspace", "user")
+        .filter(pk=member.pk)
+        .first()
+    )
+    if locked is None:
+        raise WorkspaceMember.DoesNotExist("member is gone")
+    if locked.role == Role.OWNER:
+        _assert_another_owner(locked)
+    workspace = locked.workspace
+    removed_user = locked.user
+    removed_role = locked.role
+    locked.delete()
+    # Transactional outbox: leaves iff this transaction commits. The
+    # cross-service kick signal (spec §A4) — e.g. a rooms service
+    # disconnects the user from an ongoing call.
+    emit(
+        EVENT_WORKSPACE_MEMBER_REMOVED,
+        {
+            "workspace_id": str(workspace.id),
+            "user_id": str(removed_user.pk),
+            "role": str(removed_role),
+            "removed_by": str(getattr(actor, "pk", actor)),
+        },
+    )
+    # The row is gone; the record of its going is not. An audit written
+    # outside this transaction could survive a rollback and claim a removal
+    # that never happened.
+    record_audit(
+        workspace=workspace,
+        action=AuditAction.MEMBER_REMOVED,
+        actor=actor,
+        subject=removed_user,
+        subject_email=getattr(removed_user, "email", "") or "",
+        role=removed_role,
+    )
+    return workspace, removed_user, removed_role
+
+
+def _assert_another_owner(member: WorkspaceMember) -> None:
+    """Raise :class:`LastOwnerError` unless a second owner survives *member*.
+
+    Counted under the caller's workspace lock, never before it.
+    """
+    others = (
+        WorkspaceMember.objects.select_for_update()
+        .filter(workspace_id=member.workspace_id, role=Role.OWNER)
+        .exclude(pk=member.pk)
+        .exists()
+    )
+    if not others:
+        raise LastOwnerError("the last owner cannot be demoted or removed")
+
+
 # ---------------------------------------------------------------------------
 # Security hardening (org-program spec §C1-C3, Wave 3)
 # ---------------------------------------------------------------------------
@@ -1114,6 +1402,102 @@ def security_settings_for(workspace: Workspace) -> WorkspaceSecuritySettings:
     return WorkspaceSecuritySettings.from_settings(workspace.settings)
 
 
+#: Namespace for the derived provisioning operation id — retrying the same
+#: username in the same workspace IS the same operation, so a client that
+#: never learned about idempotency keys still gets idempotency.
+PROVISION_NAMESPACE = uuid.UUID("6f9b5c1e-2f43-4a0c-9a5f-4a2f5f36f6f1")
+
+
+def _open_provision_operation(*, workspace, username, credits, operation_id=None):
+    """Find or start the saga row for this provisioning attempt."""
+    key = str(
+        operation_id
+        or uuid.uuid5(PROVISION_NAMESPACE, f"{workspace.pk}:{username}")
+    )
+    operation, _ = WorkspaceProvisionOperation.objects.get_or_create(
+        workspace=workspace,
+        operation_id=key,
+        defaults={"username": username, "credits": credits},
+    )
+    return operation
+
+
+#: States from which a further call is a NEW attempt rather than a resume.
+_PROVISION_SETTLED = (
+    ProvisionState.COMPENSATING,
+    ProvisionState.COMPENSATED,
+    ProvisionState.FAILED,
+)
+
+
+def _advance_provision(operation, state, *, user_id=None, credits_to_refund=None):
+    """Move the saga forward and say so in the same write."""
+    operation.state = state
+    fields = ["state"]
+    if user_id is not None:
+        operation.user_id = user_id
+        fields.append("user_id")
+    if credits_to_refund is not None:
+        operation.credits_to_refund = credits_to_refund
+        fields.append("credits_to_refund")
+    operation.save(update_fields=fields)
+
+
+def _compensate_provision(operation, *, reason: str) -> None:
+    """Undo what this operation paid for, or record that it could not be.
+
+    Never raises: it runs on the failure path, and a compensation that
+    explodes would replace one lost charge with a lost error message. What
+    it cannot refund it leaves as ``compensating`` with the amount on the
+    row — the state ``reconcile_provision_operations`` looks for.
+    """
+    operation.last_error = reason[:2000]
+    if not operation.credits_to_refund:
+        operation.state = ProvisionState.FAILED
+        operation.save(update_fields=["state", "last_error"])
+        return
+    refunded = refund_provision_credits(
+        operation.workspace,
+        operation_id=operation.operation_id,
+        credits=operation.credits_to_refund,
+        reason=reason,
+    )
+    if refunded:
+        operation.credits_to_refund = 0
+        operation.state = ProvisionState.COMPENSATED
+    else:
+        operation.state = ProvisionState.COMPENSATING
+    operation.save(update_fields=["state", "last_error", "credits_to_refund"])
+
+
+def reconcile_provision_operations(*, limit: int = 100) -> list:
+    """Retry the refunds that could not be made when they were owed.
+
+    The scheduled half of the saga's compensation
+    (``manage.py reconcile_provisioning``). Idempotent: the refund carries
+    a per-operation idempotency key, and a row whose debt is settled leaves
+    the queue.
+
+    Returns the operations it settled.
+    """
+    owed = WorkspaceProvisionOperation.objects.filter(
+        state=ProvisionState.COMPENSATING
+    ).select_related("workspace")[:limit]
+    settled = []
+    for operation in owed:
+        if refund_provision_credits(
+            operation.workspace,
+            operation_id=operation.operation_id,
+            credits=operation.credits_to_refund,
+            reason=operation.last_error or "reconciliation",
+        ):
+            operation.credits_to_refund = 0
+            operation.state = ProvisionState.COMPENSATED
+            operation.save(update_fields=["credits_to_refund", "state"])
+            settled.append(operation)
+    return settled
+
+
 def provision_member(
     *,
     workspace: Workspace,
@@ -1123,34 +1507,45 @@ def provision_member(
     password: str | None = None,
     display_name: str | None = None,
     email: str | None = None,
+    operation_id: str | None = None,
 ):
     """Create an org-provisioned (synthetic) member (org-program spec §C1).
 
-    Flow: billing debit (when ``PROVISION_USER_CREDITS`` > 0; deterministic
-    idempotency key per provision attempt) → ``auth.provision_user`` (the
-    account materializes in auth with the workspace's first-login policy) →
-    ``WorkspaceMember(accepted_at=now, provisioned=True)`` + the
-    ``workspace.member_provisioned`` emit → credentials delivery (below).
+    A SAGA with a stable operation id, not a straight line (WORK-03).
+    Provisioning spends money in billing, mints an account in auth and
+    writes a membership here; there is no transaction across the three, so
+    every step records where it got to on a
+    :class:`~stapel_workspaces.models.WorkspaceProvisionOperation` row:
 
-    The debit deliberately precedes the auth call (spec §C1/§D2 order); a
-    provision that then fails at auth (e.g. lost the username race) leaves
-    the charge standing — it is visible in billing under
-    ``metadata.action = workspaces.provision_user`` with the provision UUID
-    in the idempotency key for manual adjustment. The common input errors
-    (malformed local part, bad role) are rejected by the serializer BEFORE
-    any charge.
+    ``started`` → debit (``charged``) → ``auth.provision_user``
+    (``account_created``) → membership + emit (``completed``).
+
+    * **Replay is free.** The operation id defaults to
+      ``uuid5(workspace, username)``, so pressing the button again after a
+      timeout is the SAME operation: a completed one answers with the
+      member it already made (and no password — that was handed over
+      once), and an interrupted one resumes without a second charge, since
+      the debit carries the same idempotency key.
+    * **Failure compensates.** A failure after the charge tries the refund
+      (``entitlements.refund_provision_credits``) and, when billing cannot
+      take it, keeps the debt on the row as ``compensating`` for
+      ``manage.py reconcile_provisioning``. The orphan charge the audit
+      found is now a queue with a number in it.
+    * **An orphan account is findable.** ``user_id`` is written as soon as
+      auth mints the account, so a membership that never landed leaves a
+      row naming exactly what to clean up. Deleting it needs an auth-side
+      seam this module does not have; the record is the half that is ours.
 
     Credentials delivery (the email nuance, spec §C1): a synthetic account
-    normally has NO email — there is nowhere to send the
-    ``workspace.provisioned_account`` letter, so it is skipped and a
-    server-generated password is returned to the provisioning admin in the
-    API response, exactly once (``generated_password``). When the optional
-    ``email`` IS passed, the letter is sent there too (username +
-    ``initial_password`` when generated + login URL). The generated
-    password is always present in the return value when the server
-    generated one — the admin/org owns the password until first login
-    (forced change / MFA enroll). It never rides any event payload and is
-    never logged.
+    normally has NO email — the ``workspace.provisioned_account`` letter is
+    skipped and the server-generated password is returned to the
+    provisioning admin in the API response, exactly once
+    (``generated_password``). When the optional ``email`` IS passed the
+    letter goes there — with the username, workspace and login URL, and
+    WITHOUT the password unless the deployment sets
+    ``STAPEL_WORKSPACES["PROVISION_EMAIL_INITIAL_PASSWORD"]``: a credential
+    mailed in cleartext outlives its one use by the life of the mailbox.
+    It never rides any event payload and is never logged.
 
     Returns ``(member, username, generated_password | None)``.
     Raises :class:`ProvisionError` on a structured auth failure and lets
@@ -1160,15 +1555,42 @@ def provision_member(
     from django.contrib.auth import get_user_model
 
     username = f"{workspace.slug}/{username_local}"
-    provision_id = uuid.uuid4()
-
     credits = int(workspaces_settings.PROVISION_USER_CREDITS or 0)
-    if credits > 0:
+    operation = _open_provision_operation(
+        workspace=workspace,
+        username=username,
+        credits=credits,
+        operation_id=operation_id,
+    )
+    if operation.state == ProvisionState.COMPLETED:
+        # A replay of a finished operation. The password is deliberately
+        # NOT re-issued: it was delivered once, and minting a second answer
+        # here would mean either storing it or resetting the account.
+        member = WorkspaceMember.objects.filter(
+            workspace=workspace, user_id=operation.user_id
+        ).first()
+        if member is not None:
+            return member, operation.username, None
+    if operation.state in _PROVISION_SETTLED:
+        # A previous attempt failed and was compensated. This is a NEW
+        # attempt of the same operation: same id (so the account and the
+        # membership stay unique), fresh attempt number (so the charge for
+        # it is a fresh charge and not a duplicate billing must dedupe).
+        operation.attempt += 1
+        operation.state = ProvisionState.STARTED
+        operation.save(update_fields=["attempt", "state"])
+
+    if credits > 0 and operation.state == ProvisionState.STARTED:
         debit_provision_credits(
             workspace,
-            provision_id=provision_id,
+            provision_id=f"{operation.operation_id}:{operation.attempt}",
             username=username,
             credits=credits,
+        )
+        _advance_provision(
+            operation,
+            ProvisionState.CHARGED,
+            credits_to_refund=operation.credits_to_refund + credits,
         )
 
     payload: dict = {
@@ -1188,14 +1610,83 @@ def provision_member(
         payload["display_name"] = display_name
     if email:
         payload["email"] = email
-    result = call(PROVISION_USER, payload) or {}
-    if result.get("error"):
-        raise ProvisionError(result["error"])
+    if operation.user_id is None:
+        try:
+            result = call(PROVISION_USER, payload) or {}
+        except Exception as exc:
+            _compensate_provision(operation, reason=f"{type(exc).__name__}: {exc}")
+            raise
+        if result.get("error"):
+            _compensate_provision(operation, reason=result["error"])
+            raise ProvisionError(result["error"])
+        user_id = result["user_id"]
+        generated_password = result.get("generated_password")
+        _advance_provision(
+            operation, ProvisionState.ACCOUNT_CREATED, user_id=user_id
+        )
+    else:
+        # Resuming an operation whose account already exists: auth minted it
+        # on an attempt that then failed, and asking again would collide
+        # with its own username — the retry finishes the orphan instead of
+        # tripping over it. No password: auth issued one, once.
+        user_id = operation.user_id
+        generated_password = None
 
-    user_id = result["user_id"]
-    generated_password = result.get("generated_password")
+    try:
+        member = _complete_provision(
+            operation=operation,
+            workspace=workspace,
+            user_id=user_id,
+            role=role,
+            provisioned_by=provisioned_by,
+            display_name=display_name,
+        )
+    except Exception as exc:
+        _compensate_provision(operation, reason=f"{type(exc).__name__}: {exc}")
+        raise
+    invalidate_membership_cache(workspace.id, user_id)
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is not None:
+        workspace_member_changed.send(
+            sender=WorkspaceMember,
+            workspace=workspace,
+            user=user,
+            role=role,
+            action="added",
+        )
+    if email:
+        _send_provisioned_account_notification(
+            workspace=workspace,
+            username=username,
+            email=email,
+            initial_password=(
+                generated_password if email_initial_password() else None
+            ),
+        )
+    return member, username, generated_password
 
+
+def _complete_provision(
+    *, operation, workspace, user_id, role, provisioned_by, display_name
+):
+    """The membership half of the saga: seat, row, emit, audit, one commit."""
     with transaction.atomic():
+        # A provisioned member takes a seat like any other, so the seat is
+        # reserved under the workspace lock (WORK-02) — provisioning used
+        # to bypass the members.max ceiling entirely, which made it the
+        # cheapest way for an org to grow past the plan it pays for.
+        locked = lock_workspace(workspace)
+        if locked is None:
+            from .errors import ERR_404_WORKSPACE_NOT_FOUND
+
+            raise ProvisionError(ERR_404_WORKSPACE_NOT_FOUND)
+        verdict = check_org_entitlement(
+            locked,
+            ENT_MEMBERS_MAX,
+            quantity=member_seats_quantity(locked, additional=1),
+        )
+        if not verdict.allowed:
+            raise EntitlementDenied(ENT_MEMBERS_MAX, verdict)
         member = WorkspaceMember.objects.create(
             workspace=workspace,
             user_id=user_id,
@@ -1228,25 +1719,14 @@ def provision_member(
             subject=user_id,
             role=role,
         )
-    # A negative membership lookup may be cached cross-service; drop it.
-    invalidate_membership_cache(workspace.id, user_id)
-    user = get_user_model().objects.filter(pk=user_id).first()
-    if user is not None:
-        workspace_member_changed.send(
-            sender=WorkspaceMember,
-            workspace=workspace,
-            user=user,
-            role=role,
-            action="added",
+        operation.state = ProvisionState.COMPLETED
+        operation.user_id = user_id
+        operation.credits_to_refund = 0
+        operation.last_error = ""
+        operation.save(
+            update_fields=["state", "user_id", "credits_to_refund", "last_error"]
         )
-    if email:
-        _send_provisioned_account_notification(
-            workspace=workspace,
-            username=username,
-            email=email,
-            initial_password=generated_password,
-        )
-    return member, username, generated_password
+    return member
 
 
 def _send_provisioned_account_notification(
@@ -1561,23 +2041,95 @@ def _send_mfa_notification(
         )
 
 
-def enforce_require_mfa(workspace: Workspace) -> bool:
-    """Sync sweep when the require_mfa policy flips on (spec §C3).
+def mfa_enforcement_for(workspace: Workspace) -> WorkspaceMFAEnforcement:
+    """The workspace's enforcement record, created ``pending`` if absent.
 
-    Asks ``auth.mfa_status`` for every active (accepted, non-suspended)
-    member and suspends those without a strong second factor (reason
-    ``no_mfa``, emit + letter). Fail-open by suspension: when auth is
-    unavailable (not wired, or a call fails) members are NOT touched — the
-    sweep stops and returns False; fail-closed would lock out the whole
-    org on an auth hiccup. The ``user.mfa_disabled`` consumer catches up
-    once auth events flow again.
+    Reading it is how any surface answers "is MFA actually enforced here" —
+    the settings flag only says somebody asked for it.
     """
-    members = (
+    record, _ = WorkspaceMFAEnforcement.objects.get_or_create(workspace=workspace)
+    return record
+
+
+def record_member_mfa(member: WorkspaceMember, *, compliant: bool) -> None:
+    """Persist one member's compliance answer and act on it.
+
+    Compliance is stored per member (``mfa_compliant`` / ``mfa_verified_at``)
+    rather than inferred from "not suspended": a member nobody ever asked
+    about and a member auth confirmed look identical from the suspension
+    column, and telling them apart is the whole of WORK-01.
+    """
+    member.mfa_compliant = compliant
+    member.mfa_verified_at = timezone.now()
+    member.save(update_fields=["mfa_compliant", "mfa_verified_at"])
+    if not compliant:
+        suspend_member(member, reason=SUSPENSION_NO_MFA)
+
+
+def verify_member_mfa(member: WorkspaceMember) -> bool | None:
+    """Ask ``auth.mfa_status`` about one member and record the answer.
+
+    Returns True/False as auth answered, or ``None`` when auth could not be
+    reached — the honest third value the old sweep collapsed into "carry
+    on". A None never marks the member compliant, so the admission gate
+    keeps refusing until somebody gets a real answer.
+    """
+    try:
+        status = call(MFA_STATUS, {"user_id": str(member.user_id)}) or {}
+    except (
+        FunctionNotRegistered,
+        FunctionRouteNotConfigured,
+        FunctionCallError,
+    ) as exc:
+        logger.warning(
+            "auth.mfa_status unavailable (%s) — member %s stays unverified",
+            exc,
+            member.pk,
+        )
+        return None
+    compliant = bool(status.get("has_strong_mfa"))
+    record_member_mfa(member, compliant=compliant)
+    return compliant
+
+
+def enforce_require_mfa(workspace: Workspace) -> WorkspaceMFAEnforcement:
+    """Sweep the workspace's members and record how far enforcement got.
+
+    Asks ``auth.mfa_status`` for every active member, suspends those
+    without a strong factor (reason ``no_mfa``, emit + letter) and writes
+    what happened to :class:`~stapel_workspaces.models.WorkspaceMFAEnforcement`:
+    ``enforced`` only when every member answered, ``failed`` (with
+    ``last_error``) when auth broke, ``enforcing`` when coverage is
+    otherwise incomplete.
+
+    An auth outage no longer ends the sweep — the remaining members are
+    still attempted, because one unreachable call is not a reason to leave
+    the rest of the organization unexamined. It also no longer ends in
+    silence: the record is what the retry sweep
+    (:func:`retry_mfa_enforcement`), the administrator's screen and the
+    admission gate all read, so a policy that did not finish cannot be
+    reported as one that did.
+
+    Members are NOT suspended on an auth error (unchanged, spec §C3:
+    fail-closed there would lock out a whole org on a hiccup). They are
+    instead left unverified, which the admission gate treats as "not
+    admitted while the policy is on" — the containment moved from a blanket
+    suspension to the door.
+
+    Idempotent: re-running re-asks only what it must and rewrites the same
+    record.
+    """
+    record = mfa_enforcement_for(workspace)
+    members = list(
         WorkspaceMember.objects.active()
         .filter(workspace=workspace)
         .select_related("workspace", "user")
         .order_by("invited_at")
     )
+    checked = 0
+    noncompliant = 0
+    unknown = 0
+    last_error = ""
     for member in members:
         try:
             status = call(MFA_STATUS, {"user_id": str(member.user_id)}) or {}
@@ -1586,16 +2138,106 @@ def enforce_require_mfa(workspace: Workspace) -> bool:
             FunctionRouteNotConfigured,
             FunctionCallError,
         ) as exc:
+            unknown += 1
+            last_error = f"{type(exc).__name__}: {exc}"
             logger.warning(
-                "auth.mfa_status unavailable (%s) — require_mfa sweep for "
-                "workspace %s aborted, remaining members untouched (fail-open)",
+                "auth.mfa_status unavailable (%s) — member %s of workspace %s "
+                "stays unverified and is not admitted while require_mfa is on",
                 exc,
+                member.pk,
                 workspace.pk,
             )
-            return False
-        if not status.get("has_strong_mfa"):
-            suspend_member(member, reason=SUSPENSION_NO_MFA)
-    return True
+            continue
+        checked += 1
+        compliant = bool(status.get("has_strong_mfa"))
+        if not compliant:
+            noncompliant += 1
+        record_member_mfa(member, compliant=compliant)
+    now = timezone.now()
+    record.attempts += 1
+    record.last_attempt_at = now
+    record.checked_members = checked
+    record.noncompliant_members = noncompliant
+    record.last_error = last_error
+    if last_error:
+        record.state = MFAEnforcementState.FAILED
+        record.completed_at = None
+    elif unknown or _members_awaiting_mfa_verification(workspace).exists():
+        record.state = MFAEnforcementState.ENFORCING
+        record.completed_at = None
+    else:
+        record.state = MFAEnforcementState.ENFORCED
+        record.completed_at = now
+    record.save(
+        update_fields=[
+            "attempts",
+            "last_attempt_at",
+            "checked_members",
+            "noncompliant_members",
+            "last_error",
+            "state",
+            "completed_at",
+        ]
+    )
+    return record
+
+
+def _members_awaiting_mfa_verification(workspace: Workspace):
+    """Active members of *workspace* whose factor nobody has confirmed."""
+    return (
+        WorkspaceMember.objects.active()
+        .filter(workspace=workspace, mfa_compliant__isnull=True)
+        .select_related("workspace", "user")
+    )
+
+
+def retry_mfa_enforcement(*, limit: int = 100) -> list:
+    """The durable half: re-sweep every workspace that is not ``enforced``.
+
+    Idempotent by construction — it re-reads state from the database and
+    re-asks auth, so running it twice costs two calls and changes nothing
+    else. A deployment schedules ``manage.py enforce_workspace_mfa``;
+    without it the retry still happens lazily, one member at a time, at the
+    admission gate.
+
+    Returns the records it touched (newest attempt first is not promised;
+    the order is the queue's).
+    """
+    pending = (
+        WorkspaceMFAEnforcement.objects.exclude(state=MFAEnforcementState.ENFORCED)
+        .filter(workspace__deleted_at__isnull=True)
+        .select_related("workspace")
+        .order_by("last_attempt_at")[:limit]
+    )
+    touched = []
+    for record in pending:
+        if not security_settings_for(record.workspace).require_mfa:
+            # The policy was switched off while this row waited; the lift
+            # already ran, so there is nothing left to enforce.
+            continue
+        touched.append(enforce_require_mfa(record.workspace))
+    return touched
+
+
+def mfa_admission_blocked(member: WorkspaceMember) -> bool:
+    """Is this member barred from the workspace by its ``require_mfa`` policy?
+
+    True when the workspace requires a strong second factor and this
+    member's compliance is not established. An unverified member is asked
+    about on the spot (one ``auth.mfa_status`` call, the answer persisted),
+    so the gate heals itself as people arrive; while the answer cannot be
+    got, the member stays out.
+
+    This is the "enforce at every admission" half of WORK-01. Without it,
+    ``require_mfa`` was enforced exactly once — during a sweep that could
+    quietly cover none of the org — and never again for anyone who joined,
+    was reinstated, or was missed.
+    """
+    if member.mfa_compliant:
+        return False
+    if not security_settings_for(member.workspace).require_mfa:
+        return False
+    return verify_member_mfa(member) is not True
 
 
 def lift_no_mfa_suspensions(workspace: Workspace) -> int:
@@ -1615,6 +2257,20 @@ def lift_no_mfa_suspensions(workspace: Workspace) -> int:
     for member in members:
         if unsuspend_member(member, notify=False):
             lifted += 1
+    # Every stored compliance answer is dropped with the policy. Keeping
+    # them would let a workspace that switched MFA off for a year switch it
+    # back on and admit people on a year-old "yes" — the enforcement record
+    # goes back to pending for the same reason.
+    WorkspaceMember.objects.filter(workspace=workspace).update(
+        mfa_compliant=None, mfa_verified_at=None
+    )
+    WorkspaceMFAEnforcement.objects.filter(workspace=workspace).update(
+        state=MFAEnforcementState.PENDING,
+        completed_at=None,
+        checked_members=0,
+        noncompliant_members=0,
+        last_error="",
+    )
     return lifted
 
 
@@ -1636,8 +2292,10 @@ def suspend_memberships_without_mfa(user_id) -> int:
         if workspace.deleted_at:
             continue
         if security_settings_for(workspace).require_mfa:
-            if suspend_member(member, reason=SUSPENSION_NO_MFA):
-                suspended += 1
+            # The event IS the answer auth would give — record it as such,
+            # so the admission gate does not spend a call re-asking.
+            record_member_mfa(member, compliant=False)
+            suspended += 1
     return suspended
 
 
@@ -1655,6 +2313,11 @@ def lift_no_mfa_suspensions_for_user(user_id) -> int:
     for member in members:
         if unsuspend_member(member):
             lifted += 1
+        # Same reasoning as the disable consumer: auth just told us the
+        # factor exists, so the membership is verified without a call.
+        member.mfa_compliant = True
+        member.mfa_verified_at = timezone.now()
+        member.save(update_fields=["mfa_compliant", "mfa_verified_at"])
     return lifted
 
 

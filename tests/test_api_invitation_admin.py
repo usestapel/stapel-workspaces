@@ -778,12 +778,21 @@ class TestResendCooldown:
         assert self._resend(admin_client, org.ws, org.pending).status_code == 200
 
     def test_the_window_is_the_addresss_not_the_rows(self, admin_client, org):
-        """Re-inviting the same address makes a NEW row — and a per-row
-        clock would start it empty, handing the loop back its letters."""
+        """Inviting the address again after a terminal row makes a NEW row —
+        and a per-row clock would start it empty, handing the loop back its
+        letters.
+
+        One live invitation per address (the constraint added with WORK-02),
+        so the second row exists only once the first is withdrawn — which is
+        precisely the loop this clock has to survive: revoke, invite again,
+        resend, repeat.
+        """
         _time_passes(org.pending, seconds=601)
         assert self._resend(admin_client, org.ws, org.pending).status_code == 200
 
+        services.revoke_invitation(invitation=org.pending, revoked_by=org.owner)
         twin = _invite(org.ws, "pending@example.com", org.owner)
+        assert twin.pk != org.pending.pk
         twin.last_sent_at = None
         twin.save(update_fields=["last_sent_at"])
         assert self._resend(admin_client, org.ws, twin).status_code == 429
