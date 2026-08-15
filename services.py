@@ -43,6 +43,7 @@ from .entitlements import (
 )
 from .capabilities import capabilities_for
 from .events import (
+    EVENT_WORKSPACE_DELETED,
     EVENT_WORKSPACE_INVITATION_REVOKED,
     EVENT_WORKSPACE_MEMBER_PASSWORD_RESET,
     EVENT_WORKSPACE_MEMBER_PROVISIONED,
@@ -168,6 +169,91 @@ def resolve_landing_workspace(user, *, origin: str = "street") -> Workspace | No
     if mode == "personal":
         return ensure_personal_workspace(user)
     return None
+
+
+class WorkspaceDeletionRefused(Exception):
+    """A deletion this module refuses, carrying the code that says why.
+
+    An exception rather than a returned sentinel because the refusals are
+    preconditions of a transaction: raising unwinds it, and a caller cannot
+    forget to check.
+    """
+
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
+def deletion_block_reason(workspace) -> str:
+    """Why *workspace* cannot be deleted, as an error code, or ``""``.
+
+    ONE evaluation with TWO readers: the refusal inside
+    :func:`delete_workspace`, and the ``delete_blocked_reason`` the detail
+    response hands a client so its danger zone can render the reason instead
+    of discovering it on click. Splitting them would let a button promise
+    what the server refuses — the same defect ``can_create_workspace``
+    exists to prevent one endpoint earlier.
+
+    Ownership is NOT judged here: that is the caller's own authority, checked
+    at the door, and it varies per request while these two facts are
+    properties of the workspace itself.
+    """
+    from .errors import (
+        ERR_409_WORKSPACE_IS_INSTANCE_DEFAULT,
+        ERR_409_WORKSPACE_IS_PERSONAL,
+    )
+
+    configured = str(workspaces_settings.DEFAULT_WORKSPACE_ID or "").strip()
+    if configured and str(workspace.id) == configured:
+        return ERR_409_WORKSPACE_IS_INSTANCE_DEFAULT
+    # Conditional on the landing mode on purpose: under "none" nothing
+    # re-mints a personal workspace, so this refusal's stated reason would
+    # simply be false and the deletion is a legitimate act.
+    if (
+        workspace.type == WorkspaceType.PERSONAL
+        and str(workspaces_settings.STREET_LANDING_MODE or "").strip() == "personal"
+    ):
+        return ERR_409_WORKSPACE_IS_PERSONAL
+    return ""
+
+
+@transaction.atomic
+def delete_workspace(*, workspace: Workspace, actor) -> Workspace:
+    """Move a workspace to its terminal state, and tell the fleet.
+
+    A terminal ``deleted_at``, not a row removal. Peers key their data by
+    this id and this module has no authority over their tables, so the row
+    stays resolvable and the EVENT carries the news; the audit stream lives
+    in the core event store and outlives the row by construction, which a
+    hard delete would leave pointing at a workspace nobody can name.
+
+    Raises :class:`WorkspaceDeletionRefused` for the cases
+    :func:`deletion_block_reason` names, and ``Workspace.DoesNotExist`` when
+    the row disappeared between the caller's read and the lock.
+    """
+    reason = deletion_block_reason(workspace)
+    if reason:
+        raise WorkspaceDeletionRefused(reason)
+    locked = lock_workspace(workspace)
+    if locked is None:
+        raise Workspace.DoesNotExist("workspace is gone")
+    # Counted before the write: a subscriber sizing its own cleanup needs
+    # this number and cannot ask for it afterwards.
+    member_count = WorkspaceMember.objects.active().filter(workspace=locked).count()
+    locked.deleted_at = timezone.now()
+    locked.save(update_fields=["deleted_at"])
+    emit(
+        EVENT_WORKSPACE_DELETED,
+        {
+            "workspace_id": str(locked.id),
+            "owner_id": str(locked.owner_id),
+            "deleted_by": str(getattr(actor, "pk", actor)),
+            "type": str(locked.type),
+            "member_count": member_count,
+        },
+    )
+    record_audit(workspace=locked, action=AuditAction.DELETED, actor=actor)
+    return locked
 
 
 # ---------------------------------------------------------------------------

@@ -50,6 +50,8 @@ class WorkspaceResponse:
         updated_at: ISO 8601 last update time. Example: 2026-05-20T10:00:00Z
         my_capabilities: Granted capability strings of the requesting user's role, verbatim from the registry (wildcards like * included). Example: ["workspace.view", "members.view"]
         mfa_enforcement: State of the security.require_mfa policy — present on the single-workspace responses (GET/PATCH detail) when the policy is on, null otherwise. The settings block says what was asked for; this says what actually holds, so an administrator who switched MFA on is not told "done" while half the organization was never checked.
+        can_delete: Whether THIS caller may delete THIS workspace right now. The ANSWER, not the inputs: a client deriving it from my_role alone draws a delete button on the instance's default workspace and on a personal workspace the next sign-in re-mints — both of which the endpoint refuses, which is the "button that leads to a refusal" defect. Same shape and same reason as can_create_workspace on the list response. Example: false
+        delete_blocked_reason: The error code the DELETE would return, or "" when can_delete is true. The CODE rather than a sentence, so the client renders the refusal in the caller's own language through the error map it already ships. Server verdict and screen explanation are ONE evaluation (services.deletion_block_reason), so a screen cannot promise what the endpoint denies. Example: "error.409.workspace_is_instance_default"
     """
 
     id: UUID
@@ -67,6 +69,8 @@ class WorkspaceResponse:
     my_capabilities: List[str] = field(default_factory=list)
     owner_display_name: str = ""
     mfa_enforcement: Optional[MFAEnforcementStatus] = None
+    can_delete: bool = False
+    delete_blocked_reason: str = ""
 
 
 @dataclass

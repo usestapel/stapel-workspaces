@@ -569,6 +569,11 @@ class AuditAction(models.TextChoices):
     MEMBER_ROLE_CHANGED = "member_role_changed", "Member role changed"
     MEMBER_SUSPENDED = "member_suspended", "Member suspended"
     MEMBER_UNSUSPENDED = "member_unsuspended", "Member reinstated"
+    #: The workspace itself ended. Not a membership transition, but it belongs
+    #: in the same journal: it is the last line every membership above leads
+    #: to, and a history that stops without saying the org was closed reads as
+    #: a history that was truncated.
+    DELETED = "deleted", "Workspace deleted"
 
 
 class MFAEnforcementState(models.TextChoices):

@@ -216,6 +216,18 @@
       "intent": "The invitee's terminal \"no\" (≠ revoke), same row-lock as accept."
     },
     {
+      "name": "delete_workspace",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.delete_workspace",
+      "intent": "End a workspace: terminal deleted_at, the workspace.deleted event peers act on, and its own audit line, as one transaction — call this instead of setting deleted_at, or the fleet never learns the id died. Raises WorkspaceDeletionRefused carrying the code that says why."
+    },
+    {
+      "name": "deletion_block_reason",
+      "kind": "predicate",
+      "path": "stapel_workspaces.services.deletion_block_reason",
+      "intent": "Why this workspace cannot be deleted, as an error code, or '' — ask before drawing a delete control so the button and the endpoint's refusal are one verdict, not two."
+    },
+    {
       "name": "enforce_require_mfa",
       "kind": "gate_function",
       "path": "stapel_workspaces.services.enforce_require_mfa",

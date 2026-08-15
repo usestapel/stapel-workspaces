@@ -16,6 +16,7 @@ EVENT_WORKSPACE_MEMBER_SUSPENDED = "workspace.member_suspended"
 EVENT_WORKSPACE_MEMBER_UNSUSPENDED = "workspace.member_unsuspended"
 EVENT_WORKSPACE_INVITATION_REVOKED = "workspace.invitation_revoked"
 EVENT_WORKSPACE_MEMBER_PASSWORD_RESET = "workspace.member_password_reset"
+EVENT_WORKSPACE_DELETED = "workspace.deleted"
 
 
 @dataclass
@@ -190,8 +191,40 @@ class WorkspaceMemberPasswordResetPayload:
     sessions_revoked: int
 
 
+@dataclass
+class WorkspaceDeletedPayload:
+    """Payload for the workspace.deleted event.
+
+    A workspace reached its terminal state. Every module that scopes data by
+    workspace id (recordings, docs, calendar, tasks) learns here, and decides
+    for ITSELF whether that means purge, archive or ignore — this module
+    announces, it does not reach into peer tables. A cascade would make
+    deletion a distributed transaction and would put a recording's retention
+    policy in the roster's hands, where it does not belong.
+
+    **Ids and counts only, never emails.** The event fans out to every
+    subscriber in the deployment — the same rule
+    :class:`WorkspaceMemberPasswordResetPayload` states for itself.
+
+    Fields:
+        workspace_id: UUID of the deleted workspace.
+        owner_id: UUID of the account that owned it.
+        deleted_by: UUID of the actor who deleted it.
+        type: Workspace category at deletion (personal / work).
+        member_count: Active members it had when it ended — a subscriber
+            sizing its own cleanup needs this, and cannot ask afterwards.
+    """
+
+    workspace_id: str
+    owner_id: str
+    deleted_by: str
+    type: str
+    member_count: int
+
+
 EVENT_REGISTRY = {
     EVENT_WORKSPACE_PERSONAL_CREATED: WorkspacePersonalCreatedPayload,
+    EVENT_WORKSPACE_DELETED: WorkspaceDeletedPayload,
     EVENT_WORKSPACE_MEMBER_REMOVED: WorkspaceMemberRemovedPayload,
     EVENT_WORKSPACE_MEMBER_ROLE_CHANGED: WorkspaceMemberRoleChangedPayload,
     EVENT_WORKSPACE_MEMBER_PROVISIONED: WorkspaceMemberProvisionedPayload,

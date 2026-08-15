@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### Added — deleting a workspace is a transition, not a column write
+
+`DELETE <workspace>` already existed and already set `deleted_at`. Everything
+around it did not: no peer was told, the workspace's own audit journal never
+recorded its end, the transition lived in the view against this module's own
+"one write path" rule, and the single refusal (`403` for a non-owner) was the
+only one there was — nothing stopped an owner deleting the instance's
+**default** workspace, whose OWNERs are `services.instance_owner_ids()`.
+Deleting it empties the instance's owner set, and under the `instance_owner`
+create policy nobody could ever found a workspace again.
+
+- `services.delete_workspace()` — the one write path: terminal `deleted_at`,
+  the `workspace.deleted` event, and the audit line, in one transaction under
+  `lock_workspace`. A terminal state rather than row removal: peers key their
+  data by this id and this module has no authority over their tables, so the
+  row stays resolvable and the event carries the news. Announce, never cascade
+  — how long a recording outlives its workspace is the recordings module's
+  policy.
+- `events.EVENT_WORKSPACE_DELETED` (+ `schemas/emits/workspace.deleted.json`),
+  and `AuditAction.DELETED`. Ids and counts only, never emails.
+- Two refusals that name their cause, instead of a bare "no":
+  `error.409.workspace_is_instance_default` and
+  `error.409.workspace_is_personal` (the latter only where
+  `STREET_LANDING_MODE="personal"` would re-mint it, so the stated reason is
+  never false).
+- `WorkspaceResponse.can_delete` / `delete_blocked_reason` — the verdict and
+  its code on the detail response, from the same `deletion_block_reason()` the
+  DELETE raises from, so a screen cannot draw a control the endpoint refuses.
+- `e2e/` — a real host (auth + workspaces over HTTP) driving the lifecycle
+  including every refusal. Not shipped in the wheel.
+
+Deleting a workspace is **not** a GDPR act: a workspace is an organizational
+object, and the natural-person axis stays with `WorkspacesGDPRProvider`.
+
 ## [0.25.2] — 2026-08-15
 
 ### Changed — `stapel-core` floor raised to 0.26.0

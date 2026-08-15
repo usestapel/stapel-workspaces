@@ -149,6 +149,14 @@
       "kind": "factory",
       "intent": "Create a workspace and atomically seed its owner membership — instead of a bare, ownerless row."
     },
+    "delete_workspace": {
+      "kind": "factory",
+      "intent": "End a workspace: terminal deleted_at, the workspace.deleted event peers act on, and its own audit line, as one transaction — call this instead of setting deleted_at, or the fleet never learns the id died. Raises WorkspaceDeletionRefused carrying the code that says why."
+    },
+    "deletion_block_reason": {
+      "kind": "predicate",
+      "intent": "Why this workspace cannot be deleted, as an error code, or '' — ask before drawing a delete control so the button and the endpoint's refusal are one verdict, not two."
+    },
     "ensure_personal_workspace": {
       "kind": "factory",
       "intent": "Idempotent get-or-create of a user's Personal workspace; prefer resolve_landing_workspace."

@@ -1,6 +1,6 @@
 # Errors — English
 
-`72` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`74` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -60,6 +60,8 @@
 | `error.408.request_timeout` | 408 | — | `retry` | Request timeout |
 | `error.409.conflict` | 409 | — | `fix_input` | Resource already exists |
 | `error.409.email_already_registered` | 409 | — | `reauthenticate` | An account with this email already exists — log in instead |
+| `error.409.workspace_is_instance_default` | 409 | — | `fix_input` | This is the instance's default workspace and cannot be deleted; point the instance at another workspace first |
+| `error.409.workspace_is_personal` | 409 | — | `fix_input` | A personal workspace cannot be deleted on this instance — it is recreated the next time you sign in |
 | `error.410.gone` | 410 | — | `retry` | Resource has been permanently removed |
 | `error.413.payload_too_large` | 413 | — | `retry` | Request body is too large |
 | `error.415.unsupported_media_type` | 415 | — | `retry` | Unsupported media type |

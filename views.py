@@ -278,6 +278,11 @@ def _workspace_to_dto(
         # An org showing "5 members" while its plan is billed for 4 is
         # exactly the drift the shared predicate exists to prevent.
         member_count = ws.members.active().count()
+    if my_role and role_at_least(my_role, Role.OWNER):
+        delete_blocked_reason = services.deletion_block_reason(ws)
+    else:
+        delete_blocked_reason = ERR_403_FORBIDDEN_WORKSPACE
+    can_delete = not delete_blocked_reason
     return WorkspaceResponse(
         id=ws.id,
         name=ws.name,
@@ -305,6 +310,13 @@ def _workspace_to_dto(
         # Only the single-workspace responses carry it: the list endpoint
         # would pay a per-row count for a block nothing on a switcher reads.
         mfa_enforcement=mfa_enforcement,
+        # The ANSWER for this caller, so a danger zone never draws a control
+        # the endpoint would refuse. Authority first (only an owner deletes),
+        # then the workspace's own two structural refusals — the same
+        # `deletion_block_reason` the DELETE itself raises from, so the
+        # advertised reason and the returned one cannot drift.
+        can_delete=can_delete,
+        delete_blocked_reason=delete_blocked_reason,
     )
 
 
@@ -826,13 +838,25 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
 
     @extend_schema(responses={204: None})
     def delete(self, request, workspace_id):  # noqa: R007
+        """End a workspace — the transition itself lives in the service.
+
+        The view's whole job here is authority (owner, and only owner) and
+        turning the service's typed refusal back into the keyed 409 the
+        frontend routes on. The write, the event and the audit line are one
+        indivisible act in ``services.delete_workspace``, because a second
+        door into this transition is a second chance to forget the record.
+        """
         ws, membership, err = self._resolve(request, workspace_id)
         if err:
             return err
         if not role_at_least(membership.role, Role.OWNER):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
-        ws.deleted_at = timezone.now()
-        ws.save(update_fields=["deleted_at"])
+        try:
+            services.delete_workspace(workspace=ws, actor=request.user)
+        except services.WorkspaceDeletionRefused as refusal:
+            return StapelErrorResponse(409, refusal.code)
+        except Workspace.DoesNotExist:
+            return StapelErrorResponse(404, ERR_404_WORKSPACE_NOT_FOUND)
         return StapelResponse(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -1,6 +1,6 @@
 # Errors — Español
 
-`72` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
+`74` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
 
 | Código | Estado | Parámetros | Acción | Texto |
 |---|---|---|---|---|
@@ -60,6 +60,8 @@
 | `error.408.request_timeout` | 408 | — | `retry` | Tiempo de espera de la solicitud agotado |
 | `error.409.conflict` | 409 | — | `fix_input` | El recurso ya existe |
 | `error.409.email_already_registered` | 409 | — | `reauthenticate` | Ya existe una cuenta con este correo electrónico: inicia sesión en su lugar |
+| `error.409.workspace_is_instance_default` | 409 | — | `fix_input` | Este es el espacio de trabajo predeterminado de la instancia y no se puede eliminar; primero indica otro |
+| `error.409.workspace_is_personal` | 409 | — | `fix_input` | Un espacio de trabajo personal no se puede eliminar en esta instancia: se vuelve a crear la próxima vez que inicies sesión |
 | `error.410.gone` | 410 | — | `retry` | El recurso se ha eliminado permanentemente |
 | `error.413.payload_too_large` | 413 | — | `retry` | El cuerpo de la solicitud es demasiado grande |
 | `error.415.unsupported_media_type` | 415 | — | `retry` | Tipo de contenido no compatible |

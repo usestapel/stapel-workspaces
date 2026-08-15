@@ -96,6 +96,14 @@
       "hash": "715ff9f7621c1ce5",
       "origin": "llm"
     },
+    "error.409.workspace_is_instance_default": {
+      "hash": "f2c6e44298873ca3",
+      "origin": "imported"
+    },
+    "error.409.workspace_is_personal": {
+      "hash": "25ad002924c1d0ee",
+      "origin": "imported"
+    },
     "error.429.invitation_grant_pending": {
       "hash": "dbf76a961fd53606",
       "origin": "llm"
@@ -217,6 +225,14 @@
     "error.409.email_already_registered": {
       "hash": "715ff9f7621c1ce5",
       "origin": "llm"
+    },
+    "error.409.workspace_is_instance_default": {
+      "hash": "f2c6e44298873ca3",
+      "origin": "imported"
+    },
+    "error.409.workspace_is_personal": {
+      "hash": "25ad002924c1d0ee",
+      "origin": "imported"
     },
     "error.429.invitation_grant_pending": {
       "hash": "dbf76a961fd53606",

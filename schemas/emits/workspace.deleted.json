@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspace.deleted",
+  "description": "A workspace reached its terminal state (deleted_at set; the row survives so stored ids stay resolvable). Modules that scope data by workspace id decide their own retention — this event announces, it never cascades. Ids and counts only, never emails.",
+  "type": "object",
+  "required": ["workspace_id", "owner_id", "deleted_by", "type", "member_count"],
+  "properties": {
+    "workspace_id": { "type": "string", "format": "uuid" },
+    "owner_id":     { "type": "string", "format": "uuid" },
+    "deleted_by":   { "type": "string", "format": "uuid" },
+    "type":         { "type": "string", "enum": ["personal", "work"] },
+    "member_count": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}

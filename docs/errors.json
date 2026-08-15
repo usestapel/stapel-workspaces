@@ -482,6 +482,22 @@
     "owner": "stapel_workspaces"
   },
   {
+    "code": "error.409.workspace_is_instance_default",
+    "status": 409,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "This is the instance's default workspace and cannot be deleted; point the instance at another workspace first",
+    "owner": "stapel_workspaces"
+  },
+  {
+    "code": "error.409.workspace_is_personal",
+    "status": 409,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "A personal workspace cannot be deleted on this instance — it is recreated the next time you sign in",
+    "owner": "stapel_workspaces"
+  },
+  {
     "code": "error.410.gone",
     "status": 410,
     "params": [],

@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`72` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`74` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -60,6 +60,8 @@
 | `error.408.request_timeout` | 408 | — | `retry` | Время ожидания запроса истекло |
 | `error.409.conflict` | 409 | — | `fix_input` | Ресурс уже существует |
 | `error.409.email_already_registered` | 409 | — | `reauthenticate` | Аккаунт с этим email уже существует — войдите в него |
+| `error.409.workspace_is_instance_default` | 409 | — | `fix_input` | Это рабочее пространство по умолчанию для сервера, его нельзя удалить — сначала укажите другое |
+| `error.409.workspace_is_personal` | 409 | — | `fix_input` | Личное рабочее пространство нельзя удалить на этом сервере — оно создаётся заново при следующем входе |
 | `error.410.gone` | 410 | — | `retry` | Ресурс был безвозвратно удалён |
 | `error.413.payload_too_large` | 413 | — | `retry` | Тело запроса слишком большое |
 | `error.415.unsupported_media_type` | 415 | — | `retry` | Неподдерживаемый тип данных |

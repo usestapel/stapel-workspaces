@@ -84,6 +84,21 @@ ERR_400_DISPLAY_NAME_TOO_SHORT = "error.400.display_name_too_short"
 ERR_400_DISPLAY_NAME_FORBIDDEN_CHARS = "error.400.display_name_forbidden_chars"
 ERR_400_DISPLAY_NAME_EMOJI = "error.400.display_name_emoji"
 ERR_400_DISPLAY_NAME_INVISIBLE_CHARS = "error.400.display_name_invisible_chars"
+#: The deletion target is this instance's declared default workspace. Its own
+#: key rather than ``forbidden_workspace``: the caller IS the owner and the
+#: act IS theirs to perform — what refuses is the workspace's role in the
+#: deployment. Its OWNERs are ``services.instance_owner_ids()``, so deleting
+#: it would leave an ``instance_owner``-policy instance with nobody who may
+#: ever found a workspace again, and would strand every member's landing
+#: suggestion. The recovery is to point DEFAULT_WORKSPACE_ID elsewhere first.
+ERR_409_WORKSPACE_IS_INSTANCE_DEFAULT = "error.409.workspace_is_instance_default"
+#: The deletion target is a personal workspace on an instance that re-mints
+#: one (``STREET_LANDING_MODE="personal"``). ``ensure_personal_workspace``
+#: filters ``deleted_at``, so the next landing creates a NEW personal
+#: workspace with a NEW id: the act would not remove anything, it would churn
+#: the id every peer stored. Refused with that stated, rather than performed
+#: and quietly undone.
+ERR_409_WORKSPACE_IS_PERSONAL = "error.409.workspace_is_personal"
 
 WORKSPACES_ERRORS = {
     ERR_404_WORKSPACE_NOT_FOUND: "Workspace not found",
@@ -126,6 +141,14 @@ WORKSPACES_ERRORS = {
     ERR_400_DISPLAY_NAME_EMOJI: "Display name cannot contain emoji",
     ERR_400_DISPLAY_NAME_INVISIBLE_CHARS: "Display name contains invisible characters",
     ERR_403_WORKSPACE_CREATION_CLOSED: "This instance does not allow you to create workspaces",
+    ERR_409_WORKSPACE_IS_INSTANCE_DEFAULT: (
+        "This is the instance's default workspace and cannot be deleted; "
+        "point the instance at another workspace first"
+    ),
+    ERR_409_WORKSPACE_IS_PERSONAL: (
+        "A personal workspace cannot be deleted on this instance — it is "
+        "recreated the next time you sign in"
+    ),
 }
 
 # Machine-readable recovery hints (remediation) — the canonical "what to do"
@@ -254,6 +277,15 @@ WORKSPACES_ERRORS = {
 #     declarations. Same key, same hint, on purpose: a frontend that already
 #     highlights the name field on profiles' refusal must behave identically
 #     when the refusal came from the roster instead.
+#   * 409 workspace_is_instance_default → fix_input. A self-serve
+#     precondition, not an authorization wall (the caller is the owner):
+#     the deployment must name a different DEFAULT_WORKSPACE_ID first, and
+#     the party who can do that is the same instance owner reading this.
+#     Retrying loops; contact_support would send them to themselves.
+#   * 409 workspace_is_personal → fix_input. Nothing to escalate and
+#     nothing transient: on this instance a personal workspace is
+#     structural. The honest signal is "this request cannot succeed as
+#     framed", which is what the screen renders instead of a delete button.
 WORKSPACES_REMEDIATION = {
     ERR_404_WORKSPACE_NOT_FOUND: "fix_input",
     ERR_404_MEMBER_NOT_FOUND: "fix_input",
@@ -285,6 +317,8 @@ WORKSPACES_REMEDIATION = {
     ERR_400_DISPLAY_NAME_EMOJI: "fix_input",
     ERR_400_DISPLAY_NAME_INVISIBLE_CHARS: "fix_input",
     ERR_403_WORKSPACE_CREATION_CLOSED: "contact_support",
+    ERR_409_WORKSPACE_IS_INSTANCE_DEFAULT: "fix_input",
+    ERR_409_WORKSPACE_IS_PERSONAL: "fix_input",
 }
 
 register_service_errors(WORKSPACES_ERRORS, remediation=WORKSPACES_REMEDIATION)
