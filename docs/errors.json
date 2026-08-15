@@ -4,63 +4,72 @@
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "User is already a member of this workspace"
+    "en": "User is already a member of this workspace",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.bad_request",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Bad request"
+    "en": "Bad request",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.captcha_invalid",
     "status": 400,
     "params": [],
     "remediation": "retry",
-    "en": "Captcha verification failed. Please try again."
+    "en": "Captcha verification failed. Please try again.",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.captcha_required",
     "status": 400,
     "params": [],
     "remediation": "retry",
-    "en": "Captcha token is required."
+    "en": "Captcha token is required.",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.display_name_emoji",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Display name cannot contain emoji"
+    "en": "Display name cannot contain emoji",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.display_name_forbidden_chars",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Display name contains forbidden characters"
+    "en": "Display name contains forbidden characters",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.display_name_invisible_chars",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Display name contains invisible characters"
+    "en": "Display name contains invisible characters",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.display_name_too_short",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Display name must be at least 2 characters"
+    "en": "Display name must be at least 2 characters",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.expected_list",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Expected a list of items"
+    "en": "Expected a list of items",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.blank",
@@ -69,7 +78,8 @@
       "field"
     ],
     "remediation": "fix_input",
-    "en": "{field} may not be blank"
+    "en": "{field} may not be blank",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.does_not_exist",
@@ -78,7 +88,8 @@
       "field"
     ],
     "remediation": "fix_input",
-    "en": "{field} does not exist"
+    "en": "{field} does not exist",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.invalid",
@@ -87,7 +98,8 @@
       "field"
     ],
     "remediation": "fix_input",
-    "en": "{field} is invalid"
+    "en": "{field} is invalid",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.invalid_choice",
@@ -96,7 +108,8 @@
       "field"
     ],
     "remediation": "fix_input",
-    "en": "{field} is not a valid choice"
+    "en": "{field} is not a valid choice",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.max_length",
@@ -106,7 +119,8 @@
       "max_length"
     ],
     "remediation": "fix_input",
-    "en": "{field} must be at most {max_length} characters"
+    "en": "{field} must be at most {max_length} characters",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.max_value",
@@ -116,7 +130,8 @@
       "max_value"
     ],
     "remediation": "fix_input",
-    "en": "{field} must be at most {max_value}"
+    "en": "{field} must be at most {max_value}",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.min_length",
@@ -126,7 +141,8 @@
       "min_length"
     ],
     "remediation": "fix_input",
-    "en": "{field} must be at least {min_length} characters"
+    "en": "{field} must be at least {min_length} characters",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.min_value",
@@ -136,7 +152,8 @@
       "min_value"
     ],
     "remediation": "fix_input",
-    "en": "{field} must be at least {min_value}"
+    "en": "{field} must be at least {min_value}",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.null",
@@ -145,7 +162,8 @@
       "field"
     ],
     "remediation": "fix_input",
-    "en": "{field} may not be null"
+    "en": "{field} may not be null",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.required",
@@ -154,7 +172,8 @@
       "field"
     ],
     "remediation": "fix_input",
-    "en": "{field} is required"
+    "en": "{field} is required",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.field.unique",
@@ -163,98 +182,112 @@
       "field"
     ],
     "remediation": "fix_input",
-    "en": "{field} must be unique"
+    "en": "{field} must be unique",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.invalid_ad_id",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Invalid advertisement ID"
+    "en": "Invalid advertisement ID",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.invalid_provision_username",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Invalid username for a provisioned account"
+    "en": "Invalid username for a provisioned account",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.invalid_role",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Invalid role"
+    "en": "Invalid role",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.invitation_already_used",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Invitation has already been used"
+    "en": "Invitation has already been used",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.invitation_declined",
     "status": 400,
     "params": [],
     "remediation": "contact_support",
-    "en": "Invitation has been declined"
+    "en": "Invitation has been declined",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.invitation_expired",
     "status": 400,
     "params": [],
     "remediation": "contact_support",
-    "en": "Invitation has expired"
+    "en": "Invitation has expired",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.invitation_revoked",
     "status": 400,
     "params": [],
     "remediation": "contact_support",
-    "en": "Invitation has been revoked"
+    "en": "Invitation has been revoked",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.400.validation_error",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Validation error"
+    "en": "Validation error",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.verification_failed",
     "status": 400,
     "params": [],
     "remediation": "verify",
-    "en": "Verification failed"
+    "en": "Verification failed",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.verification_invalid_factor",
     "status": 400,
     "params": [],
     "remediation": "verify",
-    "en": "This verification factor is not available"
+    "en": "This verification factor is not available",
+    "owner": "stapel_core"
   },
   {
     "code": "error.400.workspace_slug_taken",
     "status": 400,
     "params": [],
     "remediation": "fix_input",
-    "en": "Workspace slug is already taken"
+    "en": "Workspace slug is already taken",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.401.unauthorized",
     "status": 401,
     "params": [],
     "remediation": "reauthenticate",
-    "en": "Authentication required"
+    "en": "Authentication required",
+    "owner": "stapel_core"
   },
   {
     "code": "error.402.entitlement_required",
     "status": 402,
     "params": [],
     "remediation": "fix_input",
-    "en": "The workspace owner's plan does not include this feature"
+    "en": "The workspace owner's plan does not include this feature",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.402.member_limit_reached",
@@ -263,35 +296,40 @@
       "limit"
     ],
     "remediation": "fix_input",
-    "en": "The workspace member limit ({limit}) has been reached"
+    "en": "The workspace member limit ({limit}) has been reached",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.402.payment_required",
     "status": 402,
     "params": [],
     "remediation": "retry",
-    "en": "Payment required"
+    "en": "Payment required",
+    "owner": "stapel_core"
   },
   {
     "code": "error.403.forbidden",
     "status": 403,
     "params": [],
     "remediation": "retry",
-    "en": "You do not have permission to perform this action"
+    "en": "You do not have permission to perform this action",
+    "owner": "stapel_core"
   },
   {
     "code": "error.403.forbidden_workspace",
     "status": 403,
     "params": [],
     "remediation": "contact_support",
-    "en": "You do not have access to this workspace"
+    "en": "You do not have access to this workspace",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.403.last_owner_cannot_be_removed",
     "status": 403,
     "params": [],
     "remediation": "fix_input",
-    "en": "The last owner cannot be removed; transfer ownership first"
+    "en": "The last owner cannot be removed; transfer ownership first",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.403.membership_suspended",
@@ -300,7 +338,8 @@
       "reason"
     ],
     "remediation": "fix_input",
-    "en": "Your membership in this workspace is suspended ({reason})"
+    "en": "Your membership in this workspace is suspended ({reason})",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.403.missing_capability",
@@ -309,14 +348,16 @@
       "capability"
     ],
     "remediation": "contact_support",
-    "en": "Your role does not include the {capability} capability in this workspace"
+    "en": "Your role does not include the {capability} capability in this workspace",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.403.network_blocked",
     "status": 403,
     "params": [],
     "remediation": "contact_support",
-    "en": "Requests from this network are not allowed"
+    "en": "Requests from this network are not allowed",
+    "owner": "stapel_core"
   },
   {
     "code": "error.403.role_exceeds_inviter_rank",
@@ -325,147 +366,168 @@
       "role"
     ],
     "remediation": "fix_input",
-    "en": "You cannot grant a role that outranks your own ({role})"
+    "en": "You cannot grant a role that outranks your own ({role})",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.403.verification_enrollment_required",
     "status": 403,
     "params": [],
     "remediation": "verify",
-    "en": "Verification factor enrollment required"
+    "en": "Verification factor enrollment required",
+    "owner": "stapel_core"
   },
   {
     "code": "error.403.verification_required",
     "status": 403,
     "params": [],
     "remediation": "verify",
-    "en": "Additional verification required"
+    "en": "Additional verification required",
+    "owner": "stapel_core"
   },
   {
     "code": "error.403.workspace_creation_closed",
     "status": 403,
     "params": [],
     "remediation": "contact_support",
-    "en": "This instance does not allow you to create workspaces"
+    "en": "This instance does not allow you to create workspaces",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.404.ad_not_found",
     "status": 404,
     "params": [],
     "remediation": "retry",
-    "en": "Listing not found"
+    "en": "Listing not found",
+    "owner": "stapel_core"
   },
   {
     "code": "error.404.invitation_not_found",
     "status": 404,
     "params": [],
     "remediation": "fix_input",
-    "en": "Invitation not found"
+    "en": "Invitation not found",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.404.member_not_found",
     "status": 404,
     "params": [],
     "remediation": "fix_input",
-    "en": "Member not found in this workspace"
+    "en": "Member not found in this workspace",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.404.not_found",
     "status": 404,
     "params": [],
     "remediation": "retry",
-    "en": "Requested resource not found"
+    "en": "Requested resource not found",
+    "owner": "stapel_core"
   },
   {
     "code": "error.404.verification_challenge_not_found",
     "status": 404,
     "params": [],
     "remediation": "verify",
-    "en": "Verification challenge not found or expired"
+    "en": "Verification challenge not found or expired",
+    "owner": "stapel_core"
   },
   {
     "code": "error.404.workspace_not_found",
     "status": 404,
     "params": [],
     "remediation": "fix_input",
-    "en": "Workspace not found"
+    "en": "Workspace not found",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.405.method_not_allowed",
     "status": 405,
     "params": [],
     "remediation": "retry",
-    "en": "Method not allowed"
+    "en": "Method not allowed",
+    "owner": "stapel_core"
   },
   {
     "code": "error.406.not_acceptable",
     "status": 406,
     "params": [],
     "remediation": "retry",
-    "en": "Not acceptable"
+    "en": "Not acceptable",
+    "owner": "stapel_core"
   },
   {
     "code": "error.408.request_timeout",
     "status": 408,
     "params": [],
     "remediation": "retry",
-    "en": "Request timeout"
+    "en": "Request timeout",
+    "owner": "stapel_core"
   },
   {
     "code": "error.409.conflict",
     "status": 409,
     "params": [],
     "remediation": "fix_input",
-    "en": "Resource already exists"
+    "en": "Resource already exists",
+    "owner": "stapel_core"
   },
   {
     "code": "error.409.email_already_registered",
     "status": 409,
     "params": [],
     "remediation": "reauthenticate",
-    "en": "An account with this email already exists — log in instead"
+    "en": "An account with this email already exists — log in instead",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.410.gone",
     "status": 410,
     "params": [],
     "remediation": "retry",
-    "en": "Resource has been permanently removed"
+    "en": "Resource has been permanently removed",
+    "owner": "stapel_core"
   },
   {
     "code": "error.413.payload_too_large",
     "status": 413,
     "params": [],
     "remediation": "retry",
-    "en": "Request body is too large"
+    "en": "Request body is too large",
+    "owner": "stapel_core"
   },
   {
     "code": "error.415.unsupported_media_type",
     "status": 415,
     "params": [],
     "remediation": "retry",
-    "en": "Unsupported media type"
+    "en": "Unsupported media type",
+    "owner": "stapel_core"
   },
   {
     "code": "error.422.unprocessable_entity",
     "status": 422,
     "params": [],
     "remediation": "wait_and_retry",
-    "en": "Unprocessable entity"
+    "en": "Unprocessable entity",
+    "owner": "stapel_core"
   },
   {
     "code": "error.423.locked",
     "status": 423,
     "params": [],
     "remediation": "wait_and_retry",
-    "en": "Resource is locked"
+    "en": "Resource is locked",
+    "owner": "stapel_core"
   },
   {
     "code": "error.423.verification_locked",
     "status": 423,
     "params": [],
     "remediation": "wait_and_retry",
-    "en": "Too many failed attempts — verification locked"
+    "en": "Too many failed attempts — verification locked",
+    "owner": "stapel_core"
   },
   {
     "code": "error.429.invitation_grant_pending",
@@ -474,7 +536,8 @@
       "retry_after"
     ],
     "remediation": "wait_and_retry",
-    "en": "A sign-in link for this invitation is still valid; you can request another one in {retry_after} seconds"
+    "en": "A sign-in link for this invitation is still valid; you can request another one in {retry_after} seconds",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.429.invitation_resend_cooldown",
@@ -483,7 +546,8 @@
       "retry_after"
     ],
     "remediation": "wait_and_retry",
-    "en": "This invitation was emailed recently; you can send it again in {retry_after} seconds"
+    "en": "This invitation was emailed recently; you can send it again in {retry_after} seconds",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.429.rate_limit",
@@ -492,48 +556,55 @@
       "retry_after_minutes"
     ],
     "remediation": "wait_and_retry",
-    "en": "Too many attempts. Try again in {retry_after_minutes} minutes."
+    "en": "Too many attempts. Try again in {retry_after_minutes} minutes.",
+    "owner": "stapel_core"
   },
   {
     "code": "error.429.too_many_requests",
     "status": 429,
     "params": [],
     "remediation": "wait_and_retry",
-    "en": "Too many requests. Please try again later."
+    "en": "Too many requests. Please try again later.",
+    "owner": "stapel_core"
   },
   {
     "code": "error.500.internal",
     "status": 500,
     "params": [],
     "remediation": "contact_support",
-    "en": "Something went wrong"
+    "en": "Something went wrong",
+    "owner": "stapel_core"
   },
   {
     "code": "error.503.auth_unavailable",
     "status": 503,
     "params": [],
     "remediation": "wait_and_retry",
-    "en": "The authentication service is unavailable; try again later"
+    "en": "The authentication service is unavailable; try again later",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.503.billing_unavailable",
     "status": 503,
     "params": [],
     "remediation": "wait_and_retry",
-    "en": "The billing service is unavailable; try again later"
+    "en": "The billing service is unavailable; try again later",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.503.profiles_not_configured",
     "status": 503,
     "params": [],
     "remediation": "contact_support",
-    "en": "This deployment has no profiles service configured, so a display name cannot be written here"
+    "en": "This deployment has no profiles service configured, so a display name cannot be written here",
+    "owner": "stapel_workspaces"
   },
   {
     "code": "error.503.profiles_unavailable",
     "status": 503,
     "params": [],
     "remediation": "wait_and_retry",
-    "en": "The profiles service is unavailable; try again later"
+    "en": "The profiles service is unavailable; try again later",
+    "owner": "stapel_workspaces"
   }
 ]
