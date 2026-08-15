@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-workspaces"
-version = "0.25.1"
+version = "0.25.2"
 description = "Team workspaces and RBAC Django app for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,7 +25,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "stapel-core>=0.24.0,<1.0",  # the audit journal is a stream in core's event store now: eventstore.anchor + query(reverse=) + subject-scoped purge all arrived in 0.24.0
+    # Floor: 0.26.0 emits docs/errors.json with the `owner` field the
+    # committed artifact and its drift gate require. (The audit journal is a
+    # stream in core's event store since 0.24.0: eventstore.anchor +
+    # query(reverse=) + subject-scoped purge.)
+    "stapel-core>=0.26.0,<1.0",
 ]
 
 [project.urls]
