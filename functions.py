@@ -31,6 +31,12 @@ from stapel_core.comm import register_function
 
 CHECK_MEMBERSHIP = "workspaces.check_membership"
 CHECK_CAPABILITY = "workspaces.check_capability"
+#: The workspace-AGNOSTIC question: "does this user hold a mandate anywhere".
+#: Both providers above are workspace-scoped, so neither could answer it, and
+#: a sibling service that does not embed this app had no way to tell a guest
+#: from a member. Name and payload are core's contract
+#: (``stapel_core.django.mandate.MANDATE_FUNCTION``); this is its answering half.
+CHECK_MANDATE = "workspaces.check_mandate"
 
 # Kept in sync with schemas/functions/workspaces.check_membership.json
 # (the schemas/ autoloader registers the file too; passing it here makes
@@ -60,6 +66,37 @@ CHECK_CAPABILITY_SCHEMA = {
     },
     "additionalProperties": False,
 }
+
+
+# Kept in sync with schemas/functions/workspaces.check_mandate.json.
+CHECK_MANDATE_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": CHECK_MANDATE,
+    "type": "object",
+    "required": ["user_id"],
+    "properties": {
+        "user_id": {"type": "string", "format": "uuid"},
+    },
+    "additionalProperties": False,
+}
+
+
+def check_mandate(payload: dict) -> dict:
+    """Provider for ``workspaces.check_mandate``.
+
+    Payload: ``{"user_id": str}``
+    Returns: ``{"has_mandate": bool}``
+
+    Same predicate the module's own guest surface uses
+    (:func:`permissions.has_active_mandate`): accepted, non-suspended, in a
+    workspace that is not soft-deleted. False here means the caller is a
+    *guest* — a real account holding no mandate anywhere — which is a verdict.
+    A caller that cannot reach this provider gets no verdict at all, and core
+    turns that into 503 rather than into this False.
+    """
+    from .permissions import has_active_mandate_for_id
+
+    return {"has_mandate": has_active_mandate_for_id(payload["user_id"])}
 
 
 def check_membership(payload: dict) -> dict:
@@ -113,3 +150,4 @@ def register() -> None:
     """
     register_function(CHECK_MEMBERSHIP, check_membership, schema=CHECK_MEMBERSHIP_SCHEMA)
     register_function(CHECK_CAPABILITY, check_capability, schema=CHECK_CAPABILITY_SCHEMA)
+    register_function(CHECK_MANDATE, check_mandate, schema=CHECK_MANDATE_SCHEMA)

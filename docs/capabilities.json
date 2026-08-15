@@ -132,6 +132,12 @@
       "intent": "True if the user holds an active (accepted, non-suspended) membership ANYWHERE, workspace-agnostic — the primitive behind is_guest; use it when the question is \"has this account joined anything at all\", not \"is it a member of workspace W\"."
     },
     {
+      "name": "has_active_mandate_for_id",
+      "kind": "predicate",
+      "path": "stapel_workspaces.permissions.has_active_mandate_for_id",
+      "intent": "has_active_mandate addressed by user id rather than by user object — the form the workspaces.check_mandate comm provider needs, so the wire answer and the in-process one can never drift into two definitions of \"active\"."
+    },
+    {
       "name": "has_capability",
       "kind": "predicate",
       "path": "stapel_workspaces.permissions.has_capability",

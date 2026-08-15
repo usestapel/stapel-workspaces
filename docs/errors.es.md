@@ -1,6 +1,6 @@
 # Errors — Español
 
-`71` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
+`72` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
 
 | Código | Estado | Parámetros | Acción | Texto |
 |---|---|---|---|---|
@@ -73,5 +73,6 @@
 | `error.500.internal` | 500 | — | `contact_support` | Algo salió mal |
 | `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | El servicio de autenticación no está disponible; inténtalo de nuevo más tarde |
 | `error.503.billing_unavailable` | 503 | — | `wait_and_retry` | El servicio de facturación no está disponible; inténtalo de nuevo más tarde |
+| `error.503.mandate_unavailable` | 503 | — | `retry` | No se puede verificar el mandato del espacio de trabajo |
 | `error.503.profiles_not_configured` | 503 | — | `contact_support` | Este despliegue no tiene configurado un servicio de perfiles, por lo que aquí no se puede escribir un nombre para mostrar |
 | `error.503.profiles_unavailable` | 503 | — | `wait_and_retry` | El servicio de perfiles no está disponible; inténtalo de nuevo más tarde |

@@ -2,7 +2,7 @@
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that fails closed (an unreachable billing answers 503, not an unlimited plan, unless the deployment declares ALLOW_UNBILLED), plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 57 · extension points 5 · operations 27 · error codes 71.
+Contract: axes 1 · surface 58 · extension points 5 · operations 27 · error codes 72.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -38,6 +38,8 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Match one granted capability string (wildcards "*" and "prefix.*") against a requested one — reach for this instead of writing your own prefix/wildcard comparison; stapel-core's cross-service consumer helper mirrors this exact semantics.
 - has_active_mandate — stapel_workspaces.permissions.has_active_mandate
   True if the user holds an active (accepted, non-suspended) membership ANYWHERE, workspace-agnostic — the primitive behind is_guest; use it when the question is "has this account joined anything at all", not "is it a member of workspace W".
+- has_active_mandate_for_id — stapel_workspaces.permissions.has_active_mandate_for_id
+  has_active_mandate addressed by user id rather than by user object — the form the workspaces.check_mandate comm provider needs, so the wire answer and the in-process one can never drift into two definitions of "active".
 - has_capability — stapel_workspaces.permissions.has_capability
   True if the user's active membership grants a capability — the everyday authorization check.
 - is_guest — stapel_workspaces.permissions.is_guest
@@ -182,7 +184,7 @@ Paths are relative to `/workspaces/api/v1/`.
 - GET /{workspace_id} — workspaces_api_v1_retrieve_2
 - GET /roles — workspaces_api_v1_roles_retrieve
 
-## Error codes (71) — the StapelError envelope
+## Error codes (72) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.already_workspace_member [400] fix_input
 - error.400.bad_request [400] fix_input
@@ -253,5 +255,6 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.500.internal [500] contact_support
 - error.503.auth_unavailable [503] wait_and_retry
 - error.503.billing_unavailable [503] wait_and_retry
+- error.503.mandate_unavailable [503] retry
 - error.503.profiles_not_configured [503] contact_support
 - error.503.profiles_unavailable [503] wait_and_retry

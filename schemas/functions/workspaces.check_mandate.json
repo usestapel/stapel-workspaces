@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "workspaces.check_mandate",
+  "description": "Does this user hold a mandate ANYWHERE — an accepted, non-suspended membership in a workspace that is not soft-deleted? Workspace-agnostic on purpose: the two other providers are workspace-scoped, so neither can tell a guest (a real account belonging to nothing) from a member. False is a verdict; an unreachable provider is not, and callers turn that into 503. Returns {has_mandate: bool}.",
+  "type": "object",
+  "required": ["user_id"],
+  "properties": {
+    "user_id": { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

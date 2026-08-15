@@ -116,9 +116,21 @@ def has_active_mandate(user) -> bool:
     """
     if getattr(user, "is_anonymous", False):
         return False
+    return has_active_mandate_for_id(getattr(user, "pk", None))
+
+
+def has_active_mandate_for_id(user_id) -> bool:
+    """:func:`has_active_mandate` addressed by id — the wire form.
+
+    The comm provider (``workspaces.check_mandate``) is handed a user id, not
+    a user object, and a second copy of this filter is how two callers start
+    disagreeing about what "active" means. One predicate, two front doors.
+    """
+    if not user_id:
+        return False
     return (
         WorkspaceMember.objects.active()
-        .filter(user=user, workspace__deleted_at__isnull=True)
+        .filter(user_id=user_id, workspace__deleted_at__isnull=True)
         .exists()
     )
 

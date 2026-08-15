@@ -105,6 +105,10 @@
       "kind": "predicate",
       "intent": "True if the user holds an active (accepted, non-suspended) membership ANYWHERE, workspace-agnostic — the primitive behind is_guest; use it when the question is \"has this account joined anything at all\", not \"is it a member of workspace W\"."
     },
+    "has_active_mandate_for_id": {
+      "kind": "predicate",
+      "intent": "has_active_mandate addressed by user id rather than by user object — the form the workspaces.check_mandate comm provider needs, so the wire answer and the in-process one can never drift into two definitions of \"active\"."
+    },
     "is_guest": {
       "kind": "predicate",
       "intent": "THE canonical guest predicate (mandate-model vardict 2026-08-03): true for an authenticated user with no active mandate anywhere — an anonymous session qualifies by construction. Branch dashboards/onboarding on this, never on request.user.is_authenticated."
