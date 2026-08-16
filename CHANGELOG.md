@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-08-16
+
+### Added — `workspaces.check_mandate`: does this user hold a mandate anywhere
+
+`has_active_mandate` / `is_guest` have been the canonical guest predicate since
+the mandate-model verdict, and had zero consumers outside this package — a
+sibling service that does not embed this app could not reach them. The comm
+surface published `check_membership` and `check_capability`, both
+workspace-scoped; neither answers the workspace-AGNOSTIC question.
+
+- `functions.check_mandate` (+ `schemas/functions/workspaces.check_mandate.json`)
+  answers the contract stapel-core 0.27.0 declares, so the split deployment gets
+  the same verdict the monolith reads in-process.
+- `services.has_active_mandate_for_id` — the same predicate addressed by id, the
+  form the provider is handed, so the wire answer and the local one cannot drift
+  into two definitions of "active".
+
+Authorization is unchanged: this reads existing rows and creates none.
+
 ### Added — deleting a workspace is a transition, not a column write
 
 `DELETE <workspace>` already existed and already set `deleted_at`. Everything
@@ -35,6 +54,14 @@ create policy nobody could ever found a workspace again.
 
 Deleting a workspace is **not** a GDPR act: a workspace is an organizational
 object, and the natural-person axis stays with `WorkspacesGDPRProvider`.
+
+### Changed — `stapel-core` floor raised to 0.27.0
+
+`django/mandate.py` is the seam `workspaces.check_mandate` answers through, and
+it exists only in 0.27.0. Core also OWNS `error.503.mandate_unavailable` there
+and ships it in every language, so this module's duplicate ru/es entries are
+deleted — the loader merges the owner's catalog, and two copies of one string
+is how the two drift apart.
 
 ## [0.25.2] — 2026-08-15
 

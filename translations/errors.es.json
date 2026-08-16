@@ -29,7 +29,6 @@
   "error.429.invitation_resend_cooldown": "Esta invitación se envió por correo hace poco; puedes volver a enviarla en {retry_after} segundos",
   "error.503.auth_unavailable": "El servicio de autenticación no está disponible; inténtalo de nuevo más tarde",
   "error.503.billing_unavailable": "El servicio de facturación no está disponible; inténtalo de nuevo más tarde",
-  "error.503.mandate_unavailable": "No se puede verificar el mandato del espacio de trabajo",
   "error.503.profiles_not_configured": "Este despliegue no tiene configurado un servicio de perfiles, por lo que aquí no se puede escribir un nombre para mostrar",
   "error.503.profiles_unavailable": "El servicio de perfiles no está disponible; inténtalo de nuevo más tarde"
 }

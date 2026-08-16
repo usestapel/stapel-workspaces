@@ -1,8 +1,8 @@
-# stapel-workspaces 0.25.2
+# stapel-workspaces 0.26.0
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that fails closed (an unreachable billing answers 503, not an unlimited plan, unless the deployment declares ALLOW_UNBILLED), plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 60 · extension points 5 · operations 27 · error codes 73.
+Contract: axes 1 · surface 60 · extension points 5 · operations 27 · error codes 74.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -188,7 +188,7 @@ Paths are relative to `/workspaces/api/v1/`.
 - GET /{workspace_id} — workspaces_api_v1_retrieve_2
 - GET /roles — workspaces_api_v1_roles_retrieve
 
-## Error codes (73) — the StapelError envelope
+## Error codes (74) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.already_workspace_member [400] fix_input
 - error.400.bad_request [400] fix_input
@@ -261,5 +261,6 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.500.internal [500] contact_support
 - error.503.auth_unavailable [503] wait_and_retry
 - error.503.billing_unavailable [503] wait_and_retry
+- error.503.mandate_unavailable [503] retry
 - error.503.profiles_not_configured [503] contact_support
 - error.503.profiles_unavailable [503] wait_and_retry
