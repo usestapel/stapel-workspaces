@@ -1150,12 +1150,21 @@ def resend_invitation(*, invitation: WorkspaceInvitation) -> WorkspaceInvitation
 
 
 @transaction.atomic
-def decline_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceInvitation:
+def decline_invitation(
+    *, invitation: WorkspaceInvitation, user=None
+) -> WorkspaceInvitation:
     """Mark a pending invitation as declined by the invitee.
 
     Decline ≠ revoke: this is the invitee's terminal "no" (the workspace's
     withdrawal is ``revoked_at``). Same row-lock discipline as accept — a
     single-use token must not race its own state transitions.
+
+    *user* is OPTIONAL because the invitee usually has no account: declining
+    rests on the invite token alone (see ``InvitationDeclineView``), and
+    requiring a user here would have meant creating an account in order to
+    refuse one. The audit line is then written with no actor — the transition
+    is still recorded, against the invited address, which is the fact worth
+    keeping; ``subject_email`` carries it either way.
     """
     locked = (
         WorkspaceInvitation.objects.select_for_update()

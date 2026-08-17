@@ -1354,7 +1354,7 @@
     "/workspaces/api/v1/invitations/{token}/decline": {
       "post": {
         "operationId": "workspaces_api_v1_invitations_decline_create",
-        "description": "Decline an invitation — the invitee's terminal \"no\" (spec §B2).\n\nAuthenticated + email-match, exactly like accept: only the invited\naccount may resolve the invitation, in either direction. Decline ≠\nrevoke — both states stay distinguishable in the preview ``status``.\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Decline an invitation — the invitee's terminal \"no\" (spec §B2).\n\nAllowAny, on the token, exactly like preview and claim — and this is a\nCHANGE from the original authenticated-only rule, made because that rule\nmade the common \"no\" impossible to say.\n\nSaying no used to require an account. The invitee who has none is the\nmajority case on this path (that is why ``claim`` exists at all), so\ndeclining meant first creating the very account the person was declining\nto create: the flow asked for the commitment before the decision, and\nthe refusal left a live, empty account behind it. Verified on the stand.\n\nThe token is the proof, and it is the same proof the module already\naccepts elsewhere for strictly more: ``claim`` takes this token from an\nanonymous caller and mints a LOGIN GRANT for the invited mailbox.\nAnything a token holder could do by declining, they could already do —\nand more — by claiming. What the token cannot do is act as somebody\nelse: a request that arrives WITH a session naming an address must still\nbe the invited address, so a signed-in person cannot resolve an\ninvitation belonging to someone else. That check is unchanged.\n\nA session with no address at all (a guest session — this product mints\nthem at meeting doors) is treated as the anonymous case rather than as a\nmismatched account: it names nobody, so it can neither prove nor\ndisprove ownership, and the token stands on its own. Before this it was\nrefused outright by ``ANONYMOUS_DENIED``, which is how a guest who was\nalso an invitee could not decline at all.\n\nDecline ≠ revoke — both states stay distinguishable in the preview\n``status``. Throttled and token-never-logged like its AllowAny siblings.\n\n**Permissions:** `AllowAny`",
         "parameters": [
           {
             "in": "path",
@@ -1371,7 +1371,8 @@
         "security": [
           {
             "JWTCookieAuth": []
-          }
+          },
+          {}
         ],
         "responses": {
           "204": {

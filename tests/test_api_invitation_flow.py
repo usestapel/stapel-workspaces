@@ -14,6 +14,7 @@ import logging
 from datetime import timedelta
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from stapel_core.comm.registry import function_registry
@@ -179,11 +180,36 @@ class TestInvitationPreview:
 
 @pytest.mark.django_db
 class TestInvitationDecline:
-    def test_requires_auth(self, api_client, user):
+    def test_anonymous_may_decline_on_the_token_alone(self, api_client, user):
+        """Saying no must not require creating the account being declined.
+
+        The invitee with no account is the majority case on this path — it
+        is why ``claim`` exists. While decline required a session, refusing
+        meant first registering, and the refusal left a live empty account
+        behind it. The token is the proof, and it is the same proof
+        ``claim`` already accepts from an anonymous caller for strictly
+        more: a login grant for the invited mailbox.
+        """
         ws = _create_ws(user)
         inv = _invite(ws, "someone@example.com", user)
         resp = api_client.post(_decline_url(inv.token))
-        assert resp.status_code in (401, 403)
+        assert resp.status_code == 204, resp.content
+        inv.refresh_from_db()
+        assert inv.declined_at is not None
+        assert inv.revoked_at is None  # decline ≠ revoke
+        # No account was created in order to refuse one.
+        assert not get_user_model().objects.filter(
+            email__iexact="someone@example.com"
+        ).exists()
+
+    def test_a_signed_in_stranger_still_cannot_decline(self, api_client, user, other_user):
+        """Relaxing the gate for the account-less invitee must not turn into
+        a licence to resolve OTHER people's invitations while signed in."""
+        ws = _create_ws(user)
+        inv = _invite(ws, "invitee@example.com", user)
+        api_client.force_authenticate(user=other_user)
+        resp = api_client.post(_decline_url(inv.token))
+        assert resp.status_code == 404
         inv.refresh_from_db()
         assert inv.declined_at is None
 

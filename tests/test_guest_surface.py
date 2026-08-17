@@ -13,9 +13,14 @@ Two halves, and the first is the one that would hurt in production:
   A regression that closes it breaks the header for guests in production,
   not in review. The test below pins the empty list, not a 403.
 * Everything workspace-scoped is already closed to a guest by the capability
-  check in the method body, and the invitation views by the email match.
+  check in the method body, and ``invitations/accept`` by the email match.
   The tests prove the *existing* gate really does hold for an anonymous
   session, so the ``ANONYMOUS_DENIED`` declarations are not aspirational.
+
+``invitations/<token>/decline`` is the one invitation view that is
+deliberately open: it is AllowAny on the token, because requiring a session
+to say no meant creating the account being refused. It is therefore absent
+from the declarations tuple below, and its guest test asserts 204.
 """
 
 
@@ -205,7 +210,11 @@ def invitation(foreign_ws, user):
 
 
 @pytest.mark.django_db
-class TestGuestCannotResolveAnInvitation:
+class TestGuestCannotJoinOnAGuestSession:
+    """A guest session cannot JOIN a workspace — joining names an account,
+    and a guest session names nobody. Declining is a different question and
+    is answered by the token; see the second test."""
+
     def test_accept(self, guest_client, invitation, foreign_ws):
         resp = guest_client.post(
             f"{BASE}/invitations/accept", {"token": invitation.token}, format="json"
@@ -213,11 +222,24 @@ class TestGuestCannotResolveAnInvitation:
         assert resp.status_code == 404, resp.content
         assert WorkspaceMember.objects.filter(workspace=foreign_ws).count() == 1
 
-    def test_decline(self, guest_client, invitation):
+    def test_decline_rests_on_the_token_now(self, guest_client, invitation):
+        """DELIBERATELY NOT a 404 any more.
+
+        Decline is AllowAny on the token (see ``InvitationDeclineView``), so
+        a guest session neither adds nor removes anything: the caller is a
+        token holder either way. Refusing the guest while allowing the
+        session-less caller would only mean a guest — which this product
+        mints at meeting doors — could not decline an invitation to their
+        own address, while a browser with no session at all could.
+
+        Nothing is conceded that the token did not already carry: ``claim``
+        takes the same token from the same caller and mints a login grant
+        for the invited mailbox, which is strictly more.
+        """
         resp = guest_client.post(f"{BASE}/invitations/{invitation.token}/decline")
-        assert resp.status_code == 404, resp.content
+        assert resp.status_code == 204, resp.content
         invitation.refresh_from_db()
-        assert invitation.declined_at is None
+        assert invitation.declined_at is not None
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +256,11 @@ def test_declarations_match_the_source():
         views.MemberDetailView,
         views.PreferredWorkspaceView,
         views.InvitationAcceptView,
-        views.InvitationDeclineView,
+        # InvitationDeclineView is NOT here: it is AllowAny on the invite
+        # token, so it has no IsAuthenticated gate to declare anything about.
+        # Saying no must not require first creating the account being
+        # declined. See the view's docstring and
+        # TestGuestCannotResolveAnInvitation.test_decline_rests_on_the_token_now.
     )
     for view in denied:
         assert view.stapel_anonymous_access == ANONYMOUS_DENIED, view.__name__

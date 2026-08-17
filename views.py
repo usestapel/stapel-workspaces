@@ -1983,15 +1983,39 @@ class InvitationPreviewView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
 class InvitationDeclineView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
     """Decline an invitation — the invitee's terminal "no" (spec §B2).
 
-    Authenticated + email-match, exactly like accept: only the invited
-    account may resolve the invitation, in either direction. Decline ≠
-    revoke — both states stay distinguishable in the preview ``status``.
+    AllowAny, on the token, exactly like preview and claim — and this is a
+    CHANGE from the original authenticated-only rule, made because that rule
+    made the common "no" impossible to say.
+
+    Saying no used to require an account. The invitee who has none is the
+    majority case on this path (that is why ``claim`` exists at all), so
+    declining meant first creating the very account the person was declining
+    to create: the flow asked for the commitment before the decision, and
+    the refusal left a live, empty account behind it. Verified on the stand.
+
+    The token is the proof, and it is the same proof the module already
+    accepts elsewhere for strictly more: ``claim`` takes this token from an
+    anonymous caller and mints a LOGIN GRANT for the invited mailbox.
+    Anything a token holder could do by declining, they could already do —
+    and more — by claiming. What the token cannot do is act as somebody
+    else: a request that arrives WITH a session naming an address must still
+    be the invited address, so a signed-in person cannot resolve an
+    invitation belonging to someone else. That check is unchanged.
+
+    A session with no address at all (a guest session — this product mints
+    them at meeting doors) is treated as the anonymous case rather than as a
+    mismatched account: it names nobody, so it can neither prove nor
+    disprove ownership, and the token stands on its own. Before this it was
+    refused outright by ``ANONYMOUS_DENIED``, which is how a guest who was
+    also an invitee could not decline at all.
+
+    Decline ≠ revoke — both states stay distinguishable in the preview
+    ``status``. Throttled and token-never-logged like its AllowAny siblings.
     """
 
-    permission_classes = [permissions.IsAuthenticated]
-    # Mirror of InvitationAcceptView: the same email match keeps an anonymous
-    # (email-less) session out, in the same 404 shape.
-    stapel_anonymous_access = ANONYMOUS_DENIED
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [InvitationThrottle]
+    throttle_scope = "workspace-invitation"
 
     @extend_schema(request=None, responses={204: None})
     def post(self, request, token):  # noqa: R007
@@ -2005,14 +2029,20 @@ class InvitationDeclineView(TokenPathNoLogMixin, SerializerSeamsMixin, APIView):
         err = _invitation_state_error(inv)
         if err:
             return err
-        # Invitations are personal: any token holder must not be able to
-        # resolve the invitation under a different account.
-        if (request.user.email or "").lower() != inv.email.lower():
-            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
         if inv.workspace.deleted_at:
             return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        # A session that NAMES an address must be the invited one —
+        # invitations stay personal against anyone already signed in. A
+        # request with no session, or one whose session names no address at
+        # all, rests on the token instead and is recorded with no actor.
+        actor = request.user if request.user.is_authenticated else None
+        actor_email = (getattr(actor, "email", "") or "").lower()
+        if actor_email and actor_email != inv.email.lower():
+            return StapelErrorResponse(404, ERR_404_INVITATION_NOT_FOUND)
+        if not actor_email:
+            actor = None
         try:
-            services.decline_invitation(invitation=inv, user=request.user)
+            services.decline_invitation(invitation=inv, user=actor)
         except ValueError:
             # Raced its own state transition between the checks and the
             # locked update — the token was consumed either way.

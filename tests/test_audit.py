@@ -110,6 +110,22 @@ class TestTransitionsAreRecorded:
         row = _one(AuditAction.INVITATION_DECLINED)
         assert row["actor_id"] == str(other_user.pk)
 
+    def test_a_decline_with_no_account_still_names_the_address(self, user):
+        """The invitee who declines usually has NO account — that is the
+        whole reason decline rests on the token. There is nobody to name as
+        actor, and inventing one would be a lie; the invited ADDRESS is the
+        fact worth keeping, and it is still written."""
+        ws = create_workspace(user=user, name="Acme")
+        inv = create_invitation(
+            workspace=ws, email="nobody@acme.test", role=Role.MEMBER, invited_by=user
+        )
+        decline_invitation(invitation=inv)
+        row = _one(AuditAction.INVITATION_DECLINED)
+        # Present-when-known, never null (see audit.record_audit) — so the
+        # absence of an actor is the KEY being absent, not a null value.
+        assert "actor_id" not in row
+        assert row["subject_email"] == "nobody@acme.test"
+
     def test_a_suspension_has_a_reason_and_NO_actor(self, user, other_user):
         """A suspension is applied by a POLICY (the require-MFA sweep, the
         deactivation consumer), not by a person clicking. Naming an actor here
