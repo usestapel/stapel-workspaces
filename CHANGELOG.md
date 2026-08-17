@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-08-17
+
+### Changed — declining an invitation no longer requires creating the account being declined
+
+`POST /invitations/{token}/decline` was `IsAuthenticated` + email-match. The
+invitee who has no account here is the majority case on that path — it is the
+entire reason `claim` exists — so saying "no thanks" meant first registering
+the very account the person was refusing to create. The flow asked for the
+commitment before the decision, and the refusal left a live, empty account
+behind it. Verified on the stand.
+
+The endpoint is now `AllowAny` on the invite token, like its siblings
+`GET /invitations/{token}` (preview) and `POST /invitations/{token}/claim`,
+with the same throttle and the same token-never-logged discipline.
+
+**No new capability is handed to a token holder.** `claim` already takes this
+same token from an anonymous caller and mints a *login grant for the invited
+mailbox* — strictly more than declining. What the token still cannot do is act
+as somebody else: a request that arrives with a session naming an address must
+be the invited address, so a signed-in person cannot resolve an invitation that
+is not theirs. That check is unchanged, and a test pins it.
+
+A session that names no address at all — a guest session, which this product
+mints at meeting doors — is now treated as the anonymous case rather than as a
+mismatched account. Previously `ANONYMOUS_DENIED` refused it outright, so a
+guest who was also an invitee could not decline at all while a browser with no
+session could.
+
+`services.decline_invitation(user=…)` is now optional and defaults to `None`.
+The audit line is written either way: with no actor to name, `subject_email`
+still carries the invited address, which is the fact worth keeping.
+
 ## [0.26.0] — 2026-08-16
 
 ### Added — `workspaces.check_mandate`: does this user hold a mandate anywhere
