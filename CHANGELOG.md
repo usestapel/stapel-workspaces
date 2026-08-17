@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-08-18
+
+### Added — a refusal now answers both sides
+
+Declining sent nothing at all. The person who refused got no receipt for a
+decision they cannot undo, and the inviter kept waiting for an answer already
+given. Both letters go out through the two notification types
+stapel-notifications 0.12.0 added: a receipt to the invited ADDRESS (never to
+a session — the invitee usually has no account, which is why decline rests on
+the token), and an answer to the inviter naming the address THEY typed and
+nothing else about whoever declined.
+
+Each letter is requested inside its own guard: a failing receipt cannot cost
+the inviter their answer, and neither can cost the invitee their `204`. The
+refusal is complete the moment the row is written; nothing about the mail may
+reach back into it.
+
+### Added — the guarantee that went missing with the auth check
+
+When decline moved to `AllowAny` in 0.27.0, `test_requires_auth` was deleted
+and nothing replaced it, leaving no assertion that the token is REQUIRED. An
+unknown token is refused, and a revoked invitation cannot be declined.
+
 ## [0.27.0] — 2026-08-17
 
 ### Changed — declining an invitation no longer requires creating the account being declined
