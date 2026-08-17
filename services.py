@@ -685,6 +685,13 @@ NOTIFICATION_INVITATION = "workspace.invitation"
 NOTIFICATION_INVITATION_NEW_USER = "workspace.invitation.new_user"
 #: Notification type of a re-delivery (admin "resend").
 NOTIFICATION_INVITATION_REMINDER = "workspace.invitation.reminder"
+#: Notification type of the receipt sent to the address that refused an
+#: invitation. Carries no link: the invitation is closed, and declining
+#: created no account to act with (>= stapel-notifications 0.12.0).
+NOTIFICATION_INVITATION_DECLINE_CONFIRMED = "workspace.invitation.decline_confirmed"
+#: Notification type of the answer sent to the inviter: their invitation was
+#: refused (>= stapel-notifications 0.12.0).
+NOTIFICATION_INVITATION_DECLINED = "workspace.invitation.declined"
 
 
 def _send_invitation_notification(
@@ -815,6 +822,90 @@ def _send_invitation_notification(
         logger.exception(
             "failed to request invitation notification for %s", invitation.pk
         )
+
+
+def _send_decline_notifications(
+    invitation: WorkspaceInvitation, *, language: str | None = None
+) -> None:
+    """Tell both sides that an invitation was refused.
+
+    Best-effort, and best-effort TWICE: each letter is requested inside its
+    own guard, so a failing receipt cannot cost the inviter their answer,
+    and neither can cost the invitee their 204. The refusal is complete the
+    moment the row is written; nothing about the mail may reach back into
+    it.
+
+    **The receipt** goes to the invited ADDRESS, never to a session: the
+    invitee usually has no account, which is the whole reason declining
+    rests on the token (see :func:`decline_invitation`). A ``user_id``
+    rides alongside the address only when an account happens to hold it, so
+    notifications can apply that account's preferences — the same targeting
+    the invitation letter uses, for the same reason.
+
+    **The inviter's answer** carries the invited address and nothing else
+    about whoever declined. That address is the one the inviter typed
+    themselves; whether the person behind it has an account here, when they
+    read the letter, or where from, is not theirs to learn from a refusal.
+
+    **Language is decided here, per recipient.** stapel-notifications
+    translates its OWN copy, but the template renders under whichever
+    language is active in this process — so a host that replaced the letter
+    with a branded template of the same name follows what this call
+    activates. The receipt goes out under *language* (the Accept-Language
+    of the request that declined, i.e. the invitee's own); the inviter's
+    answer must not inherit it — they are a different reader, and the only
+    language this module can honestly claim for them is the project
+    default. Their own stated preference still wins for the library's copy,
+    because notifications asks ``profiles.language`` for a known user_id.
+    """
+    try:
+        from django.contrib.auth import get_user_model
+        from django.utils import translation
+
+        from stapel_core.notifications import request_notification
+    except Exception:
+        logger.exception(
+            "no notifications seam for the decline of %s", invitation.pk
+        )
+        return
+
+    try:
+        target = {"email": invitation.email}
+        invitee = (
+            get_user_model().objects.filter(email__iexact=invitation.email).first()
+        )
+        if invitee is not None:
+            target["user_id"] = str(invitee.pk)
+        readers_language = (
+            language or translation.get_language() or settings.LANGUAGE_CODE
+        )
+        with translation.override(readers_language):
+            request_notification(
+                NOTIFICATION_INVITATION_DECLINE_CONFIRMED,
+                variables={"workspace_name": invitation.workspace.name},
+                source_service="workspaces",
+                **target,
+            )
+    except Exception:
+        logger.exception("failed to request decline receipt for %s", invitation.pk)
+
+    try:
+        inviter = invitation.invited_by
+        if inviter is None or not (getattr(inviter, "email", "") or ""):
+            return
+        with translation.override(settings.LANGUAGE_CODE):
+            request_notification(
+                NOTIFICATION_INVITATION_DECLINED,
+                variables={
+                    "workspace_name": invitation.workspace.name,
+                    "invitee_email": invitation.email,
+                },
+                source_service="workspaces",
+                email=inviter.email,
+                user_id=str(inviter.pk),
+            )
+    except Exception:
+        logger.exception("failed to request decline notice for %s", invitation.pk)
 
 
 #: comm Function owned by stapel-auth (>= 0.11): mints a single-use login
@@ -1184,6 +1275,10 @@ def decline_invitation(
         subject_email=locked.email,
         role=locked.role,
     )
+    # Both letters, requested the same way the invitation's own letter is
+    # (see the sibling call in resend): inside the transaction, best-effort,
+    # never able to fail the refusal itself.
+    _send_decline_notifications(locked)
     return locked
 
 

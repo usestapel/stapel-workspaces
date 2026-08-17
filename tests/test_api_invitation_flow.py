@@ -202,6 +202,32 @@ class TestInvitationDecline:
             email__iexact="someone@example.com"
         ).exists()
 
+    def test_an_unknown_token_is_refused_and_a_revoked_one_is_not_declinable(
+        self, api_client, user
+    ):
+        """The token is the whole gate now, so it has to BE a gate.
+
+        Nothing else on this path asserts that: the surviving tests all
+        start from a real token. A caller with no session and a made-up
+        token must get the same 404 preview gives — the 32-byte token is
+        the only secret left — and a token the workspace has already
+        withdrawn must stay unusable from an anonymous caller too, not
+        only from the signed-in invitee.
+        """
+        resp = api_client.post(_decline_url("no-such-token"))
+        assert resp.status_code == 404
+        assert resp.json()["localizable_error"] == ERR_404_INVITATION_NOT_FOUND
+
+        ws = _create_ws(user)
+        inv = _invite(ws, "invitee@example.com", user)
+        inv.revoked_at = timezone.now()
+        inv.save(update_fields=["revoked_at"])
+        resp = api_client.post(_decline_url(inv.token))
+        assert resp.status_code == 400
+        assert resp.json()["localizable_error"] == ERR_400_INVITATION_REVOKED
+        inv.refresh_from_db()
+        assert inv.declined_at is None
+
     def test_a_signed_in_stranger_still_cannot_decline(self, api_client, user, other_user):
         """Relaxing the gate for the account-less invitee must not turn into
         a licence to resolve OTHER people's invitations while signed in."""
