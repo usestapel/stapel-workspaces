@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.28.1] — 2026-08-18
+
+### Fixed — the decline letters no longer pin a language over the chain that knows better
+
+0.28.0 wrapped both `request_notification` calls in `translation.override`: the
+receipt in the request's language, the inviter's answer in the project default.
+The second one skipped the step that matters — notifications resolves language
+per recipient (their choice, the caller's statement, their observed language,
+the SENDER's, then the project default), and pinning the default jumped over
+"the sender's", which is the step that keeps a Russian-market deployment
+writing Russian when nothing is known about the reader.
+
+Nothing is overridden now. The receipt passes `language=` — the request that
+declined IS the invitee speaking, which is exactly what that argument is for.
+The inviter's letter passes nothing and lets the chain answer.
+
 ## [0.28.0] — 2026-08-18
 
 ### Added — a refusal now answers both sides

@@ -847,16 +847,21 @@ def _send_decline_notifications(
     themselves; whether the person behind it has an account here, when they
     read the letter, or where from, is not theirs to learn from a refusal.
 
-    **Language is decided here, per recipient.** stapel-notifications
-    translates its OWN copy, but the template renders under whichever
-    language is active in this process — so a host that replaced the letter
-    with a branded template of the same name follows what this call
-    activates. The receipt goes out under *language* (the Accept-Language
-    of the request that declined, i.e. the invitee's own); the inviter's
-    answer must not inherit it — they are a different reader, and the only
-    language this module can honestly claim for them is the project
-    default. Their own stated preference still wins for the library's copy,
-    because notifications asks ``profiles.language`` for a known user_id.
+    **Language is stated, not pinned.** notifications owns the chain —
+    recipient's choice, then the caller's statement, then the language last
+    observed for them, then the SENDER's, and only then the project default
+    (``stapel_notifications.language``). This function's whole job is to
+    hand it the one fact it cannot derive: for the receipt, the language of
+    the request that declined IS the invitee's own, so it is passed as
+    *language*. For the inviter nothing is passed — they are a different
+    reader, the decliner's language says nothing about them, and the chain
+    already knows better: their stated preference, then their observed one,
+    then whoever acted, then the project default.
+
+    Overriding the active language around these calls would be worse than
+    useless: it cannot beat the recipient's own preference (which is asked
+    first) and it can only shadow the sender step, which is the step that
+    keeps a Russian-market deployment writing Russian.
     """
     try:
         from django.contrib.auth import get_user_model
@@ -876,16 +881,13 @@ def _send_decline_notifications(
         )
         if invitee is not None:
             target["user_id"] = str(invitee.pk)
-        readers_language = (
-            language or translation.get_language() or settings.LANGUAGE_CODE
+        request_notification(
+            NOTIFICATION_INVITATION_DECLINE_CONFIRMED,
+            variables={"workspace_name": invitation.workspace.name},
+            source_service="workspaces",
+            language=language or translation.get_language(),
+            **target,
         )
-        with translation.override(readers_language):
-            request_notification(
-                NOTIFICATION_INVITATION_DECLINE_CONFIRMED,
-                variables={"workspace_name": invitation.workspace.name},
-                source_service="workspaces",
-                **target,
-            )
     except Exception:
         logger.exception("failed to request decline receipt for %s", invitation.pk)
 
@@ -893,17 +895,16 @@ def _send_decline_notifications(
         inviter = invitation.invited_by
         if inviter is None or not (getattr(inviter, "email", "") or ""):
             return
-        with translation.override(settings.LANGUAGE_CODE):
-            request_notification(
-                NOTIFICATION_INVITATION_DECLINED,
-                variables={
-                    "workspace_name": invitation.workspace.name,
-                    "invitee_email": invitation.email,
-                },
-                source_service="workspaces",
-                email=inviter.email,
-                user_id=str(inviter.pk),
-            )
+        request_notification(
+            NOTIFICATION_INVITATION_DECLINED,
+            variables={
+                "workspace_name": invitation.workspace.name,
+                "invitee_email": invitation.email,
+            },
+            source_service="workspaces",
+            email=inviter.email,
+            user_id=str(inviter.pk),
+        )
     except Exception:
         logger.exception("failed to request decline notice for %s", invitation.pk)
 
