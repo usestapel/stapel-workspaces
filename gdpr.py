@@ -1,8 +1,13 @@
 from stapel_core.gdpr import GDPRProvider
 
+from .erasure import GDPR_OWNER
+
 
 class WorkspacesGDPRProvider(GDPRProvider):
-    section = 'workspaces'
+    #: Same name the comm receipts and probe answers carry — one owner, one
+    #: declaration in ``STAPEL_GDPR["DATA_OWNERS"]``, whichever of the two
+    #: participation modes a deployment uses.
+    section = GDPR_OWNER
 
     def export(self, user_id: int) -> dict:
         from .models import Workspace, WorkspaceInvitation, WorkspaceMember
@@ -27,39 +32,27 @@ class WorkspacesGDPRProvider(GDPRProvider):
         }
 
     def delete(self, user_id: int) -> None:
-        from .models import Workspace, WorkspaceInvitation, WorkspaceMember
+        """Erase the account slice — one implementation, three callers.
 
-        # Remove memberships
-        WorkspaceMember.objects.filter(user_id=user_id).delete()
+        The in-process provider, the deprecated ``user.deleted`` subscriber
+        and the ``gdpr.erasure.requested`` subscriber all reach
+        :mod:`stapel_workspaces.erasure`, so a deployment cannot get a
+        different erasure depending on which participation mode it happens
+        to use. The comm path calls ``erase_account`` (both halves); this
+        one calls the destroying half only, because the protocol runs
+        :meth:`anonymize` separately.
+        """
+        from .erasure import delete_account_rows
 
-        # Drop every invitation this user sent that never became a
-        # membership — declined, revoked and expired ones included
-        # (never_accepted(), not pending(): erasure is about PII left
-        # behind, not about what is still live).
-        WorkspaceInvitation.objects.filter(
-            invited_by_id=user_id,
-        ).never_accepted().delete()
-
-        # Owned workspaces: soft-delete (mark deleted_at).
-        # Hard deletion of workspace content is out of scope here —
-        # the platform should handle workspace transfer/deletion separately.
-        from django.utils import timezone
-        Workspace.objects.filter(owner_id=user_id, deleted_at__isnull=True).update(
-            deleted_at=timezone.now(),
-        )
+        delete_account_rows(user_id)
 
     def anonymize(self, user_id: int) -> None:
-        from .models import WorkspaceInvitation
-
         # Keep accepted invitation records but remove the invited_by link.
         # NB: an INVITATION predicate, not a membership one — same column
         # name, different model, different question.
-        WorkspaceInvitation.objects.filter(
-            invited_by_id=user_id,
-        ).accepted().update(invited_by=None)
+        from .erasure import anonymize_account_rows
 
-        # Membership records that need to stay (e.g. for workspace history)
-        # are already removed in delete(); nothing to anonymise here.
+        anonymize_account_rows(user_id)
 
 
 def _serialize_dates(rows: list[dict]) -> list[dict]:

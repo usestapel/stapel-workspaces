@@ -2,6 +2,65 @@
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-08-23
+
+Minor, not patch: two new consumed actions, two new emitted actions and a
+subject type (`workspace`) that this module never erased before. Nothing a
+host has to change — the settings surface is untouched — but the comm
+contract grew, and a peer integrates against that.
+
+### Added — the workspace is a subject you can erase
+
+stapel-gdpr 0.5.0 made the subject of an erasure a parameter. This module
+claims two: `account` and `workspace`. Declare it as
+`STAPEL_GDPR["DATA_OWNERS"] = {"workspaces": ["account", "workspace"]}`.
+
+`erasure.py` is the whole implementation and both halves are idempotent:
+
+- `erase_workspace` removes the workspace's memberships, invitations, MFA
+  enforcement record and provisioning operations, and then the row itself.
+  The tombstone `delete_workspace` leaves behind exists so peers can resolve
+  the id while they clean up their own workspace-scoped data; the erasure
+  request IS the end of that window, so keeping the name, slug, settings and
+  owner link past it would be keeping the data we were asked to erase.
+- `erase_account` is what the module already did, now counted and reachable
+  from every path. The in-process provider, the deprecated `user.deleted`
+  subscriber and the new `gdpr.erasure.requested` subscriber all land in the
+  same functions, so a deployment cannot get a different erasure depending
+  on which participation mode it happens to use. Provisioning saga rows now
+  lose the person (`username`, `user_id`) and keep the credits owed — a row
+  can still owe a refund, and destroying it would destroy the obligation.
+
+### Added — the receipt, and the end of the silent owner
+
+`handle_erasure_requested` answers `gdpr.section.erased` with the
+`correlation_id` it was asked with and the **counts** of what it removed,
+emitted in the same transaction as the deletions. Until now this module
+erased and said nothing: the orchestrator does not self-certify, so its
+`ErasurePart` for `workspaces` stayed unconfirmed until it timed out thirty
+days later — indistinguishable from an owner whose consumer was never
+deployed. `user.deleted` receipts too, for as long as gdpr keeps emitting
+it (through 0.5.x); the orchestrator flips the part once and ignores the
+second, so the two paths cannot disagree.
+
+`handle_owner_probe` answers `gdpr.owner.probe` with
+`gdpr.owner.alive {owner, subject_types}` **from the same module** — that
+co-location is the whole point of the probe: it makes "alive" evidence that
+the erasure path is consumed rather than that a container is running. It is
+what `gdpr.W006` and `GET /gdpr/api/v1/owners/health` read.
+
+New contracts: `schemas/consumes/gdpr.erasure.requested.json`,
+`schemas/consumes/gdpr.owner.probe.json`,
+`schemas/emits/gdpr.section.erased.json`, `schemas/emits/gdpr.owner.alive.json`.
+
+### Known boundary
+
+The membership journal lives in the core event store, whose only purge
+primitive is time-based. Audit lines about an erased subject age out under
+`STAPEL_EVENTSTORE` retention instead of being removed by the erasure, and
+the counts say so by omission rather than implying a coverage this module
+does not have. MODULE.md ("Erasure") states it.
+
 ## [0.28.1] — 2026-08-18
 
 ### Fixed — the decline letters no longer pin a language over the chain that knows better

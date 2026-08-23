@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gdpr.section.erased",
+  "description": "This module's receipt for one erasure: what it removed for the named subject, echoing the correlation_id it was asked with. Emitted in the same transaction as the deletions (outbox discipline), so a rolled-back erasure never produces a receipt.",
+  "type": "object",
+  "required": ["correlation_id", "owner", "subject_type", "subject_key", "counts"],
+  "properties": {
+    "correlation_id": { "type": "string" },
+    "owner":          { "type": "string", "const": "workspaces" },
+    "subject_type":   { "type": "string", "enum": ["account", "workspace"] },
+    "subject_key":    { "type": "string" },
+    "counts":         {
+      "type": "object",
+      "description": "Rows removed, by kind. Account: memberships, invitations_sent, invitations_anonymized, provision_operations_anonymized, workspaces_soft_deleted. Workspace: memberships, invitations, mfa_enforcements, provision_operations, workspaces.",
+      "additionalProperties": { "type": "integer" }
+    }
+  },
+  "additionalProperties": false
+}

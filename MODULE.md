@@ -151,13 +151,18 @@ event leaves iff the surrounding DB transaction commits). JSON Schemas in `schem
 | `workspace.member_provisioned` | `workspace_id`, `user_id`, `role`, `provisioned_by` | Org-created (synthetic) member joined via `POST members/provision` — audit/metering; never carries credentials |
 | `workspace.member_suspended` | `workspace_id`, `user_id`, `role`, `reason` | Membership suspended (spec §C3; canonical reason `no_mfa`) — subscribers revoke live access like on `member_removed` |
 | `workspace.member_unsuspended` | `workspace_id`, `user_id`, `role`, `reason` | Suspension lifted (member enabled MFA, or the org dropped `require_mfa`) |
+| `workspace.deleted` | `workspace_id`, `owner_id`, `deleted_by`, `type`, `member_count` | `delete_workspace` — the terminal `deleted_at`, announced in the same transaction so every module that keys data by workspace id learns while the id still resolves |
+| `gdpr.section.erased` | `correlation_id`, `owner`, `subject_type`, `subject_key`, `counts` | This module's erasure receipt — see **Erasure** below |
+| `gdpr.owner.alive` | `owner`, `subject_types` | Answer to `gdpr.owner.probe` — see **Erasure** below |
 
 **Consumes** (`actions.py`, `@on_action`; handlers must be idempotent — delivery is
 at-least-once):
 
 | Event | Handler | Effect |
 |---|---|---|
-| `user.deleted` | `handle_user_deleted` | `WorkspacesGDPRProvider().delete(user_id)` — memberships removed, owned workspaces soft-deleted |
+| `gdpr.erasure.requested` | `handle_erasure_requested` | Erase the named subject (`account` or `workspace`) and receipt with counts — see **Erasure** below |
+| `gdpr.owner.probe` | `handle_owner_probe` | Answer `gdpr.owner.alive` **from the same module as the eraser** — see **Erasure** below |
+| `user.deleted` | `handle_user_deleted` | Deprecated upstream (gdpr removes it in 0.6.0). Same `erase_account` as the erasure path, and it receipts too when the payload carries a `correlation_id` |
 | `user.mfa_disabled` | `handle_user_mfa_disabled` | Suspend the user's memberships (reason `no_mfa`) in every workspace whose `settings.security.require_mfa` is on |
 | `user.mfa_enabled` | `handle_user_mfa_enabled` | Lift the user's `no_mfa` suspensions (only that reason) |
 | `user.deactivated` | `handle_user_deactivated` | The ACCOUNT was administratively deactivated in auth (#92) — suspend **every** accepted membership (reason `account_deactivated`), whatever the workspace's policy says. Reversible; no row deleted; the seat is freed |
@@ -190,6 +195,52 @@ Additionally, the `consume_auth_events` management command (bus deployments) con
 | `profiles.display_names` | `services._fetch_profile_display_names` (0.21) | Roster names, one mechanism for both topologies; falls back to the `PROFILES_SERVICE_URL` HTTP batch |
 | `billing.check_entitlement` / `billing.debit` | `entitlements.py` | Degrade-ALLOW when billing is absent |
 | `auth.provision_user` / `auth.admin_reset_password` / `auth.apply_first_login_policies` / `auth.mfa_status` / `auth.issue_login_grant` | `services.py` | See the Services row |
+
+### Erasure
+
+This module is a stapel-gdpr **data owner**. Declare it, and what it owns
+data about, in the host's settings:
+
+```python
+STAPEL_GDPR = {"DATA_OWNERS": {"workspaces": ["account", "workspace"]}}
+```
+
+The name `workspaces` is fixed (`erasure.GDPR_OWNER`), and it is the same
+name `WorkspacesGDPRProvider.section` carries — one owner whichever
+participation mode a deployment uses.
+
+**What is erased, per subject.** `erasure.py` holds both, each idempotent
+and each returning the `counts` its receipt carries:
+
+| `subject_type` | `subject_key` | Removed |
+|---|---|---|
+| `account` | user id | Memberships; invitations the user sent that never became a membership; accepted invitations lose their `invited_by` link; provisioning saga rows lose `username`/`user_id` and keep the credits owed; owned workspaces reach `deleted_at` |
+| `workspace` | workspace id | Memberships, invitations, the MFA enforcement record, provisioning operations, and the workspace row itself — name, slug, settings and owner link included |
+
+**The purge window IS the request.** `delete_workspace` sets `deleted_at`
+and emits `workspace.deleted` so peers can clean up while the id still
+resolves; the tombstone exists for exactly that. `POST
+/gdpr/api/v1/erasures {"subject_type": "workspace", "subject_key": ...}`
+arriving afterwards is the signal that the window is over, so the row goes
+with everything else. A host that wants a delay sets it as gdpr's
+`ERASURE_SLA_DAYS` / its own purge task, not here.
+
+**The receipt and the probe are one subscriber.** `actions.py` handles
+`gdpr.erasure.requested` and `gdpr.owner.probe` side by side, deliberately:
+`gdpr.owner.alive` is only evidence that the erasure path is *consumed*
+because it is answered by the code that erases. Split them and
+`gdpr.W006` / `GET /gdpr/api/v1/owners/health` would report a running
+container instead. Deployment note: a service with this app installed and
+declared in `DATA_OWNERS` must run a `consume_actions` process, or nothing
+answers either event.
+
+**What the receipt does NOT cover.** The membership journal is a stream in
+the core event store (`AUDIT_STREAM`), whose only purge primitive is
+time-based (`stapel_core.eventstore.purge(stream, older_than=...)`). Audit
+lines about an erased subject therefore age out under `STAPEL_EVENTSTORE`
+retention rather than being removed by an erasure, and the counts above say
+so by omission. A subject-scoped purge is a core capability; when it lands,
+it belongs in `erase_subject`.
 
 ### Django signals
 
