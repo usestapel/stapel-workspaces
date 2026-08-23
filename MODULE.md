@@ -235,12 +235,13 @@ declared in `DATA_OWNERS` must run a `consume_actions` process, or nothing
 answers either event.
 
 **What the receipt does NOT cover.** The membership journal is a stream in
-the core event store (`AUDIT_STREAM`), whose only purge primitive is
-time-based (`stapel_core.eventstore.purge(stream, older_than=...)`). Audit
-lines about an erased subject therefore age out under `STAPEL_EVENTSTORE`
-retention rather than being removed by an erasure, and the counts above say
-so by omission. A subject-scoped purge is a core capability; when it lands,
-it belongs in `erase_subject`.
+the core event store (`AUDIT_STREAM`), and this module does not purge it on
+an erasure: audit lines about an erased subject age out under
+`STAPEL_EVENTSTORE` retention instead, and the counts above say so by
+omission. The core primitive is not the obstacle — it has existed since
+0.24.0 (`stapel_core.eventstore.purge(stream, filters={"workspace_id": …})`,
+with the time bound optional since 0.35.0). What is missing is the call, in
+`erase_subject`, and the core floor bump that comes with it: next minor.
 
 ### Django signals
 

@@ -23,12 +23,15 @@ report zero on a redelivery — and both return a ``counts`` dict, which is
 the difference between an owner saying "it ran" and an owner saying what it
 did.
 
-The membership journal is deliberately NOT in these counts. Since 0.24 it is
-a stream in the core event store (``AUDIT_STREAM``), whose retention is
-governed by ``STAPEL_EVENTSTORE`` and whose only purge primitive is
-time-based; a subject-scoped purge is a core capability this module cannot
-invent one floor up. MODULE.md says so out loud rather than letting the
-receipt imply a coverage it does not have.
+The membership journal is NOT in these counts yet. Since 0.24 it is a stream
+in the core event store (``AUDIT_STREAM``), whose retention is governed by
+``STAPEL_EVENTSTORE``; audit lines about an erased subject therefore age out
+instead of being erased. The core primitive for it EXISTS —
+``stapel_core.eventstore.purge(stream, filters=...)`` since 0.24.0, with the
+time bound made optional in 0.35.0 — so this is an unwired seam here, not a
+missing capability one floor up. Wiring it into ``erase_subject`` raises this
+module's core floor, which is why it is the next minor's work; MODULE.md says
+so out loud rather than letting the receipt imply a coverage it does not have.
 """
 from __future__ import annotations
 

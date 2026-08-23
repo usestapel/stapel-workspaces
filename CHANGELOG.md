@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Docs — the audit-journal boundary was blamed on the wrong floor
+
+0.29.0's "Known boundary" said the core event store's "only purge primitive
+is time-based". It is not, and has not been since stapel-core 0.24.0:
+`eventstore.purge(stream, filters={"workspace_id": …})` is subject-scoped,
+and 0.35.0 made the time bound optional so an erasure no longer has to name
+a cut-off date it does not have. (This module's `pyproject.toml` floor
+comment had it right all along.)
+
+The boundary itself is real and unchanged — an erasure here still does not
+purge the membership journal, so audit lines about an erased subject age out
+under retention. What was wrong is the reason: the call is unwired in
+`erase_subject`, not absent from core. Wiring it raises the core floor to
+0.35.0, so it is the next minor's work. MODULE.md and `erasure.py` now say
+that instead.
+
 ## [0.29.0] — 2026-08-23
 
 Minor, not patch: two new consumed actions, two new emitted actions and a
