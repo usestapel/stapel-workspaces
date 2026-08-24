@@ -154,6 +154,7 @@ class MemberResponse:
         suspension_reason: Why the membership is suspended (canonical value no_mfa); null while active.
         display_name: Best-effort display name — a live lookup in stapel-profiles when it is installed and has one, else the name typed at invite/provision time (never both, never invented when neither exists). Null when nobody has one yet. Example: Ada Lovelace
         mfa_compliant: Whether this member was PROVEN to hold a strong second factor — true, false, or null for "nobody has asked yet". Under a require_mfa policy the null is what an administrator acts on: those members are not admitted until the answer arrives. Example: true
+        is_self: Whether this row IS the caller. Server-derived — the client is never asked to compare ids it may not have. Always false on the service-to-service membership read, where the caller is a service and not a member of anything. Example: false
     """
 
     id: UUID
@@ -169,6 +170,7 @@ class MemberResponse:
     suspension_reason: Optional[str] = None
     display_name: Optional[str] = None
     mfa_compliant: Optional[bool] = None
+    is_self: bool = False
 
 
 @dataclass

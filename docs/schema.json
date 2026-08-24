@@ -107,7 +107,7 @@
     "/workspaces/api/v1/{workspace_id}": {
       "get": {
         "operationId": "workspaces_api_v1_retrieve_2",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
             "in": "path",
@@ -162,7 +162,7 @@
       },
       "patch": {
         "operationId": "workspaces_api_v1_partial_update",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
             "in": "path",
@@ -664,7 +664,7 @@
     "/workspaces/api/v1/{workspace_id}/members": {
       "get": {
         "operationId": "workspaces_api_v1_members_list",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
             "name": "anchor",
@@ -752,7 +752,7 @@
     "/workspaces/api/v1/{workspace_id}/members/{user_id}": {
       "patch": {
         "operationId": "workspaces_api_v1_members_partial_update",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
             "in": "path",
@@ -825,7 +825,7 @@
       },
       "delete": {
         "operationId": "workspaces_api_v1_members_destroy",
-        "description": "Overridable serializer seams for API views.\n\nSubclasses (or downstream projects) can swap the request/response\nserializers without copying method bodies:\n\n    class MyWorkspaceDetailView(WorkspaceDetailView):\n        response_serializer_class = MyWorkspaceResponseSerializer\n\n**Permissions:** `IsAuthenticated`",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
         "parameters": [
           {
             "in": "path",
@@ -2069,6 +2069,10 @@
             "nullable": true,
             "description": "Whether this member was PROVEN to hold a strong second factor — true, false, or null for \"nobody has asked yet\". Under a require_mfa policy the null is what an administrator acts on: those members are not admitted until the answer arrives",
             "example": true
+          },
+          "is_self": {
+            "type": "boolean",
+            "description": "Whether this row IS the caller. Server-derived — the client is never asked to compare ids it may not have. Always false on the service-to-service membership read, where the caller is a service and not a member of anything"
           }
         },
         "required": [

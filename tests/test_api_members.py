@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 
 from stapel_workspaces.errors import (
@@ -393,3 +394,90 @@ class TestMemberRemove:
         ws = _create_ws(user)
         resp = authed_client.delete(f"{BASE}/{ws.id}/members/{other_user.id}")
         assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestMemberIsSelf:
+    """`is_self` — which row the viewer is, answered by the server.
+
+    Without it a roster cannot render "you", and cannot stop somebody removing
+    their own membership by accident. The client is deliberately not asked to
+    compare `user_id` against whatever it believes its own id to be: that is
+    inference from data it was handed, and it is wrong the moment the same
+    payload is rendered for a different viewer (a cached list, an admin
+    impersonation, a screenshot).
+    """
+
+    def test_exactly_the_viewers_row_is_self(self, api_client, user, other_user):
+        ws = _create_ws(other_user)
+        _add_member(ws, user, Role.VIEWER)
+        api_client.force_authenticate(user=user)
+
+        members = api_client.get(f"{BASE}/{ws.id}/members").json()["items"]
+        by_user = {m["user_id"]: m for m in members}
+
+        assert by_user[str(user.id)]["is_self"] is True
+        assert by_user[str(other_user.id)]["is_self"] is False
+        assert sum(m["is_self"] for m in members) == 1
+
+    def test_the_same_roster_answers_differently_for_each_viewer(
+        self, api_client, user, other_user
+    ):
+        """The point of deriving it server-side, in one assertion.
+
+        Same workspace, same two rows, two viewers — the flag follows the
+        caller, not the row. A client-inferred field could not do this without
+        knowing who is asking, which is exactly what it does not reliably know.
+        """
+        ws = _create_ws(other_user)
+        _add_member(ws, user, Role.VIEWER)
+
+        api_client.force_authenticate(user=user)
+        first = {
+            m["user_id"]: m["is_self"]
+            for m in api_client.get(f"{BASE}/{ws.id}/members").json()["items"]
+        }
+        api_client.force_authenticate(user=other_user)
+        second = {
+            m["user_id"]: m["is_self"]
+            for m in api_client.get(f"{BASE}/{ws.id}/members").json()["items"]
+        }
+
+        assert first[str(user.id)] is True
+        assert first[str(other_user.id)] is False
+        assert second[str(user.id)] is False
+        assert second[str(other_user.id)] is True
+
+    def test_role_change_response_carries_it_for_the_actor(
+        self, api_client, user, other_user
+    ):
+        ws = _create_ws(user)
+        _add_member(ws, other_user, Role.MEMBER)
+        api_client.force_authenticate(user=user)
+
+        resp = api_client.patch(
+            f"{BASE}/{ws.id}/members/{other_user.id}",
+            {"role": Role.ADMIN},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        # The row returned is the TARGET's, and the actor is not the target.
+        assert resp.json()["is_self"] is False
+
+    @override_settings(
+        MIDDLEWARE=["stapel_core.django.jwt.middleware.ServiceAPIKeyMiddleware"],
+        SERVICE_API_KEY="test-service-key",
+    )
+    def test_service_read_has_no_viewer_and_says_false(self, api_client, user):
+        """The internal endpoint's caller is a service, not a member.
+
+        There is no viewer for the row to be, so the answer is a stated
+        `False` rather than a defaulted one — see `_member_to_dto`.
+        """
+        ws = _create_ws(user)
+        resp = api_client.get(
+            f"{BASE}/internal/{ws.id}/members/{user.id}",
+            HTTP_X_API_KEY="test-service-key",
+        )
+        assert resp.status_code == 200, resp.content
+        assert resp.json()["is_self"] is False

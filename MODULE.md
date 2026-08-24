@@ -113,9 +113,28 @@ What **is** app-layer:
   (`error.403.last_owner_cannot_be_removed`); only *accepted* memberships count for
   access checks and for `check_membership`.
 
+### `is_self` on a member row
+
+Every `MemberResponse` carries `is_self` — whether that row IS the caller —
+derived on the server. It is not a convenience: the client cannot answer it
+reliably (a roster payload is the same bytes for every viewer, and comparing
+`user_id` against an id the client believes is its own is inference, not
+knowledge), and two endpoints refuse actions on the caller's own row in ways a
+UI must not walk into. `DELETE .../members/{user_id}` on yourself is leaving,
+not removing; `POST .../members/{user_id}/password-reset` refuses your own row
+with the same `member_not_found` 404 a stranger gets, which a roster without
+`is_self` will render as "this member has been removed".
+
+`_member_to_dto` takes `viewer_id` keyword-only and **without a default**, so a
+new call site cannot silently answer "not you" for the viewer's own row. The
+service-to-service read (`InternalMembershipView`) passes `None` explicitly —
+its caller is a service, not a member — and the field is `false` there.
+
 ### Serializer seams (`views.py`)
 
-Every public view mixes in `SerializerSeamsMixin` with class attributes
+`SerializerSeamsMixin` is an alias for the canonical
+`stapel_core.django.api.views.SerializerSeamMixin` (core >= 0.45.0) — this module
+no longer keeps a copy of it. Every public view mixes it in with class attributes
 `request_serializer_class` / `response_serializer_class` and overridable getters
 `get_request_serializer_class()` / `get_response_serializer_class()`
 (`WorkspaceListCreateView` adds `list_response_serializer_class` +

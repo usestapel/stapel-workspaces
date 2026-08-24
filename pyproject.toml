@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-workspaces"
-version = "0.29.0"
+version = "0.30.0"
 description = "Team workspaces and RBAC Django app for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,12 +25,18 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    # Floor: 0.27.0 ships django/mandate.py — the mandate seam behind
+    # Floor: 0.45.0 ships the canonical serializer seam
+    # (stapel_core.django.api.views.SerializerSeamMixin). views.py no longer
+    # carries its own byte-for-byte copy of it — `SerializerSeamsMixin` is an
+    # alias for core's class — so on an older core every view in this module
+    # loses get_request_serializer_class() at import time.
+    #
+    # Earlier floor: 0.27.0 ships django/mandate.py — the mandate seam behind
     # `workspaces.check_mandate` — and owns error.503.mandate_unavailable in
     # every catalog this module merges. (docs/errors.json carries the `owner`
     # field since 0.26.0; the audit journal is a stream in core's event store
     # since 0.24.0: eventstore.anchor + query(reverse=) + subject-scoped purge.)
-    "stapel-core>=0.27.0,<1.0",
+    "stapel-core>=0.45.0,<1.0",
 ]
 
 [project.urls]

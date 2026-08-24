@@ -55,6 +55,7 @@ from stapel_core.django.api.permissions import (
     IsServiceRequest,
     IsStaffUser,
 )
+from stapel_core.django.api.views import SerializerSeamMixin
 from stapel_core.django.openapi.schemas import StapelErrorSerializer
 from stapel_core.django.workspaces import invalidate_membership_cache
 from stapel_core.signals import workspace_member_changed
@@ -146,24 +147,12 @@ from .serializers import (
 )
 
 
-class SerializerSeamsMixin:
-    """Overridable serializer seams for API views.
-
-    Subclasses (or downstream projects) can swap the request/response
-    serializers without copying method bodies:
-
-        class MyWorkspaceDetailView(WorkspaceDetailView):
-            response_serializer_class = MyWorkspaceResponseSerializer
-    """
-
-    request_serializer_class = None
-    response_serializer_class = None
-
-    def get_request_serializer_class(self):
-        return self.request_serializer_class
-
-    def get_response_serializer_class(self):
-        return self.response_serializer_class
+#: The serializer seam is core's, not this module's. What stood here was a
+#: byte-for-byte copy of ``stapel_core.django.api.views.SerializerSeamMixin``
+#: — same two attributes, same two getters — which is exactly the duplication
+#: core shipped the primitive to end. The alias keeps the local name that 19
+#: view declarations and MODULE.md already use; it is the canonical class.
+SerializerSeamsMixin = SerializerSeamMixin
 
 
 class BillingSeamMixin:
@@ -320,7 +309,24 @@ def _workspace_to_dto(
     )
 
 
-def _member_to_dto(m: WorkspaceMember, display_name: str | None = None) -> MemberResponse:
+def _member_to_dto(
+    m: WorkspaceMember,
+    display_name: str | None = None,
+    *,
+    viewer_id,
+) -> MemberResponse:
+    """Present a member to a specific viewer.
+
+    ``viewer_id`` is keyword-only and has NO default on purpose. ``is_self`` is
+    the one field here the server must answer and the client cannot: a roster
+    row carries ``user_id``, but a frontend comparing it against whatever it
+    believes its own id to be is inferring identity from data it was handed,
+    which is precisely what "the server knows the viewer" exists to replace.
+    A default would let a new call site silently answer "not you" for the
+    viewer's own row — the exact bug this field was added to end — so every
+    call site is made to say who is looking, including the one whose honest
+    answer is ``None``.
+    """
     return MemberResponse(
         id=m.id,
         workspace_id=m.workspace_id,
@@ -335,6 +341,10 @@ def _member_to_dto(m: WorkspaceMember, display_name: str | None = None) -> Membe
         suspension_reason=m.suspension_reason or None,
         display_name=display_name,
         mfa_compliant=m.mfa_compliant,
+        # Compared as strings: user_id is a UUID column while a viewer id
+        # arrives from request.user.id (UUID) or a JWT claim (str), and
+        # UUID("...") != "..." is silently False.
+        is_self=viewer_id is not None and str(m.user_id) == str(viewer_id),
     )
 
 
@@ -938,7 +948,11 @@ class MemberListView(SerializerSeamsMixin, APIView):
         response_cls = self.get_response_serializer_class()
         names = _member_display_names(page)
         items = [
-            response_cls(_member_to_dto(m, names.get(str(m.user_id)))).data
+            response_cls(
+                _member_to_dto(
+                    m, names.get(str(m.user_id)), viewer_id=request.user.id
+                )
+            ).data
             for m in page
         ]
         return paginator.get_paginated_response(items)
@@ -1479,7 +1493,8 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         return StapelResponse(
             self.get_response_serializer_class()(
                 _member_to_dto(
-                    member, _member_display_names([member]).get(str(member.user_id))
+                    member, _member_display_names([member]).get(str(member.user_id)),
+                    viewer_id=request.user.id,
                 )
             )
         )
@@ -1933,7 +1948,8 @@ class InvitationAcceptView(BillingSeamMixin, SerializerSeamsMixin, APIView):
         return StapelResponse(
             self.get_response_serializer_class()(
                 _member_to_dto(
-                    member, _member_display_names([member]).get(str(member.user_id))
+                    member, _member_display_names([member]).get(str(member.user_id)),
+                    viewer_id=request.user.id,
                 )
             )
         )
@@ -2137,7 +2153,11 @@ class InternalMembershipView(SerializerSeamsMixin, APIView):
         return StapelResponse(
             self.get_response_serializer_class()(
                 _member_to_dto(
-                    member, _member_display_names([member]).get(str(member.user_id))
+                    member, _member_display_names([member]).get(str(member.user_id)),
+                    # Service-to-service read: the caller is another service, not a
+                    # person, so there is no viewer for this row to be. `None`
+                    # is the honest answer, and it is stated rather than defaulted.
+                    viewer_id=None,
                 )
             )
         )

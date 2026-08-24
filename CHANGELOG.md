@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-08-24
+
+**Requires stapel-core >= 0.45.0** (the canonical serializer seam).
+
+### Added — `MemberResponse.is_self`: a roster could not tell the viewer apart from everyone else
+
+Every member row carried `user_id`, and nothing else. A frontend that wanted to
+render "you", or to stop somebody removing their own membership by accident,
+had exactly one option: compare each row's `user_id` against whatever it
+believed its own id to be. That is inference from data the client was handed —
+it is wrong the moment the same payload is rendered for a different viewer (a
+cached list, a shared screenshot, an admin looking at somebody else's session),
+and the server is the only party that actually knows who is asking.
+
+`is_self` is now derived server-side and present on every member row.
+
+`_member_to_dto` takes `viewer_id` as a **keyword-only argument with no
+default**. That is the point: a default would let a new call site silently
+answer "not you" for the viewer's own row, which is the bug this field exists
+to end. Each of the four call sites states who is looking, including
+`InternalMembershipView`, whose honest answer is `None` — its caller is another
+service, not a member of anything.
+
+### The other decision the omission made impossible
+
+Not just removal. `MemberPasswordResetView` deliberately refuses the caller's
+**own** row (`views.py`: "Yourself is not in the set this endpoint acts on")
+and says so with the same `member_not_found` 404 a stranger gets — one refusal
+shape, nothing to learn from the difference. Correct on the server, and
+invisible to a client: without `is_self` the roster renders "Reset password" on
+the viewer's own row, and the 404 that comes back is indistinguishable from
+"this member has been removed". The admin surface now has the fact it needs to
+not draw that control.
+
+Role changes are the third: an admin cannot promote themselves to owner, and
+the last owner cannot demote themselves. Those refusals are rank/last-owner
+invariants rather than self-vs-other ones, so they are unchanged here — but the
+row that must not offer them is now identifiable.
+
+### Changed — the serializer seam is core's, not a copy of it
+
+`views.py` carried a byte-for-byte copy of
+`stapel_core.django.api.views.SerializerSeamMixin` — the same two attributes
+and the same two getters — which is precisely the duplication core shipped the
+primitive to end. `SerializerSeamsMixin` is now an alias for the canonical
+class; the 19 view declarations and MODULE.md keep the name they already use.
+
+Side effect worth knowing about before it surprises a diff reader: five
+operations (`workspace retrieve/patch`, `members list/patch/delete`) have a
+changed OpenAPI **description**. Those views carry no docstring of their own,
+so drf-spectacular renders the mixin's — it rendered the local copy's text
+before and renders core's now. No behaviour, parameters or responses changed.
+
 ### Docs — the audit-journal boundary was blamed on the wrong floor
 
 0.29.0's "Known boundary" said the core event store's "only purge primitive
