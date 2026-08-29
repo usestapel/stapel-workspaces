@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+## [0.30.1] — 2026-08-30
+
+### Fixed — a guest who owned a workspace could not sign in at all
+
+stapel-auth folds an anonymous guest into the account it just proved it owns
+and then deletes the guest row, announcing it with `user.merged`. This module
+never subscribed, and its two user columns are the unforgiving kind:
+`WorkspaceMember.user` is `CASCADE`, so the guest's memberships vanished with
+them, and `Workspace.owner` is `PROTECT` — in a deployment sharing one
+database, the guest's own workspace made the deletion raise `ProtectedError`
+and the whole sign-in fail.
+
+`handle_user_merged` settles both, in one transaction, with three domain rules
+rather than a column rewrite:
+
+* the guest's PERSONAL workspace is re-owned AND demoted to `WORK`, renamed
+  "Guest recordings". The survivor already has a personal space; a second
+  PERSONAL row would leave `ensure_personal_workspace` picking whichever came
+  first. Recordings inside it keep their `workspace_id` and are simply
+  reachable again;
+* reassigned memberships lose `is_preferred` — at most one row per user may
+  carry it, and where the survivor calls home is their choice, not a guest
+  session's;
+* memberships dedup against `workspaces_member_unique`: where both accounts
+  are in the same workspace the survivor's row wins, role and history
+  included.
+
+Provenance columns (`invited_by`, `revoked_by`,
+`WorkspaceProvisionOperation.user_id`) follow the survivor unchanged. A guest
+that owns nothing here is a quiet no-op; a guest that owns rows while the
+survivor has no user projection here yet raises `MergeTargetNotReady` so the
+outbox redelivers.
+
 ## [0.30.0] — 2026-08-24
 
 **Requires stapel-core >= 0.45.0** (the canonical serializer seam).
