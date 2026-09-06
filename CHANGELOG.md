@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.30.2] — 2026-09-06
+
+### `stapel-core` floor raised to 0.60.6 — field-validator `params` now survives DRF's re-raise
+
+`serializers.py`'s `validate_settings()` field validator raises
+`StapelValidationError("error.400.field.invalid_choice", params={"field": ...})`
+for a bad nested `settings.security.*` key. Below core 0.60.6, DRF's own
+field-error collapse (`Serializer.to_internal_value`/`run_validation`)
+catches and re-raises that as a plain `ValidationError`, discarding
+everything but the error's text and `.code` — a caller below the floor got
+the error key with no `field` to say which nested setting failed. 0.60.6
+packs `error_key`/`params` into the exception's `.code` itself, so `params`
+reaches the client through any depth of DRF re-wrapping. Floor-only; no
+behaviour here changes.
+
 ## [0.30.1] — 2026-08-30
 
 ### Fixed — a guest who owned a workspace could not sign in at all
