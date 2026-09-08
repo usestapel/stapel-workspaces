@@ -1,6 +1,6 @@
 """The instance names its default workspace; clients stop guessing.
 
-Measured on the meettoday stand (2026-08-06): the frontend took
+Measured on a client stand (2026-08-06): the frontend took
 ``workspaces[0]`` — the first row of a list ordered by ``-last_accessed_at``
 — as "the active workspace". A person who belongs to two spaces therefore
 landed in whichever they had touched last. The owner's four pending

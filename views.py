@@ -531,8 +531,8 @@ def _invitation_terminal_error(inv: WorkspaceInvitation):
 class WorkspaceListCreateView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
     # GET is a live guest path: an app header asks "which workspaces am I in?"
-    # for every session, guest included, to decide what to draw (meettoday's
-    # Navbar does exactly this). The answer for a guest is an empty list — its
+    # for every session, guest included, to decide what to draw (a client
+    # navbar does exactly this). The answer for a guest is an empty list — its
     # own memberships, of which it has none. POST is a separate question and
     # is answered inside `post` itself; see the guard there.
     stapel_anonymous_access = ANONYMOUS_ALLOWED

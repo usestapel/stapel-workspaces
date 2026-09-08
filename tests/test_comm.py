@@ -291,7 +291,7 @@ class TestInvitationNotification:
         UserContact, or was never enriched into it, has no row there and
         the invite produced zero deliverable channels (created 201, then
         silently "no email address for this recipient" in the log).
-        Found on the meettoday sandbox 2026-08 by inviting a pre-existing
+        Found on a client sandbox 2026-08 by inviting a pre-existing
         account. Carrying ``email`` alongside ``user_id`` always closes the
         gap regardless of what UserContact does or doesn't have.
         """

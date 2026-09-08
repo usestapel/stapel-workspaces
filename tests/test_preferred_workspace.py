@@ -6,7 +6,7 @@ choice wins over it" — and no place for that choice to be written down. So
 clients kept inventing the rule, and the invention that shipped was
 `workspaces[0]` off a list ordered by `-last_accessed_at`: the owner's four
 pending invitations sat in the org space while his screen showed his
-personal one (#239, measured on the meettoday stand 2026-08-06).
+personal one (#239, measured on a client stand 2026-08-06).
 
 This is the missing half. The choice is STATED (PUT me/preferred-workspace),
 never inferred from where somebody last clicked, and it is echoed back on the

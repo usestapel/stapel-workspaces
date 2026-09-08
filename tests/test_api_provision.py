@@ -196,7 +196,7 @@ class TestProvisionHappyPath:
     def test_display_name_forwarded_and_stored_as_hint(
         self, authed_client, user, sensitive_grant, fake_auth_provision
     ):
-        """Same name-hint treatment as an invitation (meettoday audit,
+        """Same name-hint treatment as an invitation (a client audit,
         2026-08-04): forwarded to auth.provision_user (unchanged) AND kept
         on the member as ``display_name_hint`` so the roster has something
         to show besides a synthetic username until stapel-profiles has a

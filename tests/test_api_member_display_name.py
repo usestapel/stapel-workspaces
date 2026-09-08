@@ -1,4 +1,4 @@
-"""Display name closes the gap the meettoday frontend audit found (2026-08-04):
+"""Display name closes the gap a client frontend audit found (2026-08-04):
 
 * the invite modal has a "Name" field that went nowhere — ``MemberInviteRequest``
   only carried ``{emails, role}``;

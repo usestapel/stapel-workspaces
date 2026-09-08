@@ -272,7 +272,7 @@ def delete_workspace(*, workspace: Workspace, actor) -> Workspace:
 # path (``validate_display_name``, ``get_profile_model``,
 # ``publish_profile_changed``). It was the fleet's only cross-module symbol
 # resolution, and it made a product feature a function of topology — where
-# profiles is its own container (ironmemo's actual deployment) the roster's
+# profiles is its own container (a client fleet's actual deployment) the roster's
 # name-edit endpoint answered a PERMANENT ``error.503.profiles_unavailable``
 # whose remediation told the caller to wait for a module that was never
 # coming.
@@ -460,7 +460,7 @@ def _fetch_profile_display_names(user_ids) -> dict:
     # comm FIRST, and it covers both topologies: in a monolith the transport
     # is in-process, so the sibling sitting right there in INSTALLED_APPS is
     # found without any service URL (nobody points a service at itself —
-    # measured live on meettoday 2026-08-05: profiles installed in the same
+    # measured live on a client stand 2026-08-05: profiles installed in the same
     # process, name never found, invitation emails addressed from a bare
     # email address); in a split deployment the same call goes over the
     # configured route. profiles.display_names is swap-aware on its side, so
@@ -783,7 +783,7 @@ def _send_invitation_notification(
         # has no row there, so the invite silently produced zero deliverable
         # channels: created (201), logged
         # "no email address for this recipient", nobody notified. Found on
-        # the meettoday sandbox 2026-08 by inviting a pre-existing account.
+        # a client sandbox 2026-08 by inviting a pre-existing account.
         target = {"email": invitation.email}
         if invitee is not None:
             target["user_id"] = str(invitee.pk)
@@ -997,7 +997,7 @@ def issue_invitation_login_grant(
     flow without auth is meaningless, so the view degrades to 503, never
     to allow. The returned token is a credential: never log it.
 
-    KNOWN GAP (meettoday audit, 2026-08-04), not fixable from this side:
+    KNOWN GAP (a client audit, 2026-08-04), not fixable from this side:
     ``invitation.display_name_hint`` is deliberately NOT forwarded in the
     payload below. auth's ``ISSUE_LOGIN_GRANT_SCHEMA`` (functions.py) has no
     ``display_name`` property, ``LoginGrantService.issue``/the cache payload

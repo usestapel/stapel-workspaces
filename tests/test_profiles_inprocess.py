@@ -7,7 +7,7 @@ itself, so in a monolith — profiles right there in ``INSTALLED_APPS`` —
 the lookup never found anything and every caller silently degraded to an
 email address.
 
-Measured live on meettoday (2026-08-05): ``stapel_profiles`` installed in
+Measured live on a client stand (2026-08-05): ``stapel_profiles`` installed in
 the same process, ``PROFILES_SERVICE_URL`` unset everywhere, invitation
 emails addressed from a bare email. The product had grown its own
 ``profile.changed`` subscriber copying ``display_name`` into

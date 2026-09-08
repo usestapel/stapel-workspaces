@@ -780,7 +780,7 @@ being advised to wait.
 registry whether `stapel_profiles` runs here, then resolve
 `validate_display_name`, `get_profile_model` and `publish_profile_changed` by
 dotted path. That works in a monolith and nowhere else. In a split deployment —
-ironmemo's actual topology, where `iron-profiles` is its own container — the
+a client fleet's actual topology, where profiles is its own container — the
 endpoint answered `error.503.profiles_unavailable` **permanently**, with a
 `wait_and_retry` hint for a module that was never coming. It was also the
 fleet's only cross-module symbol resolution; `stapel-tools` 0.32 minted a lint
@@ -894,7 +894,7 @@ used to probe which workspace ids are real.
 
 ### Added — the roster can fix a name, and there is still only one name canon
 
-Absorbed from meettoday, which had built it as a project-layer overlay mounted
+Absorbed from a client fleet, which had built it as a project-layer overlay mounted
 over this module's own URL prefix. Two PATCHes an owner/admin uses to correct
 how a person is shown, without waiting for that person to do it themselves —
 a typo in the name an admin typed at invite time, a legal-name change, a
@@ -986,7 +986,7 @@ artifacts to test one seam. CI runs both sessions.
 
 ### Added — `DEFAULT_WORKSPACE_ID`: the instance names its default, clients stop guessing
 
-Measured on the meettoday stand (2026-08-06). The frontend took
+Measured on a client stand (2026-08-06). The frontend took
 `workspaces[0]` — literally the first row of a list this API orders by
 `-last_accessed_at` — as "the active workspace". A person belonging to two
 spaces therefore landed in whichever they had touched last. The owner's four
@@ -1022,7 +1022,7 @@ have silently never matched — the same shape of defect it exists to remove.
   right there in `INSTALLED_APPS` never found a name, and every caller
   degraded to a bare email address.
 
-  Measured live on meettoday (2026-08-05). The product had already grown a
+  Measured live on a client stand (2026-08-05). The product had already grown a
   workaround for it — a `profile.changed` subscriber copying `display_name`
   into `User.first_name` purely so Django's `get_full_name()` would fire —
   written, per its own docstring, because "you cannot patch the library, it
@@ -1032,7 +1032,7 @@ have silently never matched — the same shape of defect it exists to remove.
 
 ## [0.16.1] — 2026-08-05
 
-Два дефекта со стенда (sandbox.meettoday.app): приглашение существующему
+Два дефекта со стенда (клиентский сэндбокс): приглашение существующему
 пользователю не доставлялось письмом, и когда доставлялось — имя
 приглашающего иногда оказывалось сгенерированным логином.
 

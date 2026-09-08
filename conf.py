@@ -75,7 +75,7 @@ DEFAULTS = {
     # send: POST invitations/<id>/resend could be driven in a loop, and each
     # pass mailed the address again (and, with rotation still on, churned
     # the credential). The default is 10 minutes, matching the cooldown the
-    # room-invite path in the meettoday product already carries — one number
+    # room-invite path in a client product already carries — one number
     # for "how often may we mail the same person about the same thing".
     "INVITATION_RESEND_COOLDOWN_SECONDS": 600,
     # Whether a resend mints a NEW token and kills the old link.
@@ -171,7 +171,7 @@ DEFAULTS = {
     # The instance's DEFAULT workspace id (a uuid string), or "" for none.
     #
     # Without it a client has no way to know which workspace to open, and the
-    # ones that guessed guessed badly: meettoday's frontend took
+    # ones that guessed guessed badly: a client frontend took
     # `workspaces[0]` — literally the first row of a list ordered by
     # `-last_accessed_at` — so a person who belonged to two spaces landed in
     # whichever they had touched last. Measured 2026-08-06: the owner's four
