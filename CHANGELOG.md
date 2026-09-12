@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.30.6] — 2026-09-12
+
+### Fixed — the personal-workspace bootstrap emitted outside its transaction
+
+`ensure_personal_workspace` called `create_workspace` (which carries its own
+`@transaction.atomic`) and then emitted `workspace.personal.created` and
+`workspace.member_joined` — after that inner block had already committed, so
+both landed in autocommit. Outbox rows detached from the mutation they
+describe is exactly what stapel-core's `EMIT_OUTSIDE_ATOMIC` guard names, and
+on a deployed stand 2026-09-12 every anonymous enrol logged two
+"emit(...) called outside transaction.atomic()" warnings from `services.py`
+lines 119 and 123, with the full stack through `consume_auth_events`.
+
+The workspace itself was never at risk — the inner block committed it, which
+is why the rows were there and the API answered with them. What was at risk
+were the two events: die between that commit and the emit and the workspace
+exists while nothing downstream ever hears it was created, which is the L2
+failure the guard exists to prevent.
+
+The whole body is now one `transaction.atomic()`, mutation and emits
+together.
+
+The suite could not have caught this: it runs `OUTBOX_ENABLED=False`, where
+`emit` returns before it ever looks at the connection, so core's guard is
+structurally blind here and any test leaning on it would pass for the wrong
+reason. The regression test in `tests/test_landing_policy.py` asserts the
+fact directly instead — it wraps the name `services` actually calls and
+records `in_atomic_block` at each emit, under
+`@pytest.mark.django_db(transaction=True)` because the default django_db
+fixture wraps the test itself in a transaction, under which every emit looks
+atomic no matter where it sits. Red before the fix, naming both events.
+
 ## [0.30.5] — 2026-09-12
 
 (0.30.3 and 0.30.4 were tagged with stale contract artifacts and never

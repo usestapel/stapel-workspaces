@@ -128,3 +128,62 @@ class TestClosedOrgModeDoesNotTouchTheRealInviteAcceptPath:
         member = services.accept_invitation(invitation=invitation, user=other_user)
         assert member.role == Role.MEMBER
         assert WorkspaceMember.objects.get(workspace=ws, user=other_user).accepted_at
+
+
+class TestEmitsRideTheSameTransaction:
+    """Every event this canon emits commits WITH the rows it describes.
+
+    ``create_workspace`` carries its own ``@transaction.atomic``, so by the
+    time it returns the workspace and the owner membership are committed —
+    and the two follow-up emits in ``ensure_personal_workspace``
+    (``workspace.personal.created``, ``workspace.member_joined``) were
+    landing in autocommit, after the fact. Measured on a deployed client stand
+    2026-09-12: every guest enrol logged two ``emit(...) called outside
+    transaction.atomic()`` warnings from ``services.py`` lines 119 and 123.
+    Detached outbox rows are the L2 bug stapel-core's guard exists to
+    catch: die between the commit and the emit and the workspace exists
+    while nothing downstream ever hears of it.
+
+    The suite runs ``OUTBOX_ENABLED=False``, where ``emit`` returns before
+    it ever looks at the connection — so core's own guard is structurally
+    blind here and a test leaning on it would pass for the wrong reason.
+    The assertion is made directly instead: wrap the name
+    ``services`` actually calls and record ``in_atomic_block`` at each
+    call. ``transaction=True`` is load-bearing — the default django_db
+    fixture wraps the test itself in a transaction, under which every
+    emit looks atomic no matter where it sits.
+    """
+
+    @pytest.fixture
+    def atomicity(self, monkeypatch):
+        from django.db import transaction as db_transaction
+
+        from stapel_workspaces import services
+
+        seen: list[tuple[str, bool]] = []
+        real = services.emit
+
+        def recording_emit(name, *args, **kwargs):
+            seen.append(
+                (name, db_transaction.get_connection().in_atomic_block)
+            )
+            return real(name, *args, **kwargs)
+
+        monkeypatch.setattr(services, "emit", recording_emit)
+        return seen
+
+    @pytest.mark.django_db(transaction=True)
+    def test_ensure_personal_workspace_emits_inside_a_transaction(self, user, atomicity):
+        ws = ensure_personal_workspace(user)
+        assert ws.type == WorkspaceType.PERSONAL
+        assert WorkspaceMember.objects.filter(workspace=ws, user=user).exists()
+        assert atomicity, "no emit was observed — the wrapper missed the call site"
+        assert [name for name, atomic in atomicity if not atomic] == []
+
+    @pytest.mark.django_db(transaction=True)
+    def test_resolve_landing_workspace_emits_inside_a_transaction(self, user, atomicity):
+        """The consumer's entry point, which is where the stand measured it."""
+        ws = resolve_landing_workspace(user, origin="street")
+        assert ws is not None
+        assert atomicity
+        assert [name for name, atomic in atomicity if not atomic] == []

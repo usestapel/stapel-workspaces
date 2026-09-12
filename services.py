@@ -109,22 +109,38 @@ def create_workspace(*, user, name: str, slug: str | None = None, type: str = Wo
 
 
 def ensure_personal_workspace(user) -> Workspace:
-    """Auto-create a Personal workspace on first login if one doesn't exist."""
-    existing = Workspace.objects.filter(
-        owner=user, type=WorkspaceType.PERSONAL, deleted_at__isnull=True
-    ).first()
-    if existing:
-        return existing
-    ws = create_workspace(user=user, name="Personal", type=WorkspaceType.PERSONAL)
-    emit(
-        EVENT_WORKSPACE_PERSONAL_CREATED,
-        {"workspace_id": str(ws.id), "user_id": str(user.pk)},
-    )
-    emit(
-        "workspace.member_joined",
-        {"workspace_id": str(ws.id), "user_id": str(user.pk), "role": str(Role.OWNER)},
-    )
-    return ws
+    """Auto-create a Personal workspace on first login if one doesn't exist.
+
+    The whole body is one transaction, emits included. ``create_workspace``
+    carries its own ``@transaction.atomic``, so without this outer block it
+    COMMITTED before these two emits ran and they landed in autocommit —
+    outbox rows detached from the rows they describe, which is the failure
+    stapel-core's ``EMIT_OUTSIDE_ATOMIC`` guard names. Observed on a
+    deployed stand 2026-09-12: every anonymous enrol logged two
+    "called outside transaction.atomic()" warnings from here. The workspace
+    itself was fine (committed by the inner block) — it is the events that
+    were one crash away from never existing for a workspace that does.
+    """
+    with transaction.atomic():
+        existing = Workspace.objects.filter(
+            owner=user, type=WorkspaceType.PERSONAL, deleted_at__isnull=True
+        ).first()
+        if existing:
+            return existing
+        ws = create_workspace(user=user, name="Personal", type=WorkspaceType.PERSONAL)
+        emit(
+            EVENT_WORKSPACE_PERSONAL_CREATED,
+            {"workspace_id": str(ws.id), "user_id": str(user.pk)},
+        )
+        emit(
+            "workspace.member_joined",
+            {
+                "workspace_id": str(ws.id),
+                "user_id": str(user.pk),
+                "role": str(Role.OWNER),
+            },
+        )
+        return ws
 
 
 def resolve_landing_workspace(user, *, origin: str = "street") -> Workspace | None:

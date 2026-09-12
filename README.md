@@ -24,7 +24,7 @@ pip install stapel-workspaces
 
 | Fact | Value |
 |---|---|
-| Version | `0.30.5` |
+| Version | `0.30.6` |
 | Python | `>=3.11` (3.11, 3.12, 3.13, 3.14) |
 | HTTP operations | 27 |
 | Config axes | 1 |
