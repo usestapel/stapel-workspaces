@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## [0.30.3] — 2026-09-12
+
+### Fixed — `user.registered` raced the shadow user row, and lost silently
+
+`consume_auth_events` needed a LOCAL user row before it would bootstrap the
+landing workspace, and in a microservices deployment nothing in this service
+writes that row on registration: it appears when core's JWT seam
+(`get_or_create_user_from_jwt`) sees the account's first authenticated
+request here. Two writers, no ordering — and this consumer normally arrives
+first, because the event is published inside the registration request while
+the client's first call to this service is not.
+
+The loss was permanent, not a retry away: the consumer wrote
+`user <id> not found, skipping`, committed the offset, and nothing replayed
+it, so the account had no workspace for the rest of its life. Measured on a
+deployed stand 2026-09-12 — an anonymous enroll emitted `user.registered` at
+12:58:52.55, the shadow row appeared at 12:58:53.77, and every
+workspace-scoped call the guest made after that was dead. A password signup
+on the same stand survived only because its client happened to be slower.
+
+The consumer now seeds the row from the event when it is not there yet. The
+event is the issuer speaking about an account it has just created and carries
+the same identity fields a token would, so it goes through core's one
+shadow-row seam — which owns the primary-key collision handling, the re-key
+repair and the deletion/deactivation gates — rather than a second
+`create_user` here. Privileges are deliberately not passed: a bus payload may
+not mint a local staff account.
+
+Mode-respecting, both ways. In authoritative-user-store mode
+(`JWT_CREATE_USERS_FROM_TOKEN=False`, the default, and what an auth service
+runs) nothing is created and the skip stands, because there the local
+database decides who exists. `STREET_LANDING_MODE="none"` still yields no
+workspace — seeding the row does not slip past the landing axis.
+
 ## [0.30.2] — 2026-09-06
 
 ### `stapel-core` floor raised to 0.60.6 — field-validator `params` now survives DRF's re-raise
