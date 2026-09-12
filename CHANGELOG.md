@@ -2,7 +2,10 @@
 
 ## [Unreleased]
 
-## [0.30.3] — 2026-09-12
+## [0.30.4] — 2026-09-12
+
+(0.30.3 was tagged with stale contract artifacts and never published — the
+version gate in `tests/test_contract.py` caught it. Same change, re-cut.)
 
 ### Fixed — `user.registered` raced the shadow user row, and lost silently
 
