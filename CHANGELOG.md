@@ -2,10 +2,12 @@
 
 ## [Unreleased]
 
-## [0.30.4] — 2026-09-12
+## [0.30.5] — 2026-09-12
 
-(0.30.3 was tagged with stale contract artifacts and never published — the
-version gate in `tests/test_contract.py` caught it. Same change, re-cut.)
+(0.30.3 and 0.30.4 were tagged with stale contract artifacts and never
+published — `tests/test_contract.py` caught both, first the version stamp
+and then `docs/schema.json`, which stapel-core 0.65.x had re-worded out from
+under it. Same change, re-cut; nothing behavioural differs between them.)
 
 ### Fixed — `user.registered` raced the shadow user row, and lost silently
 
