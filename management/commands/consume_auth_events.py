@@ -53,9 +53,27 @@ class Command(BaseBusConsumerCommand):
         publish(EVENT_WORKSPACE_PERSONAL_CREATED, BusEvent(
             event_type="workspace.personal.created",
             service="workspaces",
+            # The identity fields ride along, and they are not decoration.
+            # A consumer of this event is in exactly the position this
+            # command was in before 0.30.3 — it needs a local `users` row for
+            # the foreign key it is about to write, and its own writer of one
+            # (core's JWT seam) has not run, because the account has made no
+            # authenticated request to THAT service yet. It can materialise
+            # the row from this event, but with `user_id` alone it has to
+            # take the model's defaults, so a guest lands as
+            # `is_anonymous=False, auth_type="email"` and stays wrong until
+            # their first request there repairs it. We have the account in
+            # hand; saying who it is costs three keys.
+            #
+            # Privileges are NOT here, on purpose: an event is not a token
+            # and may not mint a local staff account. `ensure_shadow_user`
+            # strips them even if a payload carries them.
             payload={
                 "user_id": user_id,
                 "workspace_id": str(workspace.id),
+                "is_anonymous": bool(getattr(user, "is_anonymous", False)),
+                "auth_type": getattr(user, "auth_type", None),
+                "email": getattr(user, "email", None) or None,
             },
         ))
         self.stdout.write(f"Bootstrapped personal workspace {workspace.id} for user {user_id}")
@@ -77,27 +95,25 @@ class Command(BaseBusConsumerCommand):
         at 12:58:53.77, and the guest's every workspace-scoped call after it
         was dead.
 
-        The event is the issuer speaking about an account it has just
-        created, carrying the same identity fields a token would, so it can
-        seed the row. It goes through core's ONE shadow-row seam rather than
-        a ``create_user`` here: that seam owns the primary-key collision
-        handling, the re-key repair and the deletion/deactivation gates, and
-        a second implementation of it is how a fleet grows two answers to
-        "who is this user". Privileges are deliberately not passed — a bus
-        payload may not mint a local staff account.
+        Since 0.31.0 this goes through ``stapel_core``'s one event-facing
+        seam, :func:`~stapel_core.django.users.ensure_shadow_user`, rather
+        than calling the JWT one directly. The behaviour here is the same —
+        this method is only reached when there is no row, so the JWT seam's
+        claim-sync could never fire on an existing one — and the point is
+        that there is now ONE implementation of "materialise a user from an
+        event" for the fleet instead of three (this one, ``billing_ext``'s
+        and the one iron-recordings was about to write). What it adds on top
+        of the old call: privileges stripped from the payload rather than
+        merely omitted from it, a guest's email NULL instead of ``""`` (the
+        column is unique — two guests collided), and a username derived from
+        the id, so a replayed event proposes the same name twice. The
+        deletion and deactivation gates were already there and stay.
 
         Returns ``None`` in authoritative-user-store mode
         (``JWT_CREATE_USERS_FROM_TOKEN=False``, the default, and what the
         auth service itself runs): there the local database decides who
         exists and skipping the event is the correct answer.
         """
-        from stapel_core.django.jwt.utils import get_or_create_user_from_jwt
+        from stapel_core.django.users import ensure_shadow_user
 
-        identity = {"user_id": str(payload.get("user_id"))}
-        for field in ("email", "username", "phone", "auth_type"):
-            value = payload.get(field)
-            if value:
-                identity[field] = value
-        if "is_anonymous" in payload:
-            identity["is_anonymous"] = bool(payload.get("is_anonymous"))
-        return get_or_create_user_from_jwt(identity)
+        return ensure_shadow_user(payload.get("user_id"), payload)

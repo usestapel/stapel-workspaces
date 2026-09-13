@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.31.0] — 2026-09-13
+
+### `workspace.personal.created` says who the account is
+
+The event carried `{user_id, workspace_id}`. That is enough to find a
+workspace and not enough to mirror an account — and a consumer of this event
+needs the second thing, because it is in exactly the position this consumer
+was in before 0.30.3: about to write a row with a foreign key to `users`,
+with no local row for that user, because its own writer of one (core's JWT
+seam) runs on the account's first authenticated request to THAT service and
+the account has not made one.
+
+iron-recordings, 2026-09-13: three of these events arrived at a handler that
+does `ZoomIngestSettings.objects.get_or_create(user_id=…)`, all three died on
+`ForeignKeyViolation … Key (user_id)=(13484e5c-…) is not present in table
+"users"` across 22 attempts, and all three parked in the DLQ. The handler can
+materialise the row from the event — but with the id alone it takes the
+model's defaults, so a guest lands as `is_anonymous=False, auth_type="email"`
+and stays wrong until their first request there repairs it. This consumer has
+the account in hand, so the payload now carries `is_anonymous`, `auth_type`
+and `email` (nullable), and `schemas/emits/workspace.personal.created.json`
+is widened with them — it is `additionalProperties: false`, so a widened emit
+without a widened schema is a contract that disagrees with the bus.
+
+Privileges are deliberately NOT on the payload: an event is not a token and
+may not mint a local staff account.
+
+### `_mirror_user` goes through core's one event-facing seam
+
+`stapel_core.django.users.ensure_shadow_user` (core 0.67.0) replaces the
+direct `get_or_create_user_from_jwt` call. Behaviour here is unchanged — this
+consumer only mirrors when there is no row — and the point is that
+"materialise a user from an event" now has ONE implementation in the fleet
+instead of three (this one, `billing_ext`'s, and the one iron-recordings was
+about to write). What it adds: privileges stripped from the payload rather
+than merely omitted from it, a guest's email `NULL` instead of `""` (the
+column is unique — two guests collided), and a username derived from the id
+so a replayed event proposes the same name twice. The deletion and
+deactivation gates were already there and stay.
+
+Floors `stapel-core>=0.67.0`.
+
 ## [Unreleased]
 
 ## [0.30.6] — 2026-09-12

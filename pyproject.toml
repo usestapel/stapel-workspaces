@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-workspaces"
-version = "0.30.6"
+version = "0.31.0"
 description = "Team workspaces and RBAC Django app for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -41,7 +41,7 @@ dependencies = [
     # DRF field validator (serializers.py's validate_settings()) — below it,
     # DRF's own field-error collapse discards `params` on re-raise, so a
     # client never saw which nested key ("settings.security...") failed.
-    "stapel-core>=0.60.6,<1.0",
+    "stapel-core>=0.67.0,<1.0",
 ]
 
 [project.urls]
