@@ -46,10 +46,42 @@ from stapel_workspaces.models import (
 SCHEMAS = Path(__file__).resolve().parent.parent / "schemas"
 
 
+def _schema(name: str) -> dict:
+    """The schema for *name*, from whichever package OWNS that fact.
+
+    The gdpr owner-protocol facts belong to stapel-core, which emits them.
+    This package used to ship its own copies and validate against those — and
+    the copies went stale: a five-property `gdpr.section.erased` with
+    `additionalProperties: false` refused core's eight-property receipt, in a
+    service where that copy happened to win. Because a receipt is emitted
+    inside the erasure's own transaction, the refusal rolled the erasure back
+    and a completed anonymisation was silently undone (a live fleet,
+    2026-09-16).
+
+    So these tests validate against the owner's schema. If core's shape moves,
+    this suite finds out here rather than a deployment finding out during an
+    erasure. `stapel_core.comm.E010` refuses the copy that caused it.
+    """
+    for root in (_CORE_SCHEMAS, SCHEMAS):
+        path = root / "emits" / f"{name}.json"
+        if path.is_file():
+            return json.loads(path.read_text())
+    raise AssertionError(f"no schema found for {name!r}")
+
+
+def _core_schema_root() -> Path:
+    import stapel_core
+
+    return Path(stapel_core.__file__).resolve().parent / "gdpr" / "schemas"
+
+
+_CORE_SCHEMAS = _core_schema_root()
+
+
 def _validate(payload: dict, name: str) -> None:
     jsonschema.validate(
         payload,
-        json.loads((SCHEMAS / "emits" / f"{name}.json").read_text()),
+        _schema(name),
         format_checker=jsonschema.FormatChecker(),
     )
 

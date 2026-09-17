@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.32.0] — 2026-09-17
+
+Minor: two schemas this package shipped are deleted, and the core floor moves
+to the release that ships them properly.
+
+### Fixed — this package shipped a stale copy of somebody else's schema
+
+`schemas/emits/gdpr.section.erased.json` and `gdpr.owner.alive.json` describe
+facts emitted by `stapel_core.gdpr.owners`. Core owns them; this package
+vendored copies, and they went stale.
+
+The copy here declared five properties with `additionalProperties: false`
+while core's receipt carries eight. Whichever copy a service loads becomes
+that service's contract, so in a service holding this one core's receipt was
+refused for an unexpected `receipt_id` — **inside the erasure's own
+transaction**, which is what makes "a rolled-back erasure never produces a
+receipt" true. The erasure rolled back. An identity mirror logged that it had
+anonymised a subject, and the anonymisation was silently undone while the
+receipt set stayed complete, because another service had already answered for
+the same owner name (a live fleet, 2026-09-16).
+
+Both copies are deleted. `stapel-core>=0.81.0` ships them, and that release
+adds `stapel_core.comm.E010`, which fails any package shipping an emits schema
+for a fact another package emits.
+
+The erasure tests now validate against the OWNER's schema rather than a local
+copy, so a change to core's shape is found here instead of during somebody's
+erasure.
+
 ## [0.31.0] — 2026-09-13
 
 ### `workspace.personal.created` says who the account is
