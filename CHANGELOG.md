@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.32.1] — 2026-09-17
+
+Patch: 0.32.0 never reached PyPI — CI was red on a test, not on the change.
+
+`test_the_system_check_is_registered` calls `manage.py check`, which runs
+Django's own model checks; `JSONField.check()` asks the backend whether it
+supports JSON, and on SQLite that opens a cursor. The test had no `db`, so it
+passed only when an earlier test in the same process had already opened the
+connection and cached the feature flag — green locally, red on every CI matrix
+job. It takes `db` now.
+
+0.32.0's content — deleting this package's stale copy of somebody else's schema
+— is what ships here.
+
 ## [0.32.0] — 2026-09-17
 
 Minor: two schemas this package shipped are deleted, and the core floor moves

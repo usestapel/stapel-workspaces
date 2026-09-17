@@ -159,13 +159,22 @@ class TestListFlag:
         assert created.status_code == 403
 
 
-def test_the_system_check_is_registered():
+@pytest.mark.django_db
+def test_the_system_check_is_registered(db):
     """A check nobody runs is a comment. `manage.py check` must REACH it.
 
     Asserts the id appears in the failure text, not merely that `check` failed:
     this test harness carries several unrelated pre-existing errors (admin
     middleware, the double-mount urlconf), so "it raised" would have passed
     with this check deleted.
+
+    Takes `db` because `manage.py check` runs Django's own model checks, and
+    `JSONField.check()` asks the backend whether it supports JSON — which on
+    SQLite means opening a cursor. Nothing in this module queries; the
+    connection is Django's, and a deployment running `check` always has one.
+    It passes without `db` only when an earlier test in the same process has
+    already opened the connection and cached the feature flag, which is why
+    this was green locally and red on every CI matrix job.
     """
     with override_settings(
         STAPEL_WORKSPACES=_settings(WORKSPACE_CREATE_POLICY="bogus")
