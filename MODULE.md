@@ -179,9 +179,9 @@ at-least-once):
 
 | Event | Handler | Effect |
 |---|---|---|
-| `gdpr.erasure.requested` | `handle_erasure_requested` | Erase the named subject (`account` or `workspace`) and receipt with counts — see **Erasure** below |
-| `gdpr.owner.probe` | `handle_owner_probe` | Answer `gdpr.owner.alive` **from the same module as the eraser** — see **Erasure** below |
-| `user.deleted` | `handle_user_deleted` | Deprecated upstream (gdpr removes it in 0.6.0). Same `erase_account` as the erasure path, and it receipts too when the payload carries a `correlation_id` |
+| `gdpr.erasure.requested` | `stapel_core.gdpr.register_gdpr_owner`, called from `apps.ready()` over `erasure.erase_subject` | Erase the named subject (`account` or `workspace`) and receipt with counts — see **Erasure** below |
+| `gdpr.owner.probe` | Same registration | Answer `gdpr.owner.alive` **from the subscriber that erases** — see **Erasure** below |
+| `user.deleted` | Same registration (`legacy_user_deleted`) | Deprecated upstream (gdpr removes it in 0.6.0). Same `erase_account` as the erasure path, and it receipts too when the payload carries a `correlation_id` |
 | `user.mfa_disabled` | `handle_user_mfa_disabled` | Suspend the user's memberships (reason `no_mfa`) in every workspace whose `settings.security.require_mfa` is on |
 | `user.mfa_enabled` | `handle_user_mfa_enabled` | Lift the user's `no_mfa` suspensions (only that reason) |
 | `user.deactivated` | `handle_user_deactivated` | The ACCOUNT was administratively deactivated in auth (#92) — suspend **every** accepted membership (reason `account_deactivated`), whatever the workspace's policy says. Reversible; no row deleted; the seat is freed |
@@ -244,10 +244,15 @@ arriving afterwards is the signal that the window is over, so the row goes
 with everything else. A host that wants a delay sets it as gdpr's
 `ERASURE_SLA_DAYS` / its own purge task, not here.
 
-**The receipt and the probe are one subscriber.** `actions.py` handles
-`gdpr.erasure.requested` and `gdpr.owner.probe` side by side, deliberately:
-`gdpr.owner.alive` is only evidence that the erasure path is *consumed*
-because it is answered by the code that erases. Split them and
+**The protocol is core's, the erasure is this module's.** `apps.ready()`
+calls `stapel_core.gdpr.register_gdpr_owner("workspaces", ("account",
+"workspace"), erasure.erase_subject)`, which subscribes
+`gdpr.erasure.requested`, `gdpr.owner.probe` and the deprecated
+`user.deleted` around that one callable (0.33.0; before it this module
+carried its own copy of the protocol, and core's provider bridge had to
+yield to it — `gdpr.W012`). The probe is still answered by the subscriber
+that erases, which is the only reason `gdpr.owner.alive` is evidence that
+the path is *consumed* rather than that a container runs. Split them and
 `gdpr.W006` / `GET /gdpr/api/v1/owners/health` would report a running
 container instead. Deployment note: a service with this app installed and
 declared in `DATA_OWNERS` must run a `consume_actions` process, or nothing

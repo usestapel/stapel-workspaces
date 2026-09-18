@@ -27,10 +27,15 @@ from django.utils import timezone
 
 import stapel_workspaces
 from stapel_workspaces import entitlements, services
+from stapel_core.gdpr import register_gdpr_owner
 from stapel_workspaces.actions import (
     handle_user_deactivated,
-    handle_user_deleted,
     handle_user_reactivated,
+)
+from stapel_workspaces.erasure import (
+    GDPR_OWNER,
+    GDPR_SUBJECT_TYPES,
+    erase_subject,
 )
 from stapel_workspaces.models import (
     SUSPENSION_ACCOUNT_DEACTIVATED,
@@ -39,6 +44,12 @@ from stapel_workspaces.models import (
     Role,
     Workspace,
     WorkspaceMember,
+)
+
+#: The registration `apps.ready()` made — same terms, so this hands back
+#: the existing one and reaches the handlers the bus calls.
+WORKSPACES_OWNER = register_gdpr_owner(
+    GDPR_OWNER, GDPR_SUBJECT_TYPES, erase_subject
 )
 
 CONSUMES_DIR = (
@@ -278,7 +289,7 @@ class TestGdprDeletionKeepsItsOwnPath:
         ws = _ws(user)
         _member(ws, other_user)
 
-        handle_user_deleted(_event(other_user.pk))
+        WORKSPACES_OWNER.handle_user_deleted(_event(other_user.pk))
 
         assert not WorkspaceMember.objects.filter(user=other_user).exists()
 

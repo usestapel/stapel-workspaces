@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-workspaces"
-version = "0.32.1"
+version = "0.33.0"
 description = "Team workspaces and RBAC Django app for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -45,7 +45,12 @@ dependencies = [
     # emits (gdpr.section.erased, gdpr.owner.alive), which this package used to
     # ship its own stale copies of. Below that floor the schemas exist nowhere
     # and every owner receipt in this service fails validation.
-    "stapel-core>=0.81.0,<1.0",
+    # 0.85.1 floor: the erasure protocol this module used to hand-write is
+    # core's `register_gdpr_owner` since 0.33.0, and 0.85.1 is the release
+    # whose provider bridge decides what already answers for a section
+    # (`gdpr.W012`, `gdpr.E011`) — what keeps one erasure part to one receipt
+    # in a service that installs this app.
+    "stapel-core>=0.85.1,<1.0",
 ]
 
 [project.urls]

@@ -181,6 +181,18 @@ ERASERS = {
 }
 
 
-def erase_subject(subject_type: str, subject_key) -> dict[str, int]:
-    """Erase one subject; raise :class:`KeyError` for a type we do not claim."""
-    return ERASERS[subject_type](subject_key)
+def erase_subject(subject_type: str, subject_key, workspace_id=None) -> dict[str, int] | None:
+    """Erase one subject. ``None`` for a type this module does not claim.
+
+    The shape :func:`stapel_core.gdpr.register_gdpr_owner` calls, and the
+    contract it states: ``None`` receipts nothing, because an erasure the
+    orchestrator opened no part for is not this owner's to confirm.
+
+    ``workspace_id`` is a partition hint for owners that need one; this
+    module is asked for a workspace by subject key, not by hint, so it is
+    accepted and ignored.
+    """
+    eraser = ERASERS.get(subject_type)
+    if eraser is None:
+        return None
+    return eraser(subject_key)

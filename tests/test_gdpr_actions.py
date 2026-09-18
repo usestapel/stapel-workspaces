@@ -8,7 +8,12 @@ from io import StringIO
 import pytest
 from django.utils import timezone
 
-from stapel_workspaces.actions import handle_user_deleted
+from stapel_core.gdpr import register_gdpr_owner
+from stapel_workspaces.erasure import (
+    GDPR_OWNER,
+    GDPR_SUBJECT_TYPES,
+    erase_subject,
+)
 from stapel_workspaces.errors import WORKSPACES_ERRORS, WorkspacesErrorKeysView
 from stapel_workspaces.gdpr import WorkspacesGDPRProvider
 from stapel_workspaces.models import (
@@ -18,7 +23,14 @@ from stapel_workspaces.models import (
     WorkspaceMember,
     WorkspaceType,
 )
+
 from stapel_workspaces.permissions import role_at_least
+
+#: The registration `apps.ready()` made — same terms, so this hands back
+#: the existing one and reaches the handlers the bus calls.
+WORKSPACES_OWNER = register_gdpr_owner(
+    GDPR_OWNER, GDPR_SUBJECT_TYPES, erase_subject
+)
 
 
 def _create_ws(user, name="Acme"):
@@ -105,14 +117,14 @@ class TestGDPRDeleteAnonymize:
 class TestUserDeletedAction:
     def test_handler_erases_workspace_data(self, user):
         _create_ws(user)
-        handle_user_deleted(
+        WORKSPACES_OWNER.handle_user_deleted(
             types.SimpleNamespace(payload={"user_id": user.id}, event_id="e1")
         )
         assert not WorkspaceMember.objects.filter(user=user).exists()
 
     def test_handler_without_user_id_skips(self, user, caplog):
         _create_ws(user)
-        handle_user_deleted(types.SimpleNamespace(payload={}, event_id="e2"))
+        WORKSPACES_OWNER.handle_user_deleted(types.SimpleNamespace(payload={}, event_id="e2"))
         assert WorkspaceMember.objects.filter(user=user).exists()
         assert "without user_id" in caplog.text
 
