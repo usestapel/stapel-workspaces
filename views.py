@@ -1559,13 +1559,17 @@ class MemberPasswordResetView(SerializerSeamsMixin, APIView):
     never carries the new password (see
     :func:`~stapel_workspaces.services.reset_member_password`).
 
-    **Whether the new password is temporary.** Yes — auth raises the
-    workspace's ``provisioned_user_policies`` (#90), defaulting to
-    ``password_change``. A password the admin knows must stop working the
-    first time it is used, and since auth 0.15.0 that demand holds on all
-    19 session-issuance paths rather than only the password form. An org
-    may pass an explicit ``[]`` to suppress it, and that lands in auth's
-    audit row.
+    **Whether the new password is temporary.** Always — the server
+    decides: ``password_change`` plus whatever else the workspace's
+    ``provisioned_user_policies`` (#90) demands. A password the admin knows
+    must stop working the first time it is used, and since auth 0.15.0 that
+    demand holds on every session-issuance path. The request cannot name
+    or suppress policies.
+
+    **Whose account.** Only a member this workspace PROVISIONED
+    (``WorkspaceMember.provisioned``). An invited member joined with an
+    account of their own; resetting it would hand the org a stranger's
+    credentials. Everybody else gets the same 404 as a stranger.
 
     **Whether it is an existence oracle.** No: a target that is not a
     resettable member of THIS workspace — an unknown UUID, a real account
@@ -1618,7 +1622,15 @@ class MemberPasswordResetView(SerializerSeamsMixin, APIView):
         # Yourself is not in the set this endpoint acts on, and says so
         # with the same answer as every other target outside it — there is
         # nothing to learn from the difference, and one shape is one shape.
-        if member is None or str(member.user_id) == str(request.user.id):
+        # Neither is an account this workspace did not create: an invited
+        # member brought an existing account (with its own life, other
+        # workspaces, its own recovery) and joining an org does not hand the
+        # org that account's credentials. Only provisioned members.
+        if (
+            member is None
+            or str(member.user_id) == str(request.user.id)
+            or not member.provisioned
+        ):
             return None, None, StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         return ws, member, None
 
@@ -1649,7 +1661,6 @@ class MemberPasswordResetView(SerializerSeamsMixin, APIView):
                 member=member,
                 reset_by=request.user,
                 password=getattr(data, "password", None),
-                first_login_policies=getattr(data, "first_login_policies", None),
                 reason=getattr(data, "reason", None),
             )
         except services.ProvisionError as failure:

@@ -312,21 +312,9 @@ class MemberPasswordResetRequestSerializer(StapelDataclassSerializer):
     class Meta:
         dataclass = MemberPasswordResetRequest
 
-    def validate_first_login_policies(self, value):
-        # #90 vocabulary, same as the workspace security block. Omitted
-        # (None) means "the workspace's own policies"; an explicit EMPTY
-        # list means "demand nothing", which is a deliberate, auditable
-        # choice and not the same thing.
-        if value is None:
-            return value
-        if not isinstance(value, list) or any(
-            p not in PROVISIONED_USER_POLICIES for p in value
-        ):
-            raise StapelValidationError(
-                "error.400.field.invalid_choice",
-                params={"field": "first_login_policies"},
-            )
-        return value
+    # No first_login_policies field: the server decides which first-login
+    # steps a reset demands (services.reset_member_password). A body that
+    # still names them is ignored, not refused.
 
 
 class MemberPasswordResetResponseSerializer(StapelDataclassSerializer):

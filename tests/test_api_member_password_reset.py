@@ -134,11 +134,13 @@ def org(db, user):
     o.admin = user  # workspace owner, holds every capability
     o.ws = services.create_workspace(user=o.admin, name="Acme")
     o.member = _new_user("member-")
+    # The resettable kind: an account this workspace created (provisioning).
     WorkspaceMember.objects.create(
         workspace=o.ws,
         user=o.member,
         role=Role.MEMBER,
         accepted_at=timezone.now(),
+        provisioned=True,
     )
     return o
 
@@ -221,9 +223,18 @@ class TestTheMandate:
         WorkspaceMember.objects.create(
             workspace=org.ws, user=admin, role=Role.ADMIN, accepted_at=timezone.now()
         )
+        # A provisioned account later made an owner: resettable, by owners only.
+        owner = _new_user("owner-")
+        WorkspaceMember.objects.create(
+            workspace=org.ws,
+            user=owner,
+            role=Role.OWNER,
+            accepted_at=timezone.now(),
+            provisioned=True,
+        )
         api_client.force_authenticate(user=admin)
         grant_verification(user_id=str(admin.pk), scope="sensitive", max_age=300)
-        resp = _reset(api_client, org.ws, org.admin.id)
+        resp = _reset(api_client, org.ws, owner.id)
         assert resp.status_code == 403
         assert resp.json()["localizable_error"] == ERR_403_FORBIDDEN_WORKSPACE
         assert fake_auth_reset == []
@@ -323,33 +334,28 @@ class TestTheNewPasswordIsTemporary:
             "mfa_enroll",
         ]
 
-    def test_the_request_may_override_the_workspace_default(
-        self, admin_client, org, fake_auth_reset
+    @pytest.mark.parametrize("sent", [[], ["mfa_enroll"], ["sudo"]])
+    def test_client_sent_policies_are_ignored(
+        self, admin_client, org, fake_auth_reset, sent
     ):
-        _reset(
-            admin_client,
-            org.ws,
-            org.member.id,
-            first_login_policies=["mfa_enroll"],
-        )
-        assert fake_auth_reset[0]["first_login_policies"] == ["mfa_enroll"]
-
-    def test_suppressing_the_demand_is_explicit(
-        self, admin_client, org, fake_auth_reset
-    ):
-        """An empty list is a decision that reaches auth's audit row; an
-        omitted field is not the same thing and means "the org's own"."""
-        _reset(admin_client, org.ws, org.member.id, first_login_policies=[])
-        assert fake_auth_reset[0]["first_login_policies"] == []
-
-    def test_an_unknown_policy_is_rejected_before_auth_is_called(
-        self, admin_client, org, fake_auth_reset
-    ):
+        """The server decides: a body naming policies — to suppress the
+        forced change, to swap it, or nonsense — changes nothing."""
         resp = _reset(
-            admin_client, org.ws, org.member.id, first_login_policies=["sudo"]
+            admin_client, org.ws, org.member.id, first_login_policies=sent
         )
-        assert resp.status_code == 400
-        assert fake_auth_reset == []
+        assert resp.status_code == 200, resp.content
+        assert fake_auth_reset[0]["first_login_policies"] == ["password_change"]
+
+    def test_a_workspace_that_waives_it_for_provisioning_still_gets_it_here(
+        self, admin_client, org, fake_auth_reset
+    ):
+        org.ws.settings = {"security": {"provisioned_user_policies": ["mfa_enroll"]}}
+        org.ws.save(update_fields=["settings"])
+        _reset(admin_client, org.ws, org.member.id)
+        assert fake_auth_reset[0]["first_login_policies"] == [
+            "password_change",
+            "mfa_enroll",
+        ]
 
     def test_an_admin_chosen_password_is_forwarded_and_not_echoed(
         self, admin_client, org, fake_auth_reset
@@ -390,14 +396,23 @@ class TestNotAnExistenceOracle:
             role=Role.MEMBER,
             accepted_at=timezone.now(),
         )
+        invited = _new_user("invited-")
+        WorkspaceMember.objects.create(
+            workspace=org.ws,
+            user=invited,
+            role=Role.MEMBER,
+            accepted_at=timezone.now(),
+            provisioned=False,
+        )
         return {
             "unknown uuid": _reset(client, org.ws, uuid.uuid4()),
+            "invited existing account": _reset(client, org.ws, invited.id),
             "real account, not a member": _reset(client, org.ws, stranger.id),
             "member of another workspace": _reset(client, org.ws, their_member.id),
             "the caller themselves": _reset(client, org.ws, org.admin.id),
         }
 
-    def test_all_four_answer_identically(self, admin_client, org, fake_auth_reset):
+    def test_all_answer_identically(self, admin_client, org, fake_auth_reset):
         responses = self._bodies(admin_client, org)
         shapes = {
             label: (resp.status_code, resp.content)

@@ -1984,7 +1984,6 @@ def reset_member_password(
     member: WorkspaceMember,
     reset_by,
     password: str | None = None,
-    first_login_policies: list | None = None,
     reason: str | None = None,
 ):
     """Reset a member's password on the organization's order (#110).
@@ -2025,10 +2024,15 @@ def reset_member_password(
     lets comm wiring errors propagate — the view maps them to 503, this
     seam never degrades to "reported success".
     """
-    if first_login_policies is None:
-        first_login_policies = security_settings_for(
-            workspace
-        ).provisioned_user_policies
+    # The server decides, never the request: the workspace's own policies,
+    # and always the forced change — a password the admin knows has to stop
+    # working at its first use, even if the org turned that off for fresh
+    # provisioning.
+    first_login_policies = list(
+        security_settings_for(workspace).provisioned_user_policies
+    )
+    if "password_change" not in first_login_policies:
+        first_login_policies.insert(0, "password_change")
     payload: dict = {
         "user_id": str(member.user_id),
         "first_login_policies": list(first_login_policies),

@@ -548,6 +548,9 @@ def _member_password_reset(call):
     owner = make_user()
     workspace = make_workspace(owner)
     member = make_member(workspace)
+    # Only an account the workspace provisioned is resettable.
+    member.provisioned = True
+    member.save(update_fields=["provisioned"])
     step_up(owner)
     with auth_password_reset():
         return call(
@@ -564,6 +567,9 @@ def _member_password_reset_chosen(call):
     owner = make_user()
     workspace = make_workspace(owner)
     member = make_member(workspace)
+    # Only an account the workspace provisioned is resettable.
+    member.provisioned = True
+    member.save(update_fields=["provisioned"])
     step_up(owner)
     with auth_password_reset():
         return call(

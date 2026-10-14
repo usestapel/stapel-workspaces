@@ -443,12 +443,10 @@ class MemberPasswordResetRequest:
 
     Attributes:
         password: New password chosen by the admin. Omitted: the server generates a crypto-strong one, returned once as generated_password. Example: null
-        first_login_policies: First-login steps to demand of the member afterwards — any subset of password_change / mfa_enroll. Omitted: the workspace's own security policies, falling back to password_change. A password somebody else chose has to stop working at its first use, so an EMPTY list is a deliberate, auditable choice, not a shortcut. Example: ["password_change"]
         reason: Free-text note recorded on auth's audit row (e.g. the ticket the request came in on). Example: SUP-42
     """
 
     password: Optional[str] = None
-    first_login_policies: Optional[List[str]] = None
     reason: Optional[str] = None
 
 

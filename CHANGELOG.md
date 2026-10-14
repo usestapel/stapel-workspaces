@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.34.0] — 2026-10-15
+
+Minor, security: the administrative password reset is narrowed.
+
+### Fixed — only provisioned members can be reset
+
+`POST <ws>/members/<uid>/password/reset` acts only on a member this workspace
+PROVISIONED (`WorkspaceMember.provisioned`). An invited member joined with an
+account of their own — one that may belong to other workspaces and has its own
+recovery — and an org admin resetting it took that account over. Such a
+target now gets the same byte-identical `404 error.404.member_not_found` as a
+stranger, and auth is never called.
+
+### Changed — the server decides the first-login demands
+
+The request no longer carries `first_login_policies` (a body that still names
+them is ignored). The reset always demands `password_change`, plus whatever
+the workspace's `provisioned_user_policies` adds — an org that waived the
+forced change for fresh provisioning does not waive it for a reset.
+`services.reset_member_password` lost its `first_login_policies` argument.
+
 ## [0.33.0] — 2026-09-18
 
 Minor: the erasure protocol is core's, not this module's copy of it.
