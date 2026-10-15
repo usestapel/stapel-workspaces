@@ -673,9 +673,9 @@ class PreferredWorkspaceView(SerializerSeamsMixin, APIView):
 
     ``STAPEL_WORKSPACES["DEFAULT_WORKSPACE_ID"]`` already describes itself as
     "a DEFAULT, not a cage: a person still switches spaces, and their
-    explicit choice wins over it" — and until this endpoint there was nowhere
-    for that choice to be written down. Clients filled the hole by guessing,
-    and the guess (``workspaces[0]`` off a recency-ordered list) is #239.
+    explicit choice wins over it"; this endpoint is where that choice is
+    written down, so a client never has to guess it from a recency-ordered
+    list.
 
     The choice is stated, never inferred. ``last_accessed_at`` remains what
     it has always been: telemetry written as a side effect of a GET, used to

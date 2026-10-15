@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.1] — 2026-10-15
+
+Patch, docs: the `WorkspaceListResponse` field descriptions (`is_guest`,
+`default_workspace_id`, `preferred_workspace_id`) are reworded to state the
+contract only; they no longer carry deployment incident history into every
+generated OpenAPI schema and client.
+
 ## [0.34.0] — 2026-10-15
 
 Minor, security: the administrative password reset is narrowed.
