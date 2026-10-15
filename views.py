@@ -1482,7 +1482,7 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         except WorkspaceMember.DoesNotExist:
             return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         # Other services cache membership lookups — drop the stale role.
-        invalidate_membership_cache(workspace_id, user_id)
+        invalidate_membership_cache(workspace_id, user_id, absence_is_normal=True)
         workspace_member_changed.send(
             sender=WorkspaceMember,
             workspace=member.workspace,
@@ -1520,7 +1520,7 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         except WorkspaceMember.DoesNotExist:
             return StapelErrorResponse(404, ERR_404_MEMBER_NOT_FOUND)
         # Other services cache membership lookups — drop the stale entry.
-        invalidate_membership_cache(workspace_id, user_id)
+        invalidate_membership_cache(workspace_id, user_id, absence_is_normal=True)
         workspace_member_changed.send(
             sender=WorkspaceMember,
             workspace=workspace,

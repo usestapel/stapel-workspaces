@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.35.0] — 2026-10-15
+
+Floor `stapel-core>=0.92.0`. Every membership write (join, provision, role
+change, removal, suspension) drops the membership cache key with
+`absence_is_normal=True`: this service is the authority and almost never
+holds a cached verdict itself, so the miss is DEBUG instead of a warning per
+member change.
+
 ## [0.34.1] — 2026-10-15
 
 Patch, docs: the `WorkspaceListResponse` field descriptions (`is_guest`,

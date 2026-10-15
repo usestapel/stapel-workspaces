@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-workspaces"
-version = "0.34.1"
+version = "0.35.0"
 description = "Team workspaces and RBAC Django app for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -50,7 +50,7 @@ dependencies = [
     # whose provider bridge decides what already answers for a section
     # (`gdpr.W012`, `gdpr.E011`) — what keeps one erasure part to one receipt
     # in a service that installs this app.
-    "stapel-core>=0.85.1,<1.0",
+    "stapel-core>=0.92.0,<1.0",
 ]
 
 [project.urls]

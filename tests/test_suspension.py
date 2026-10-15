@@ -232,6 +232,23 @@ class TestSuspendUnsuspendMechanics:
         assert kwargs["variables"]["workspace_name"] == ws.name
         assert kwargs["variables"]["security_url"]
 
+    def test_a_drop_with_nothing_cached_is_not_a_warning(
+        self, user, other_user, capture, sent_notifications, caplog
+    ):
+        """A client fleet: the authority dropped the membership key on every
+        member change, held none itself, and logged a warning each time."""
+        import logging
+
+        ws = _ws(user)
+        member = _member(ws, other_user)
+        cache.delete(_cache_key(ws.id, other_user.pk))
+        with caplog.at_level(logging.DEBUG, logger="stapel_core.django.workspaces"):
+            assert services.suspend_member(member, reason=SUSPENSION_NO_MFA) is True
+        assert not [
+            r for r in caplog.records
+            if r.levelno >= logging.WARNING and "drop found nothing" in r.getMessage()
+        ]
+
     def test_suspend_idempotent(self, user, other_user, capture):
         ws = _ws(user)
         member = _member(ws, other_user)

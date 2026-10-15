@@ -1400,7 +1400,7 @@ def accept_invitation(*, invitation: WorkspaceInvitation, user) -> WorkspaceMemb
         },
     )
     # A negative membership lookup may be cached cross-service; drop it.
-    invalidate_membership_cache(locked.workspace_id, user.pk)
+    invalidate_membership_cache(locked.workspace_id, user.pk, absence_is_normal=True)
     workspace_member_changed.send(
         sender=WorkspaceMember,
         workspace=locked.workspace,
@@ -1851,7 +1851,7 @@ def provision_member(
     except Exception as exc:
         _compensate_provision(operation, reason=f"{type(exc).__name__}: {exc}")
         raise
-    invalidate_membership_cache(workspace.id, user_id)
+    invalidate_membership_cache(workspace.id, user_id, absence_is_normal=True)
     user = get_user_model().objects.filter(pk=user_id).first()
     if user is not None:
         workspace_member_changed.send(
@@ -2157,7 +2157,7 @@ def suspend_member(
             reason=reason,
         )
     # Other services cache membership lookups — drop the now-stale entry.
-    invalidate_membership_cache(member.workspace_id, member.user_id)
+    invalidate_membership_cache(member.workspace_id, member.user_id, absence_is_normal=True)
     workspace_member_changed.send(
         sender=WorkspaceMember,
         workspace=member.workspace,
@@ -2209,7 +2209,7 @@ def unsuspend_member(member: WorkspaceMember, *, notify: bool = True) -> bool:
                 "reason": lifted_reason,
             },
         )
-    invalidate_membership_cache(member.workspace_id, member.user_id)
+    invalidate_membership_cache(member.workspace_id, member.user_id, absence_is_normal=True)
     workspace_member_changed.send(
         sender=WorkspaceMember,
         workspace=member.workspace,
