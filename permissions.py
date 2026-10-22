@@ -44,7 +44,8 @@ def get_membership(
 ) -> WorkspaceMember | None:
     """Active membership of the user in the workspace.
 
-    Active = accepted AND not suspended (spec §C3). ``include_suspended``
+    Active = accepted AND not suspended (spec §C3), in a workspace that is
+    not soft-deleted. ``include_suspended``
     widens the lookup to suspended rows — for surfaces that must
     distinguish "suspended member" from "not a member" (the view layer's
     ``membership_suspended`` 403); authorization decisions never pass it.
@@ -60,8 +61,12 @@ def get_membership(
     A workspace without the policy pays nothing for this: the settings
     block rides on the row already joined here.
     """
+    # A soft-deleted workspace admits nobody: the comm provider and the
+    # internal endpoint ask here without a door of their own.
     qs = WorkspaceMember.objects.filter(
-        workspace_id=workspace_id, user_id=user_id
+        workspace_id=workspace_id,
+        user_id=user_id,
+        workspace__deleted_at__isnull=True,
     ).select_related("workspace")
     qs = qs.accepted() if include_suspended else qs.active()
     membership = qs.first()

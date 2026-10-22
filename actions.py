@@ -197,6 +197,35 @@ def handle_user_merged(event):
     )
 
 
+@on_action("user.registered")
+def handle_user_registered(event):
+    """A new account: apply the street landing policy (personal workspace).
+
+    The in-process twin of the ``consume_auth_events`` broker command, with
+    one shared body (:func:`~stapel_workspaces.services.land_registered_account`).
+    On the in-process bus nothing runs that command, so without this a fresh
+    account of a monolith had no workspace at all. Off with
+    ``LAND_ON_REGISTERED=False`` for a project that subscribes itself.
+    Idempotent: a redelivery, or the broker command handling the same
+    event, finds the first call's workspace.
+    """
+    from .conf import land_on_registered
+    from .services import land_registered_account
+
+    if not land_on_registered():
+        return
+    if not event.payload.get("user_id"):
+        logger.error("user.registered event without user_id: %s", event.event_id)
+        return
+    try:
+        land_registered_account(event.payload)
+    except ValidationError:
+        logger.error(
+            "user.registered with a malformed user_id %r (event %s)",
+            event.payload.get("user_id"), event.event_id,
+        )
+
+
 @on_action("user.mfa_disabled")
 def handle_user_mfa_disabled(event):
     """The user lost their last STRONG second factor (auth emit, spec §C3).

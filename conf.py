@@ -180,7 +180,19 @@ DEFAULTS = {
     # workspace. Leave it off where some registrations must NOT get a
     # personal workspace (an in-process subscriber that passes
     # ``origin="invited"``): the list cannot know that origin.
+    #
+    # This read is also the only path for an account whose registration
+    # emits no ``user.registered`` at all; a host whose auth has such paths
+    # turns it on.
     "ENSURE_LANDING_ON_LIST": False,
+    # Whether this library subscribes ``user.registered`` in-process
+    # (``@on_action``) and applies the street landing policy to every new
+    # account, the same work the ``consume_auth_events`` command does on a
+    # broker. On by default: on the in-process bus nothing runs that command,
+    # and without the subscriber a fresh account of a monolith has no
+    # workspace. Turn it off when the project subscribes ``user.registered``
+    # itself (for example to pass ``origin="invited"``).
+    "LAND_ON_REGISTERED": True,
     # The instance's DEFAULT workspace id (a uuid string), or "" for none.
     #
     # Without it a client has no way to know which workspace to open, and the
@@ -332,6 +344,14 @@ def allow_unbilled() -> bool:
 def rotate_token_on_resend() -> bool:
     """``INVITATION_ROTATE_TOKEN_ON_RESEND`` as a bool (see that key)."""
     value = workspaces_settings.INVITATION_ROTATE_TOKEN_ON_RESEND
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY
+    return bool(value)
+
+
+def land_on_registered() -> bool:
+    """``LAND_ON_REGISTERED`` as a bool (see that key)."""
+    value = workspaces_settings.LAND_ON_REGISTERED
     if isinstance(value, str):
         return value.strip().lower() in _TRUTHY
     return bool(value)

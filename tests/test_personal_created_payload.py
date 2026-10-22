@@ -69,22 +69,18 @@ def consumer_mode():
 @pytest.mark.usefixtures("consumer_mode")
 class TestThePayloadCarriesTheIdentity:
     def _publish_for(self, payload):
-        from stapel_core import bus
+        """Every ``workspace.personal.created`` this registration produced,
+        on whatever transport the primitive emits through."""
+        from stapel_core.comm import subscribe_action
 
         seen = []
-        real = bus.publish
-
-        def _capture(name, event, *a, **kw):
-            if getattr(event, "event_type", None) == "workspace.personal.created":
-                seen.append(dict(event.payload))
-            return real(name, event, *a, **kw)
-
-        mp = pytest.MonkeyPatch()
-        mp.setattr(bus, "publish", _capture)
-        try:
-            _command().handle_event(_event(payload))
-        finally:
-            mp.undo()
+        uid = payload["user_id"]
+        subscribe_action(
+            "workspace.personal.created",
+            lambda event: seen.append(dict(event.payload))
+            if event.payload.get("user_id") == uid else None,
+        )
+        _command().handle_event(_event(payload))
         return seen
 
     def test_a_guest_is_announced_as_a_guest(self):

@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.37.0] — 2026-10-22
+
+Minor: a fresh account of a monolith lands in its personal workspace, and
+the workspace PATCH can no longer erase the security policy.
+
+### Fixed — `user.registered` lands the account on the in-process bus
+
+The personal-workspace bootstrap lived only in the `consume_auth_events`
+broker command, and on the in-process bus nothing runs it: a self-registered
+account had no workspace and could not create its first project. The new
+`@on_action("user.registered")` subscriber and the command share one body,
+`services.land_registered_account`. New setting `LAND_ON_REGISTERED`
+(default `True`); turn it off when the project subscribes `user.registered`
+itself. Accounts whose auth path emits no `user.registered` still need
+`ENSURE_LANDING_ON_LIST=True`.
+
+### Fixed — `workspace.personal.created` is emitted once, with the identity
+
+The command published its own `workspace.personal.created` next to the one
+`ensure_personal_workspace` emits, and published it again on every
+redelivery. The primitive now emits the one event, with `is_anonymous`,
+`auth_type` and `email`, and only when it creates the workspace.
+
+### Fixed — PATCH merges settings; any change to `security` is guarded
+
+`PATCH /<ws>` replaced `settings` with the request body, and the
+`workspace.security.manage` + step-up branch fired only when the payload
+carried a `security` key. So `{"settings": {}}` or `{"settings": {"theme":
+"dark"}}` from a role holding only `workspace.update` erased `require_mfa`.
+Keys now merge (`security` one level deeper), a `null` removes a key, and
+any PATCH whose result changes `settings.security`, removal included, takes
+the guarded branch. A client that removed keys by omitting them now sends
+`null`.
+
+### Fixed — a deleted workspace admits nobody
+
+`permissions.get_membership` ignored `Workspace.deleted_at`, so after a
+delete the `workspaces.check_membership` provider and the internal
+membership endpoint still answered `is_member: true`.
+
+### Fixed — member writes do not reach members who outrank the actor
+
+Role change, removal, password reset and rename checked only OWNER targets.
+A product role below admin carrying `members.role.change`, `members.remove`
+or `members.password.reset` could demote, remove or reset an admin. A target
+that outranks the actor is now refused with
+`error.403.role_exceeds_inviter_rank`.
+
 ## [0.36.0] — 2026-10-22
 
 Minor: a fresh account's first workspace list is never empty when the

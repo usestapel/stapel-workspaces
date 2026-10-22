@@ -1,6 +1,6 @@
 {
   "module": "stapel-workspaces",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "provides": "Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that fails closed (an unreachable billing answers 503, not an unlimited plan, unless the deployment declares ALLOW_UNBILLED), plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.",
   "axes": [
     {
@@ -258,6 +258,12 @@
       "intent": "Mint an auth-backed login grant for a not-yet-registered invitee's claim step (0.7)."
     },
     {
+      "name": "land_registered_account",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.land_registered_account",
+      "intent": "Apply the street landing policy to the account a user.registered payload names (mirrors a missing shadow row first) — the one body behind the in-process subscriber and the consume_auth_events broker command; returns (user, workspace)."
+    },
+    {
       "name": "lift_deactivation_suspensions_for_user",
       "kind": "factory",
       "path": "stapel_workspaces.services.lift_deactivation_suspensions_for_user",
@@ -280,6 +286,12 @@
       "kind": "gate_function",
       "path": "stapel_workspaces.services.lock_workspace",
       "intent": "Take the workspace row lock every seat/owner write serializes on — call it before counting anything you are about to decide from."
+    },
+    {
+      "name": "merge_settings_patch",
+      "kind": "factory",
+      "path": "stapel_workspaces.services.merge_settings_patch",
+      "intent": "The workspace settings a PATCH leaves behind: top-level and security keys merge, a null removes a key, an unsent key is kept — use it instead of assigning a request body to Workspace.settings."
     },
     {
       "name": "mfa_admission_blocked",

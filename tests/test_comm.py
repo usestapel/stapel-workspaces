@@ -140,6 +140,9 @@ class TestEmittedEvents:
         assert personal[0].payload == {
             "workspace_id": str(ws.id),
             "user_id": str(user.pk),
+            "is_anonymous": False,
+            "auth_type": user.auth_type,
+            "email": user.email,
         }
         _validate(personal[0].payload, "workspace.personal.created")
 

@@ -148,9 +148,17 @@ def ensure_personal_workspace(user) -> Workspace:
         if existing:
             return existing
         ws = create_workspace(user=user, name="Personal", type=WorkspaceType.PERSONAL)
+        # Identity fields ride along so a consumer can mirror the account
+        # honestly (a guest as a guest); privileges never do.
         emit(
             EVENT_WORKSPACE_PERSONAL_CREATED,
-            {"workspace_id": str(ws.id), "user_id": str(user.pk)},
+            {
+                "workspace_id": str(ws.id),
+                "user_id": str(user.pk),
+                "is_anonymous": bool(getattr(user, "is_anonymous", False)),
+                "auth_type": getattr(user, "auth_type", None),
+                "email": getattr(user, "email", None) or None,
+            },
         )
         emit(
             "workspace.member_joined",
@@ -161,6 +169,36 @@ def ensure_personal_workspace(user) -> Workspace:
             },
         )
         return ws
+
+
+def land_registered_account(payload: dict):
+    """Apply the street landing policy to the account a ``user.registered`` names.
+
+    The one body behind both transports: the in-process ``@on_action``
+    subscriber (``actions.handle_user_registered``) and the broker consumer
+    (``consume_auth_events``). Idempotent and serialised through
+    :func:`ensure_personal_workspace`, so both running for one event yields
+    one workspace and one ``workspace.personal.created``.
+
+    A missing local row is materialised from the payload through core's
+    ``ensure_shadow_user`` (a broker consumer normally beats the JWT seam to
+    it); in authoritative-user-store mode that returns ``None`` and the event
+    is skipped. Returns ``(user, workspace)``: ``user`` is ``None`` when the
+    account is unknown here, ``workspace`` is ``None`` when the landing mode
+    creates nothing.
+    """
+    user_id = (payload or {}).get("user_id")
+    if not user_id:
+        raise ValueError(f"user.registered event missing user_id: {payload!r}")
+    from django.contrib.auth import get_user_model
+    from stapel_core.django.users import ensure_shadow_user
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        user = ensure_shadow_user(user_id, payload)
+    if user is None:
+        return None, None
+    return user, resolve_landing_workspace(user, origin="street")
 
 
 def resolve_landing_workspace(user, *, origin: str = "street") -> Workspace | None:
@@ -1622,6 +1660,36 @@ class ProvisionError(Exception):
     def __init__(self, error_key: str):
         self.error_key = error_key
         super().__init__(error_key)
+
+
+def merge_settings_patch(current: dict | None, patch: dict) -> dict:
+    """The settings a PATCH leaves behind: keys merge, they never vanish.
+
+    Top-level keys of *patch* replace the stored ones; a key sent as ``None``
+    is removed; a key not sent is kept. The ``security`` block merges one
+    level deeper by the same rule, so ``{"security": {"require_mfa": true}}``
+    keeps the stored provisioning policies. Replacing the whole JSON with
+    the request body let ``{"theme": "dark"}`` erase ``require_mfa``.
+    """
+    merged = dict(current or {})
+    for key, value in (patch or {}).items():
+        if value is None:
+            merged.pop(key, None)
+        elif (
+            key == "security"
+            and isinstance(value, dict)
+            and isinstance(merged.get("security"), dict)
+        ):
+            block = dict(merged["security"])
+            for sub, sub_value in value.items():
+                if sub_value is None:
+                    block.pop(sub, None)
+                else:
+                    block[sub] = sub_value
+            merged["security"] = block
+        else:
+            merged[key] = value
+    return merged
 
 
 def security_settings_for(workspace: Workspace) -> WorkspaceSecuritySettings:

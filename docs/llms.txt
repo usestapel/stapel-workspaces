@@ -1,8 +1,8 @@
-# stapel-workspaces 0.36.0
+# stapel-workspaces 0.37.0
 
 Team workspaces and tenancy: personal and work workspaces with a role/capability mandate model (builtin owner/admin/member/viewer plus product roles declared in settings, namespaced capability strings with wildcard grants), email invitations with single-use tokens (public preview / decline / claim flow: an unregistered invitee gets a verified account via auth's login-grant seam), last-owner protection, per-workspace settings and storage quotas, member lifecycle events for business services (kick, role change), a billing entitlement seam that fails closed (an unreachable billing answers 503, not an unlimited plan, unless the deployment declares ALLOW_UNBILLED), plus internal service-to-service membership and capability checks — the foundational scope other modules attach their workspace_id to.
 
-Contract: axes 1 · surface 60 · extension points 5 · operations 27 · error codes 74.
+Contract: axes 1 · surface 62 · extension points 5 · operations 27 · error codes 74.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -91,12 +91,16 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Invite a batch of addresses — counts the plan's seats and writes the invitations in one locked transaction, so two batches cannot sell the same seat twice.
 - issue_invitation_login_grant — stapel_workspaces.services.issue_invitation_login_grant
   Mint an auth-backed login grant for a not-yet-registered invitee's claim step (0.7).
+- land_registered_account — stapel_workspaces.services.land_registered_account
+  Apply the street landing policy to the account a user.registered payload names (mirrors a missing shadow row first) — the one body behind the in-process subscriber and the consume_auth_events broker command; returns (user, workspace).
 - lift_deactivation_suspensions_for_user — stapel_workspaces.services.lift_deactivation_suspensions_for_user
   Reverse deactivation suspensions on reactivation, leaving no_mfa ones alone.
 - lift_no_mfa_suspensions — stapel_workspaces.services.lift_no_mfa_suspensions
   Lift every no_mfa suspension in a workspace — call when require_mfa turns off.
 - lift_no_mfa_suspensions_for_user — stapel_workspaces.services.lift_no_mfa_suspensions_for_user
   Lift a user's no_mfa suspensions only, wired to auth's user.mfa_enabled.
+- merge_settings_patch — stapel_workspaces.services.merge_settings_patch
+  The workspace settings a PATCH leaves behind: top-level and security keys merge, a null removes a key, an unsent key is kept — use it instead of assigning a request body to Workspace.settings.
 - mfa_enforcement_for — stapel_workspaces.services.mfa_enforcement_for
   The workspace's MFA enforcement record (pending/enforcing/enforced/failed) — read it, not the settings flag, to answer whether MFA actually holds here.
 - preferred_workspace_id_for — stapel_workspaces.services.preferred_workspace_id_for

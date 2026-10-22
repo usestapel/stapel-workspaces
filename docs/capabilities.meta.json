@@ -320,6 +320,14 @@
     "replay_legacy_rows": {
       "kind": "factory",
       "intent": "Carry rows of the retired 0.24 audit table into the stream, ids and timestamps intact — the data path migration 0009 runs; not for new writes."
+    },
+    "land_registered_account": {
+      "kind": "factory",
+      "intent": "Apply the street landing policy to the account a user.registered payload names (mirrors a missing shadow row first) — the one body behind the in-process subscriber and the consume_auth_events broker command; returns (user, workspace)."
+    },
+    "merge_settings_patch": {
+      "kind": "factory",
+      "intent": "The workspace settings a PATCH leaves behind: top-level and security keys merge, a null removes a key, an unsent key is kept — use it instead of assigning a request body to Workspace.settings."
     }
   }
 }

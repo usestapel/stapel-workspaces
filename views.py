@@ -214,6 +214,20 @@ def _rank_check(actor_role: str, target_role: str):
     return None
 
 
+def _target_rank_check(workspace_id, actor_id, target_role: str):
+    """403 when the member being ACTED ON outranks the actor.
+
+    ``_rank_check`` caps the role handed out; this caps whom a write may
+    touch. A capability (``members.role.change``/``remove``/``password.reset``,
+    manage-people) says "may do this at all", not "to whom", so a custom
+    role below admin that carries one could otherwise demote, remove or
+    reset an admin. The hardcoded owner-only gates stay; this is the
+    general ceiling under them.
+    """
+    actor = get_membership(workspace_id, actor_id)
+    return _rank_check(actor.role, target_role) if actor else None
+
+
 def _workspace_owner_names(workspaces) -> dict:
     """``{str(owner_id): display_name}`` for a batch of workspaces.
 
@@ -803,19 +817,27 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         ser = self.get_request_serializer_class()(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-        # A settings payload carrying the `security` block is the HIGH
+        patch = getattr(data, "settings", None)
+        settings = (
+            services.merge_settings_patch(ws.settings, patch)
+            if patch is not None else None
+        )
+        # Any PATCH whose RESULT changes the `security` block is the HIGH
         # surface of this endpoint (spec §C3): extra capability gate
-        # (workspace.security.manage) + step-up on the delegate method —
-        # ordinary PATCHes (name/slug/other settings) stay step-up-free.
-        if "security" in ((getattr(data, "settings", None)) or {}):
+        # (workspace.security.manage) + step-up on the delegate method. The
+        # outcome is compared, not the payload, so removing the block (a
+        # null) is guarded too; ordinary PATCHes stay step-up-free.
+        if settings is not None and settings.get("security") != (
+            ws.settings or {}
+        ).get("security"):
             err = _capability_check(membership, "workspace.security.manage")
             if err:
                 return err
-            return self._patch_security(request, ws, membership, data)
-        return self._apply_patch(ws, membership, data)
+            return self._patch_security(request, ws, membership, data, settings)
+        return self._apply_patch(ws, membership, data, settings)
 
     @requires_verification(scope="sensitive")
-    def _patch_security(self, request, ws, membership, data):
+    def _patch_security(self, request, ws, membership, data, settings):
         """Step-up-guarded branch: the PATCH touches the security block.
 
         Flipping ``require_mfa`` ON runs the sweep (``auth.mfa_status`` per
@@ -830,7 +852,7 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
         ``no_mfa`` suspensions it caused and forgets the stored answers.
         """
         was_require_mfa = services.security_settings_for(ws).require_mfa
-        response = self._apply_patch(ws, membership, data)
+        response = self._apply_patch(ws, membership, data, settings)
         if response.status_code != status.HTTP_200_OK:
             return response
         now_require_mfa = services.security_settings_for(ws).require_mfa
@@ -848,7 +870,7 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
             )
         )
 
-    def _apply_patch(self, ws, membership, data):
+    def _apply_patch(self, ws, membership, data, settings=None):
         new_slug = getattr(data, "slug", None)
         if new_slug and new_slug != ws.slug:
             if Workspace.objects.filter(slug=new_slug).exclude(id=ws.id).exists():
@@ -856,8 +878,8 @@ class WorkspaceDetailView(SerializerSeamsMixin, APIView):
             ws.slug = new_slug
         if getattr(data, "name", None):
             ws.name = data.name
-        if getattr(data, "settings", None) is not None:
-            ws.settings = data.settings
+        if settings is not None:
+            ws.settings = settings
         ws.save()
         return StapelResponse(
             self.get_response_serializer_class()(
@@ -1488,6 +1510,9 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
         err = _rank_check(actor_membership.role, new_role) if actor_membership else None
         if err:
             return err
+        err = _target_rank_check(workspace_id, request.user.id, member.role)
+        if err:
+            return err
         # The last-owner invariant is NOT decided here: `services.
         # change_member_role` re-reads it under the workspace lock, because
         # "another owner exists" stops being true the moment a concurrent
@@ -1528,6 +1553,9 @@ class MemberDetailView(SerializerSeamsMixin, APIView):
             workspace_id, request.user.id, Role.OWNER
         ):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        err = _target_rank_check(workspace_id, request.user.id, member.role)
+        if err:
+            return err
         # Same as the demotion above: the surviving-owner question is
         # answered inside the workspace lock, not from this snapshot.
         try:
@@ -1671,6 +1699,9 @@ class MemberPasswordResetView(SerializerSeamsMixin, APIView):
             ws.id, request.user.id, Role.OWNER
         ):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        err = _target_rank_check(ws.id, request.user.id, member.role)
+        if err:
+            return err
         ser = self.get_request_serializer_class()(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
@@ -1814,6 +1845,9 @@ class MemberNameView(DisplayNameEditMixin, APIView):
             workspace_id, request.user.id, Role.OWNER
         ):
             return StapelErrorResponse(403, ERR_403_FORBIDDEN_WORKSPACE)
+        err = _target_rank_check(workspace_id, request.user.id, member.role)
+        if err:
+            return err
         display_name = self._clean_name(request)
         # One structural result in, one keyed refusal out: profiles' own
         # error.400.display_name_* keys pass through verbatim, and the two
