@@ -74,13 +74,24 @@ logger = logging.getLogger(__name__)
 
 
 def _make_unique_slug(name: str) -> str:
+    """A free slug for ``name`` (``base``, ``base-2``, …) in a bounded number of queries.
+
+    The numbered candidate starts from a COUNT of the namesakes rather than
+    from 2: a probe of ``base-2``, ``base-3``… costs one query per workspace
+    that already carries the name, and every personal workspace is called
+    "Personal" — the thousandth signup paid a thousand queries, inside the
+    window in which its client is already reading the workspace list.
+    """
     base = slugify(name)[:48] or "workspace"
-    candidate = base
-    n = 1
-    while Workspace.objects.filter(slug=candidate).exists():
-        n += 1
-        candidate = f"{base}-{n}"
-    return candidate
+    taken = Workspace.objects.filter(slug__startswith=base)
+    if not taken.filter(slug=base).exists():
+        return base
+    n = taken.filter(slug__startswith=f"{base}-").count() + 2
+    for step in range(4):
+        candidate = f"{base}-{n + step}"
+        if not taken.filter(slug=candidate).exists():
+            return candidate
+    return f"{base}-{uuid.uuid4().hex[:15]}"
 
 
 @transaction.atomic
@@ -122,6 +133,15 @@ def ensure_personal_workspace(user) -> Workspace:
     were one crash away from never existing for a workspace that does.
     """
     with transaction.atomic():
+        # Serialised per account on the account's own row: the
+        # ``user.registered`` subscriber and the list read
+        # (``ENSURE_LANDING_ON_LIST``) can both arrive for a fresh account
+        # within the same second, and a bare check-then-create lets both
+        # create. The second caller waits here and then finds the first
+        # one's workspace.
+        from django.contrib.auth import get_user_model
+
+        get_user_model().objects.select_for_update().filter(pk=user.pk).first()
         existing = Workspace.objects.filter(
             owner=user, type=WorkspaceType.PERSONAL, deleted_at__isnull=True
         ).first()

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.36.0] — 2026-10-22
+
+Minor: a fresh account's first workspace list is never empty when the
+instance lands street signups in a personal workspace.
+
+### Added — `ENSURE_LANDING_ON_LIST` (off by default)
+
+`GET /` applies `resolve_landing_workspace(user, origin="street")` first for
+a caller with no membership row in any state. The `user.registered`
+subscriber is asynchronous; a client that read the list right after signup
+could get an empty list and settle on "no workspace" for good. Leave it off
+where some registrations must not get a personal workspace (an in-process
+subscriber passing `origin="invited"`).
+
+### Fixed — personal workspace creation is serialised per account
+
+`ensure_personal_workspace` locks the account row before its
+check-then-create, so the subscriber and the list read cannot both create
+one.
+
+### Fixed — slug generation no longer costs one query per namesake
+
+`_make_unique_slug` probed `base`, `base-2`, `base-3`… one query each. Every
+personal workspace is named "Personal", so the bootstrap of each new account
+grew slower with every account before it (over a thousand queries per signup
+on a deployment with a thousand accounts). The numbered candidate now starts
+from a count of the namesakes: at most a handful of queries, same slug shape.
+
 ## [0.35.0] — 2026-10-15
 
 Floor `stapel-core>=0.92.0`. Every membership write (join, provision, role

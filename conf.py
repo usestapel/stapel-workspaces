@@ -168,6 +168,19 @@ DEFAULTS = {
     #   shape; a host switches to it deliberately, it is never silently
     #   turned on by a version bump.
     "STREET_LANDING_MODE": "personal",
+    # Whether the workspace LIST also applies the street landing policy.
+    # Off by default. On, a caller with no membership rows at all (in any
+    # state) gets ``resolve_landing_workspace(user, origin="street")`` before
+    # the list is read, so a fresh account's first read never comes back
+    # empty while the ``user.registered`` subscriber is still on its way.
+    # The subscriber is asynchronous: a client that reads the list right
+    # after signup races it, and a client that settled on "no workspace"
+    # stays there. The subscriber and this read share one serialised,
+    # idempotent primitive, so whichever runs second finds the first one's
+    # workspace. Leave it off where some registrations must NOT get a
+    # personal workspace (an in-process subscriber that passes
+    # ``origin="invited"``): the list cannot know that origin.
+    "ENSURE_LANDING_ON_LIST": False,
     # The instance's DEFAULT workspace id (a uuid string), or "" for none.
     #
     # Without it a client has no way to know which workspace to open, and the
@@ -324,6 +337,14 @@ def rotate_token_on_resend() -> bool:
     return bool(value)
 
 
+def ensure_landing_on_list() -> bool:
+    """``ENSURE_LANDING_ON_LIST`` as a bool (see that key)."""
+    value = workspaces_settings.ENSURE_LANDING_ON_LIST
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY
+    return bool(value)
+
+
 def workspace_create_policy() -> str:
     """The effective ``WORKSPACE_CREATE_POLICY`` — one of :data:`CREATE_POLICIES`.
 
@@ -353,6 +374,7 @@ __all__ = [
     "login_grant_ttl_seconds",
     "resend_cooldown_seconds",
     "rotate_token_on_resend",
+    "ensure_landing_on_list",
     "workspace_create_policy",
     "CREATE_POLICY_OPEN",
     "CREATE_POLICY_INSTANCE_OWNER",

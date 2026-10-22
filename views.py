@@ -527,6 +527,24 @@ def _invitation_terminal_error(inv: WorkspaceInvitation):
     return None
 
 
+def _ensure_landing_before_list(user) -> None:
+    """Apply the street landing policy before a fresh account's first list.
+
+    Only with ``ENSURE_LANDING_ON_LIST`` on, and only for an account that
+    has no membership row at all (active, invited or suspended): such an
+    account is one the ``user.registered`` subscriber has not reached yet.
+    Without this, a client that reads the list right after signup gets an
+    empty list and concludes the account has no workspace.
+    """
+    from .conf import ensure_landing_on_list
+
+    if not ensure_landing_on_list():
+        return
+    if WorkspaceMember.objects.filter(user=user).exists():
+        return
+    services.resolve_landing_workspace(user, origin="street")
+
+
 @extend_schema(tags=["Workspaces"])
 class WorkspaceListCreateView(BillingSeamMixin, SerializerSeamsMixin, APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -545,6 +563,7 @@ class WorkspaceListCreateView(BillingSeamMixin, SerializerSeamsMixin, APIView):
 
     @extend_schema(responses={200: WorkspaceListResponseSerializer})
     def get(self, request):  # noqa: R007
+        _ensure_landing_before_list(request.user)
         # Suspended memberships are excluded: suspension closes access to
         # the org entirely (spec §C3) — the workspace disappears from the
         # member's own list until the suspension lifts.
