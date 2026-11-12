@@ -730,3 +730,24 @@ class WorkspaceProvisionOperation(models.Model):
 
     def __str__(self):
         return f"{self.username}: {self.state}"
+
+
+class StorageDeltaReceipt(models.Model):
+    """One storage delta applied to ``Workspace.storage_used_bytes``.
+
+    ``document.storage_changed`` carries a signed byte delta and is delivered
+    at least once; the counter is exact only if each event moves it once. The
+    unique ``event_id`` is that guarantee: the receipt and the counter update
+    commit together, and a redelivery finds the receipt and does nothing.
+    Pruned after ``STORAGE_DELTA_RECEIPT_DAYS`` by
+    ``manage.py reconcile_storage_usage``.
+    """
+
+    event_id = models.CharField(max_length=64, unique=True)
+    workspace_id = models.UUIDField()
+    delta_bytes = models.BigIntegerField()
+    applied_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workspaces_storage_delta_receipt"
+        indexes = [models.Index(fields=["applied_at"])]

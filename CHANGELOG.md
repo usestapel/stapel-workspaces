@@ -1,5 +1,29 @@
 # Changelog
 
+## [Unreleased] — proposed 0.38.0
+
+### Added — `Workspace.storage_used_bytes` has a writer
+
+Minor, one migration (`0013_storage_delta_receipt`, a new table).
+
+The field was read by the API, admin and GDPR export and written by nobody,
+while stapel-docs emitted `document.storage_changed` with no subscriber. Now:
+
+- `handle_document_storage_changed` (`@on_action`, through stapel-core's comm;
+  stapel-docs is not imported) applies the signed `delta_bytes` with an `F()`
+  update, exactly once per envelope `event_id` — `StorageDeltaReceipt` is
+  unique on it and commits with the update, so an at-least-once redelivery is
+  a no-op. Delta- rather than absolute-based on purpose: the emitter's delta
+  is exact, an absolute total read inside its transaction is not.
+- `manage.py reconcile_storage_usage [--workspace ID]... [--dry-run]` sets the
+  counter to the owner's figure from `STORAGE_USAGE_FUNCTION` (default
+  `docs.usage`, `bytes_total`) and prunes receipts older than
+  `STORAGE_DELTA_RECEIPT_DAYS` (30). **Run it once on adoption**: bytes stored
+  before this release reach the counter only through it. stapel-docs must
+  trust this service as a caller (`STAPEL_DOCS['INTERNAL_TRUSTED_SERVICES']`).
+
+Tests: `tests/test_storage_usage.py`.
+
 ## [0.37.0] — 2026-10-22
 
 Minor: a fresh account of a monolith lands in its personal workspace, and

@@ -248,6 +248,16 @@ DEFAULTS = {
     # every other stream consumer slices. Retention/rollup/backends key on
     # this name via STAPEL_EVENTSTORE (RETENTION, ROUTES).
     "AUDIT_STREAM": "workspace.audit",
+    # ── Storage accounting (Workspace.storage_used_bytes) ─────────────
+    # Comm Function answering a workspace's stored bytes as
+    # {"bytes_total": int}; `manage.py reconcile_storage_usage` sets the
+    # counter to its answer. A NAME, not an import: the owner of the bytes is
+    # another module. "" disables reconciliation.
+    "STORAGE_USAGE_FUNCTION": "docs.usage",
+    # Days an applied `document.storage_changed` event id is remembered for
+    # redelivery dedupe. Longer than any outbox/broker redelivery window;
+    # `reconcile_storage_usage` prunes older receipts.
+    "STORAGE_DELTA_RECEIPT_DAYS": 30,
 }
 
 #: The three answers `WORKSPACE_CREATE_POLICY` may take, plus "" for derived.

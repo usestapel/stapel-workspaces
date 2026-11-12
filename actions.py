@@ -321,3 +321,29 @@ def handle_user_reactivated(event):
         logger.info(
             "lifted %d deactivation suspension(s) for user %s", lifted, user_id
         )
+
+
+@on_action("document.storage_changed")
+def handle_document_storage_changed(event):
+    """Keep ``Workspace.storage_used_bytes`` (see :mod:`.storage_usage`).
+
+    Exactly once per event: the envelope's ``event_id`` is recorded with the
+    counter update, so a redelivery is a no-op. A payload that cannot name a
+    workspace or a delta is logged and dropped — redelivering it cannot help.
+    """
+    from .storage_usage import apply_storage_delta, parse_workspace_id
+
+    payload = event.payload or {}
+    workspace_id = parse_workspace_id(payload.get("workspace_id"))
+    delta = payload.get("delta_bytes")
+    if workspace_id is None or not isinstance(delta, int) or isinstance(delta, bool):
+        logger.error(
+            "document.storage_changed without a usable workspace_id/delta_bytes: %s",
+            event.event_id,
+        )
+        return
+    if not apply_storage_delta(workspace_id, delta, event_id=event.event_id):
+        logger.debug(
+            "document.storage_changed %s not applied (redelivery or unknown "
+            "workspace %s)", event.event_id, workspace_id,
+        )
