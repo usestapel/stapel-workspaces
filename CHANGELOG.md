@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] — proposed 0.38.0
+## [0.38.0] — 2026-11-13
 
 ### Added — `Workspace.storage_used_bytes` has a writer
 
