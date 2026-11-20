@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`74` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`75` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -31,6 +31,7 @@
 | `error.400.invitation_declined` | 400 | — | `contact_support` | Приглашение было отклонено |
 | `error.400.invitation_expired` | 400 | — | `contact_support` | Срок действия приглашения истёк |
 | `error.400.invitation_revoked` | 400 | — | `contact_support` | Приглашение было отозвано |
+| `error.400.too_many_ids` | 400 | `requested`, `limit` | `fix_input` | Слишком много идентификаторов: запрошено {requested}, максимум {limit} за один запрос |
 | `error.400.validation_error` | 400 | — | `fix_input` | Ошибка валидации |
 | `error.400.verification_failed` | 400 | — | `verify` | Проверка не пройдена |
 | `error.400.verification_invalid_factor` | 400 | — | `verify` | Этот способ подтверждения недоступен |
@@ -70,7 +71,7 @@
 | `error.423.verification_locked` | 423 | — | `wait_and_retry` | Слишком много неудачных попыток — подтверждение заблокировано |
 | `error.429.invitation_grant_pending` | 429 | `retry_after` | `wait_and_retry` | Ссылка для входа по этому приглашению ещё действует; запросить новую можно через {retry_after} с |
 | `error.429.invitation_resend_cooldown` | 429 | `retry_after` | `wait_and_retry` | Это приглашение недавно отправлялось; отправить снова можно через {retry_after} с |
-| `error.429.rate_limit` | 429 | `retry_after_minutes` | `wait_and_retry` | Слишком много попыток. Повторите попытку через {retry_after_minutes} мин. |
+| `error.429.rate_limit` | 429 | `retry_after_display`, `retry_after`, `retry_after_minutes` | `wait_and_retry` | Слишком много попыток. Повторите попытку через {retry_after_display} ({retry_after} с, около {retry_after_minutes} мин). |
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Слишком много запросов. Пожалуйста, повторите попытку позже. |
 | `error.500.internal` | 500 | — | `contact_support` | Что-то пошло не так |
 | `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | Сервис аутентификации недоступен; повторите попытку позже |

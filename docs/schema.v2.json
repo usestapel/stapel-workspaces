@@ -1,0 +1,3956 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "",
+    "version": "0.0.0",
+    "x-stapel-contract": 2
+  },
+  "paths": {
+    "/workspaces/api/v1/": {
+      "get": {
+        "operationId": "workspaces_api_v1_retrieve",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceListResponse"
+                },
+                "examples": {
+                  "WorkspaceListResponse": {
+                    "value": {
+                      "is_guest": false,
+                      "default_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3",
+                      "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3",
+                      "can_create_workspace": true
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.workspace_is_instance_default",
+              "error.409.workspace_is_personal"
+            ]
+          }
+        }
+      },
+      "post": {
+        "operationId": "workspaces_api_v1_create",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                },
+                "examples": {
+                  "WorkspaceResponse": {
+                    "value": {
+                      "id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "name": "Acme Engineering",
+                      "slug": "acme-eng",
+                      "type": "work",
+                      "owner_id": "0192a...",
+                      "settings": {},
+                      "storage_used_bytes": 1048576,
+                      "storage_limit_bytes": 10737418240,
+                      "member_count": 3,
+                      "my_role": "owner",
+                      "created_at": "2026-05-20T10:00:00Z",
+                      "updated_at": "2026-05-20T10:00:00Z",
+                      "my_capabilities": [
+                        "workspace.view",
+                        "members.view"
+                      ],
+                      "owner_display_name": "Victor P.",
+                      "can_delete": false,
+                      "delete_blocked_reason": "error.409.workspace_is_instance_default"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invalid_role",
+              "error.400.workspace_slug_taken"
+            ]
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Payment Required",
+            "x-stapel-errors": [
+              "error.402.entitlement_required"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden",
+              "error.403.forbidden_workspace",
+              "error.403.workspace_creation_closed"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.workspace_is_instance_default",
+              "error.409.workspace_is_personal"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}": {
+      "get": {
+        "operationId": "workspaces_api_v1_retrieve_2",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                },
+                "examples": {
+                  "WorkspaceResponse": {
+                    "value": {
+                      "id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "name": "Acme Engineering",
+                      "slug": "acme-eng",
+                      "type": "work",
+                      "owner_id": "0192a...",
+                      "settings": {},
+                      "storage_used_bytes": 1048576,
+                      "storage_limit_bytes": 10737418240,
+                      "member_count": 3,
+                      "my_role": "owner",
+                      "created_at": "2026-05-20T10:00:00Z",
+                      "updated_at": "2026-05-20T10:00:00Z",
+                      "my_capabilities": [
+                        "workspace.view",
+                        "members.view"
+                      ],
+                      "owner_display_name": "Victor P.",
+                      "can_delete": false,
+                      "delete_blocked_reason": "error.409.workspace_is_instance_default"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.workspace_is_instance_default",
+              "error.409.workspace_is_personal"
+            ]
+          }
+        }
+      },
+      "patch": {
+        "operationId": "workspaces_api_v1_partial_update",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Workspaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedWorkspaceUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedWorkspaceUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedWorkspaceUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                },
+                "examples": {
+                  "WorkspaceResponse": {
+                    "value": {
+                      "id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "name": "Acme Engineering",
+                      "slug": "acme-eng",
+                      "type": "work",
+                      "owner_id": "0192a...",
+                      "settings": {},
+                      "storage_used_bytes": 1048576,
+                      "storage_limit_bytes": 10737418240,
+                      "member_count": 3,
+                      "my_role": "owner",
+                      "created_at": "2026-05-20T10:00:00Z",
+                      "updated_at": "2026-05-20T10:00:00Z",
+                      "my_capabilities": [
+                        "workspace.view",
+                        "members.view"
+                      ],
+                      "owner_display_name": "Victor P.",
+                      "can_delete": false,
+                      "delete_blocked_reason": "error.409.workspace_is_instance_default"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.field.invalid",
+              "error.400.field.invalid_choice",
+              "error.400.workspace_slug_taken"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability",
+              "error.403.verification_enrollment_required",
+              "error.403.verification_required"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.workspace_is_instance_default",
+              "error.409.workspace_is_personal"
+            ]
+          }
+        }
+      },
+      "delete": {
+        "operationId": "workspaces_api_v1_destroy",
+        "description": "End a workspace — the transition itself lives in the service.\n\nThe view's whole job here is authority (owner, and only owner) and\nturning the service's typed refusal back into the keyed 409 the\nfrontend routes on. The write, the event and the audit line are one\nindivisible act in ``services.delete_workspace``, because a second\ndoor into this transition is a second chance to forget the record.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.workspace_is_instance_default",
+              "error.409.workspace_is_personal"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/audit": {
+      "get": {
+        "operationId": "workspaces_api_v1_audit_list",
+        "description": "``GET <workspace_id>/audit`` — the workspace's membership history.\n\nTHE QUESTION THIS ANSWERS is \"who let this person in, who took them out,\nand when\" — which nothing in this module could answer before. Half the\ntransitions the owner listed emit no comm event at all (an invitation\ncreated, an invitation accepted, an account born from one), and the ones\nthat do emit are fire-and-forget notifications to other services: nothing\nkeeps them, so there was no record to ask.\n\nGATED ON ``members.view``, not on a new capability of its own. An audit of\nwho is in the workspace is the same class of fact as the member list —\nevery role that may see who is in the room may see how they got there. A\nseparate mandate would mean a deployment could grant one without the\nother, which describes no real product.\n\nRead-only by construction: this view has no write method, and the model\nhas no update or delete path.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Narrow to one action (models.AuditAction). An unknown value matches nothing rather than being ignored — a filter that silently does not apply is worse than an empty page."
+          },
+          {
+            "name": "anchor",
+            "required": false,
+            "in": "query",
+            "description": "Anchor value to paginate from (exclusive)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "required": false,
+            "in": "query",
+            "description": "Pagination direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "next",
+                "prev",
+                "center"
+              ],
+              "default": "next"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Number of items (default 100, max 500)",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Narrow to one person's history (as the SUBJECT)."
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAuditEventResponseList"
+                },
+                "examples": {
+                  "AuditEventResponse": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": "0192f1a4-af40-7e3d-c5b7-8d9e0f1a2b3c",
+                          "action": "member_removed",
+                          "actor_id": "0192a...",
+                          "actor_display_name": "Ada Lovelace",
+                          "subject_id": "0192b...",
+                          "subject_display_name": "Alan Turing",
+                          "subject_email": "new@acme.test",
+                          "role": "member",
+                          "metadata": {
+                            "old_role": "member",
+                            "new_role": "admin"
+                          },
+                          "created_at": "2026-08-13T10:00:00Z"
+                        }
+                      ],
+                      "next_anchor": null,
+                      "prev_anchor": null,
+                      "has_next": false,
+                      "has_prev": false,
+                      "count": 1
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          }
+        },
+        "x-stapel-pagination": {
+          "style": "anchor",
+          "items": "items",
+          "params": [
+            "anchor",
+            "direction",
+            "limit"
+          ]
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/invitations": {
+      "get": {
+        "operationId": "workspaces_api_v1_invitations_list",
+        "description": "Who was invited and has not accepted (#109).\n\nBefore this endpoint an admin could send invitations and never see\nthem again: acceptance produced a member row, and everything else —\nthe unopened mail, the wrong address, the person who declined — was\ninvisible from the product. The roster answered \"who is in\"; nothing\nanswered \"who is still out, and since when\".\n\nGated on ``members.invite``: the mandate that creates invitations is\nthe mandate that sees and manages them. Reading the list is strictly\nless than sending one, so no separate capability is minted — a role\nthat may invite but may not audit its own invitations would be a\ndistinction without a use.\n\nThe invite token is never in the response. It is a bearer credential;\na list endpoint that carried it would hand every admin a working login\nlink for every invited address.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "name": "anchor",
+            "required": false,
+            "in": "query",
+            "description": "Anchor value to paginate from (exclusive)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "required": false,
+            "in": "query",
+            "description": "Pagination direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "next",
+                "prev",
+                "center"
+              ],
+              "default": "next"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Number of items (default 100, max 500)",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive substring filter on the invited email address."
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "never_accepted",
+                "pending"
+              ]
+            },
+            "description": "Which invitations to return. `pending` (default) — live, actionable, seat-reserving ones, i.e. who has not accepted yet. `never_accepted` — those plus the declined, revoked and expired ones. `all` — the full history, accepted rows included."
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedInvitationResponseList"
+                },
+                "examples": {
+                  "InvitationResponse": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": "0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b",
+                          "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                          "email": "alice@example.com",
+                          "role": "member",
+                          "status": "pending",
+                          "expires_at": "2026-07-31T10:00:00Z",
+                          "accepted_at": null,
+                          "declined_at": null,
+                          "revoked_at": null,
+                          "created_at": "2026-07-24T10:00:00Z",
+                          "invited_by_id": "0192a...",
+                          "display_name": "Ada Lovelace",
+                          "revoked_by_id": "0192a...",
+                          "last_sent_at": "2026-07-24T10:00:00Z"
+                        }
+                      ],
+                      "next_anchor": null,
+                      "prev_anchor": null,
+                      "has_next": false,
+                      "has_prev": false,
+                      "count": 1
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.field.invalid_choice"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          }
+        },
+        "x-stapel-pagination": {
+          "style": "anchor",
+          "items": "items",
+          "params": [
+            "anchor",
+            "direction",
+            "limit"
+          ]
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/invitations/{invitation_id}/name": {
+      "patch": {
+        "operationId": "workspaces_api_v1_invitations_name_partial_update",
+        "description": "``PATCH <ws>/invitations/<id>/name`` — fix a pending invite's name hint.\n\nThe same correction as :class:`MemberNameView`, one step earlier: the\ninvitee has not accepted, so there is no profile of theirs to write and\nthe name lives on the invitation as ``display_name_hint`` — the invite\nmodal's \"Name\" field, which ``accept_invitation`` copies onto the\nmembership at acceptance. Editing it after the fact is why this endpoint\nexists: before #109's invitation surface the only fix for a typo in an\ninvitee's name was to revoke and re-invite, which re-mails the person.\n\nOnly a **pending** invitation is editable, with the same keyed refusals\nrevoke gives for each terminal state (``invitation_revoked`` /\n``already_used`` / ``declined`` / ``expired``): an accepted invitation's\nname is the member's name now — use the member endpoint — and a dead\ninvitation is not a thing to relabel. Unknown and cross-workspace ids\ncollapse into one identical 404 (inherited resolution).\n\nThe value is still held to stapel-profiles' name canon even though the\ncolumn being written is local: this hint becomes a displayed name, and\nthe two endpoints must not disagree about what a name may contain.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayNameResponse"
+                },
+                "examples": {
+                  "DisplayNameResponse": {
+                    "value": {
+                      "display_name": "Ada Lovelace"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invitation_already_used",
+              "error.400.invitation_declined",
+              "error.400.invitation_expired",
+              "error.400.invitation_revoked"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.invitation_not_found",
+              "error.404.workspace_not_found"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_resend_create",
+        "description": "Send the invitation email again (#109).\n\nAccepts an **expired** invitation on purpose — a dead TTL is the most\ncommon reason to resend — and refuses the three stored terminal states,\nwhich are decisions rather than delivery failures. The TTL restarts, so\nthe invitee has the full window again from the letter that just went\nout.\n\nReviving an expired invitation re-reserves a seat, so the plan ceiling\nis re-checked here exactly as it is on invite: capability first (\"may\nYOU\", 403), then the org's plan (\"may the ORG\", 402). An invitation\nthat is already pending costs no additional seat and is never blocked\nby that check.\n\nThen the cooldown (\"may we mail this PERSON again yet\", 429). It is\nread here and enforced again inside the service's row lock, the same\ntwo-level shape the state check already has: the view answers a number\nthe admin can read, the lock is what actually makes two simultaneous\npresses send one letter.\n\nThe token is NOT rotated by default from 0.23 — the invitee's existing\nlink keeps working, because the resend goes to the same mailbox that\nlink is already sitting in. See\n``STAPEL_WORKSPACES[\"INVITATION_ROTATE_TOKEN_ON_RESEND\"]``.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                },
+                "examples": {
+                  "InvitationResponse": {
+                    "value": {
+                      "id": "0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "email": "alice@example.com",
+                      "role": "member",
+                      "status": "pending",
+                      "expires_at": "2026-07-31T10:00:00Z",
+                      "accepted_at": null,
+                      "declined_at": null,
+                      "revoked_at": null,
+                      "created_at": "2026-07-24T10:00:00Z",
+                      "invited_by_id": "0192a...",
+                      "display_name": "Ada Lovelace",
+                      "revoked_by_id": "0192a...",
+                      "last_sent_at": "2026-07-24T10:00:00Z"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invitation_already_used",
+              "error.400.invitation_declined",
+              "error.400.invitation_revoked"
+            ]
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Payment Required",
+            "x-stapel-errors": [
+              "error.402.member_limit_reached"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.invitation_not_found",
+              "error.404.workspace_not_found"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "x-stapel-errors": [
+              "error.429.invitation_resend_cooldown"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/invitations/{invitation_id}/revoke": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_revoke_create",
+        "description": "Withdraw a live invitation (#109).\n\nThe workspace's terminal \"no\", the mirror of the invitee's decline —\nthe two stay distinguishable in ``status`` forever. The seat the\ninvitation reserved is freed on commit.\n\nOnly a **pending** invitation is revocable: an accepted one produced a\nmembership (remove the member instead), a declined or already-revoked\none is terminal, and an expired one is already harmless. Each of those\ngets its own error key rather than a shrug.\n\nThe transition is a compare-and-set under a row lock, not a blind\nwrite: an accept committing between this view's state check and the\nlock wins, and the revocation then fails honestly with\n``error.400.invitation_already_used``. The reverse — a revocation\ncommitting between an accept's check and its lock — is the race fixed\nin 0.10.0, and it is the same predicate holding both ends.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                },
+                "examples": {
+                  "InvitationResponse": {
+                    "value": {
+                      "id": "0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "email": "alice@example.com",
+                      "role": "member",
+                      "status": "pending",
+                      "expires_at": "2026-07-31T10:00:00Z",
+                      "accepted_at": null,
+                      "declined_at": null,
+                      "revoked_at": null,
+                      "created_at": "2026-07-24T10:00:00Z",
+                      "invited_by_id": "0192a...",
+                      "display_name": "Ada Lovelace",
+                      "revoked_by_id": "0192a...",
+                      "last_sent_at": "2026-07-24T10:00:00Z"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invitation_already_used",
+              "error.400.invitation_declined",
+              "error.400.invitation_expired",
+              "error.400.invitation_revoked"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.invitation_not_found",
+              "error.404.workspace_not_found"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/members": {
+      "get": {
+        "operationId": "workspaces_api_v1_members_list",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "name": "anchor",
+            "required": false,
+            "in": "query",
+            "description": "Anchor value to paginate from (exclusive)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "required": false,
+            "in": "query",
+            "description": "Pagination direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "next",
+                "prev",
+                "center"
+              ],
+              "default": "next"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Number of items (default 100, max 500)",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive substring filter matched against a member's email OR display name (full name / username). Lets a people-picker filter server-side instead of pulling every member."
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedMemberResponseList"
+                },
+                "examples": {
+                  "MemberResponse": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a",
+                          "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                          "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                          "email": "alice@example.com",
+                          "role": "admin",
+                          "invited_at": "2026-05-20T10:00:00Z",
+                          "accepted_at": "2026-05-21T09:15:00Z",
+                          "last_accessed_at": "2026-05-22T08:00:00Z",
+                          "provisioned": false,
+                          "suspended_at": null,
+                          "display_name": "Ada Lovelace",
+                          "mfa_compliant": true,
+                          "is_self": false
+                        }
+                      ],
+                      "next_anchor": null,
+                      "prev_anchor": null,
+                      "has_next": false,
+                      "has_prev": false,
+                      "count": 1
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability"
+            ]
+          }
+        },
+        "x-stapel-pagination": {
+          "style": "anchor",
+          "items": "items",
+          "params": [
+            "anchor",
+            "direction",
+            "limit"
+          ]
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/members/{user_id}": {
+      "patch": {
+        "operationId": "workspaces_api_v1_members_partial_update",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedMemberUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedMemberUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedMemberUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                },
+                "examples": {
+                  "MemberResponse": {
+                    "value": {
+                      "id": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                      "email": "alice@example.com",
+                      "role": "admin",
+                      "invited_at": "2026-05-20T10:00:00Z",
+                      "accepted_at": "2026-05-21T09:15:00Z",
+                      "last_accessed_at": "2026-05-22T08:00:00Z",
+                      "provisioned": false,
+                      "suspended_at": null,
+                      "display_name": "Ada Lovelace",
+                      "mfa_compliant": true,
+                      "is_self": false
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invalid_role"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.last_owner_cannot_be_removed",
+              "error.403.membership_suspended",
+              "error.403.missing_capability",
+              "error.403.role_exceeds_inviter_rank"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.member_not_found"
+            ]
+          }
+        }
+      },
+      "delete": {
+        "operationId": "workspaces_api_v1_members_destroy",
+        "description": "Overridable request/response serializer seam for an API view.\n\nDeclare the classes as attributes, read them through the getters::\n\n    class WalletView(SerializerSeamMixin, APIView):\n        response_serializer_class = WalletResponseSerializer\n\n        def get(self, request):\n            response_cls = self.get_response_serializer_class()\n            return StapelResponse(response_cls(wallet_to_dto(...)))\n\nA host project swaps either direction by subclassing and setting the\nattribute, or overrides the getter for a per-request decision — no HTTP\nmethod body is ever copied. ``None`` means the direction carries no\nserializer (raw ``request.FILES``, an empty 204 body).\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.last_owner_cannot_be_removed",
+              "error.403.membership_suspended",
+              "error.403.missing_capability",
+              "error.403.role_exceeds_inviter_rank"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.member_not_found"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/members/{user_id}/name": {
+      "patch": {
+        "operationId": "workspaces_api_v1_members_name_partial_update",
+        "description": "``PATCH <ws>/members/<user_id>/name`` — correct a member's display name.\n\nWrites the CANONICAL name: stapel-profiles' ``Profile.display_name``,\nthrough the named write that module publishes\n(``profiles.set_display_name``, called by\n``services.set_profile_display_name``), which validates against its own\ncanon and publishes ``profile.changed`` so every consumer of that name\nfollows. Topology-independent: the same call runs in-process in a\nmonolith and over the configured route where profiles is its own\ncontainer. Until 0.21.0 it was dotted-path symbol resolution instead,\nand this endpoint simply did not work in a split deployment.\n\nNOT ``WorkspaceMember.display_name_hint``: the hint is a pre-profile\nplaceholder, copied once at creation and dark from the moment a real\nprofile exists (see its docstring in ``models.py``). Writing it would\nproduce a correction the roster shows and nothing else in the product\never does — including, eventually, the roster.\n\nWhere the write cannot be performed the answer is a 503 that names its\nown cause — ``error.503.profiles_not_configured`` when this deployment\nhas neither a provider nor a route (an operator's job, and it will not\nheal on its own), ``error.503.profiles_unavailable`` when the call was\nmade and failed — never a 200 over a write that did not happen.\n\nOnly an owner may rename an owner — the same hardcoded owner protection\nthat role changes, removals and password resets carry. Renaming is not\nescalation, but an admin relabelling the owner of the organization on\nevery screen in the product is close enough to the same act to answer\nthe same way.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedDisplayNameUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayNameResponse"
+                },
+                "examples": {
+                  "DisplayNameResponse": {
+                    "value": {
+                      "display_name": "Ada Lovelace"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability",
+              "error.403.role_exceeds_inviter_rank"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.member_not_found"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "x-stapel-errors": [
+              "error.503.profiles_not_configured",
+              "error.503.profiles_unavailable"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/members/{user_id}/password/reset": {
+      "post": {
+        "operationId": "workspaces_api_v1_members_password_reset_create",
+        "description": "Reset a member's password on the organization's order (#110).\n\nFive questions this endpoint has to answer out loud, because a\npassword reset is an account takeover performed on purpose and every\none of them is a way to get it wrong.\n\n**Who may do it.** A mandate, not a session: capability\n``members.password.reset`` (builtin ``admin`` and ``owner``), declared\n``high``, so ``@requires_verification(scope=\"sensitive\")`` demands a\nfresh step-up on top — an ambient cookie is not enough to hand\nsomebody else's account over. Only an owner may reset an OWNER's\npassword, the same hardcoded owner protection role changes and\nremovals carry: otherwise an admin resets the owner and inherits the\norganization. And auth refuses a staff/superuser target outright\n(``error.403.privileged_account``) — org admin is a role inside one\nworkspace, deployment staff is a role above every workspace, and the\nfirst must never be a route to the second.\n\n**Whether the user finds out.** Always. A\n``workspace.member_password_reset`` letter names the workspace and the\nadmin who did it — a reset is indistinguishable from a takeover\nunless the account holder is told which one it was. ``notified`` in\nthe response says honestly whether a channel existed; the letter\nnever carries the new password (see\n:func:`~stapel_workspaces.services.reset_member_password`).\n\n**Whether the new password is temporary.** Always — the server\ndecides: ``password_change`` plus whatever else the workspace's\n``provisioned_user_policies`` (#90) demands. A password the admin knows\nmust stop working the first time it is used, and since auth 0.15.0 that\ndemand holds on every session-issuance path. The request cannot name\nor suppress policies.\n\n**Whose account.** Only a member this workspace PROVISIONED\n(``WorkspaceMember.provisioned``). An invited member joined with an\naccount of their own; resetting it would hand the org a stranger's\ncredentials. Everybody else gets the same 404 as a stranger.\n\n**Whether it is an existence oracle.** No: a target that is not a\nresettable member of THIS workspace — an unknown UUID, a real account\nthat is not a member, a member of a different workspace, or the\ncaller's own id — all get one byte-identical 404. And the capability\ncheck runs before any target lookup, so a caller without the mandate\nlearns nothing at all about anybody. ``tests/\ntest_api_member_password_reset.py`` compares those responses byte for\nbyte.\n\n**Whether it is logged with the actor.** Twice, on purpose:\n``workspace.member_password_reset`` through the transactional outbox\n(the org's activity log) and auth's own ``AuthAuditLog`` row carrying\n``actor_id`` and ``via=admin_reset`` (the deployment's security\njournal). Neither carries credential material.\n\nOwn password: use auth's ``POST /password/change/``. This endpoint is\nfor acting on somebody else, and answers about yourself with the same\n404 as about a stranger.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPasswordResetRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPasswordResetRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPasswordResetRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberPasswordResetResponse"
+                },
+                "examples": {
+                  "MemberPasswordResetResponse": {
+                    "value": {
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                      "sessions_revoked": 2,
+                      "generated_password": null,
+                      "first_login_policies_applied": [
+                        "password_change"
+                      ],
+                      "notified": true
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Step-up verification required. Complete one of the listed factors via the auth service's verification endpoints, then retry (grant is server-side; stateless clients may resend X-Verification-Token). On strict endpoints a user with no usable factor instead receives the enrollment variant: verification.enroll=true, no challenge_id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "localizable_error": {
+                      "type": "string",
+                      "example": "error.403.verification_required"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "verification": {
+                      "type": "object",
+                      "properties": {
+                        "challenge_id": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "factors": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "expires_at": {
+                          "type": "integer"
+                        },
+                        "enroll": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "scope",
+                        "factors"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "localizable_error",
+                    "verification"
+                  ]
+                }
+              }
+            },
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability",
+              "error.403.role_exceeds_inviter_rank",
+              "error.403.verification_enrollment_required",
+              "error.403.verification_required"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.member_not_found",
+              "error.404.workspace_not_found"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "x-stapel-errors": [
+              "error.503.auth_unavailable"
+            ]
+          }
+        },
+        "x-stapel-verification": {
+          "scope": "sensitive",
+          "factors": null,
+          "max_age": null,
+          "level": "strict"
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/members/invite": {
+      "post": {
+        "operationId": "workspaces_api_v1_members_invite_create",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInviteRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInviteRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberInviteResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invalid_role"
+            ]
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Payment Required",
+            "x-stapel-errors": [
+              "error.402.member_limit_reached"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability",
+              "error.403.role_exceeds_inviter_rank"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/{workspace_id}/members/provision": {
+      "post": {
+        "operationId": "workspaces_api_v1_members_provision_create",
+        "description": "Provision an org-created (synthetic) member (org-program spec §C1).\n\nThe org mints its own login/password account: full username is\n``{workspace_slug}/{username_local}`` (namespaced — the slug is\nglobally unique, so orgs cannot collide), the account is created by\n``auth.provision_user`` with the workspace's first-login policy\n(``settings.security.provisioned_user_policy``: forced password change\nor mandatory MFA enrollment) and joins immediately\n(``accepted_at=now``, ``provisioned=True``).\n\nGate stack, in order: HIGH step-up (``@requires_verification``, scope\n``sensitive`` — the same store as admin step-up) → capability\n``members.provision`` (403) → entitlement ``workspaces.provision_user``\n(402; an unreachable billing answers 503, not allow) → optional\nper-user debit\n(``STAPEL_WORKSPACES[\"PROVISION_USER_CREDITS\"]`` > 0).\n\nCredentials: a synthetic account normally has no email — when the\nrequest omits ``email``, the server-generated password comes back in\nthe response (``generated_password``) exactly once and no letter is\nsent. With ``email``, the ``workspace.provisioned_account`` letter\ncarries the credentials as well. Auth's structured failures pass\nthrough keyed (``error.409.username_taken`` / auth's 400s); auth not\nwired → honest 503, this seam never degrades to allow.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionMemberRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionMemberRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvisionMemberResponse"
+                },
+                "examples": {
+                  "ProvisionMemberResponse": {
+                    "value": {
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                      "username": "acme-eng/jdoe",
+                      "role": "member"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invalid_provision_username",
+              "error.400.invalid_role"
+            ]
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Payment Required",
+            "x-stapel-errors": [
+              "error.402.entitlement_required"
+            ]
+          },
+          "403": {
+            "description": "Step-up verification required. Complete one of the listed factors via the auth service's verification endpoints, then retry (grant is server-side; stateless clients may resend X-Verification-Token). On strict endpoints a user with no usable factor instead receives the enrollment variant: verification.enroll=true, no challenge_id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "localizable_error": {
+                      "type": "string",
+                      "example": "error.403.verification_required"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "verification": {
+                      "type": "object",
+                      "properties": {
+                        "challenge_id": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "factors": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "expires_at": {
+                          "type": "integer"
+                        },
+                        "enroll": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "scope",
+                        "factors"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "localizable_error",
+                    "verification"
+                  ]
+                }
+              }
+            },
+            "x-stapel-errors": [
+              "error.403.forbidden_workspace",
+              "error.403.membership_suspended",
+              "error.403.missing_capability",
+              "error.403.role_exceeds_inviter_rank",
+              "error.403.verification_enrollment_required",
+              "error.403.verification_required"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "x-stapel-errors": [
+              "error.503.auth_unavailable"
+            ]
+          }
+        },
+        "x-stapel-verification": {
+          "scope": "sensitive",
+          "factors": null,
+          "max_age": null,
+          "level": "strict"
+        }
+      }
+    },
+    "/workspaces/api/v1/instance": {
+      "get": {
+        "operationId": "workspaces_api_v1_instance_retrieve",
+        "description": "Instance shape: how a street signup lands (personal | none) and whether self-serve registration is open. Public, unauthenticated — the screen a kicked/left member sees depends on it.\n\n**Permissions:** `AllowAny`",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceShapeResponse"
+                },
+                "examples": {
+                  "InstanceShapeResponse": {
+                    "value": {
+                      "landing": "personal",
+                      "registration_open": true
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/internal/{workspace_id}/members/{user_id}": {
+      "get": {
+        "operationId": "workspaces_api_v1_internal_members_retrieve",
+        "description": "Allow other services to check membership/role via X-API-KEY.\n\n**Permissions:** `OperandHolder`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Internal"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                },
+                "examples": {
+                  "MemberResponse": {
+                    "value": {
+                      "id": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                      "email": "alice@example.com",
+                      "role": "admin",
+                      "invited_at": "2026-05-20T10:00:00Z",
+                      "accepted_at": "2026-05-21T09:15:00Z",
+                      "last_accessed_at": "2026-05-22T08:00:00Z",
+                      "provisioned": false,
+                      "suspended_at": null,
+                      "display_name": "Ada Lovelace",
+                      "mfa_compliant": true,
+                      "is_self": false
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.member_not_found"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/internal/users/{user_id}/personal": {
+      "post": {
+        "operationId": "workspaces_api_v1_internal_users_personal_create",
+        "description": "Get-or-create the personal workspace for a given user_id.\n\n**Permissions:** `OperandHolder`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Internal"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalPersonalWorkspaceResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/invitations/{token}": {
+      "get": {
+        "operationId": "workspaces_api_v1_invitations_retrieve",
+        "description": "Public invitation preview — what the /invite/{token} page renders.\n\nAllowAny by design (org-program spec §B2): the invitee has no session\nyet; the token in the URL is the bearer secret. The response leaks\nnothing harvestable — the email is masked, and ``status`` /\n``email_registered`` are exactly what the frontend flow machine needs\nto route (login vs claim vs terminal-state screen). Throttled as an\nenumeration backstop. The token is never logged.\n\n**Permissions:** `AllowAny`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreviewResponse"
+                },
+                "examples": {
+                  "InvitationPreviewResponse": {
+                    "value": {
+                      "workspace_name": "Acme Engineering",
+                      "role": "member",
+                      "email_masked": "m***@e***.com",
+                      "status": "pending",
+                      "email_registered": false,
+                      "expires_at": "2026-07-31T10:00:00Z"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.invitation_not_found"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/invitations/{token}/claim": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_claim_create",
+        "description": "Mint a login grant for a not-yet-registered invitee (spec §B2-B3).\n\nAllowAny — the whole point is that no account exists yet. Only valid\nfor ``email_registered == false``: an existing account gets 409 and the\nfrontend switches to login. The grant comes from auth's\n``auth.issue_login_grant`` comm Function (``create_if_missing`` — the\nverified account materializes on exchange); if that Function is not\nwired, the answer is an honest 503 — an invite flow without auth is\nmeaningless, so this seam never degrades to allow. The invitation is\nNOT consumed here: accept stays a separate, deliberate step after\nsetup. Neither the invite token nor the grant token is ever logged.\n\nONE live grant at a time (WORK-03): while the previous grant is inside\nits TTL this answers 429 ``error.429.invitation_grant_pending`` with a\n``Retry-After``, so a leaked invite link cannot be replayed into an\nendless supply of sign-in credentials for the invited mailbox.\n\n**Permissions:** `AllowAny`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationClaimResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invitation_already_used",
+              "error.400.invitation_declined",
+              "error.400.invitation_expired",
+              "error.400.invitation_revoked"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.invitation_not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.email_already_registered"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "x-stapel-errors": [
+              "error.429.invitation_grant_pending"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "x-stapel-errors": [
+              "error.503.auth_unavailable"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/invitations/{token}/decline": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_decline_create",
+        "description": "Decline an invitation — the invitee's terminal \"no\" (spec §B2).\n\nAllowAny, on the token, exactly like preview and claim — and this is a\nCHANGE from the original authenticated-only rule, made because that rule\nmade the common \"no\" impossible to say.\n\nSaying no used to require an account. The invitee who has none is the\nmajority case on this path (that is why ``claim`` exists at all), so\ndeclining meant first creating the very account the person was declining\nto create: the flow asked for the commitment before the decision, and\nthe refusal left a live, empty account behind it. Verified on the stand.\n\nThe token is the proof, and it is the same proof the module already\naccepts elsewhere for strictly more: ``claim`` takes this token from an\nanonymous caller and mints a LOGIN GRANT for the invited mailbox.\nAnything a token holder could do by declining, they could already do —\nand more — by claiming. What the token cannot do is act as somebody\nelse: a request that arrives WITH a session naming an address must still\nbe the invited address, so a signed-in person cannot resolve an\ninvitation belonging to someone else. That check is unchanged.\n\nA session with no address at all (a guest session — this product mints\nthem at meeting doors) is treated as the anonymous case rather than as a\nmismatched account: it names nobody, so it can neither prove nor\ndisprove ownership, and the token stands on its own. Before this it was\nrefused outright by ``ANONYMOUS_DENIED``, which is how a guest who was\nalso an invitee could not decline at all.\n\nDecline ≠ revoke — both states stay distinguishable in the preview\n``status``. Throttled and token-never-logged like its AllowAny siblings.\n\n**Permissions:** `AllowAny`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invitation_already_used",
+              "error.400.invitation_declined",
+              "error.400.invitation_expired",
+              "error.400.invitation_revoked"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.invitation_not_found"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/invitations/accept": {
+      "post": {
+        "operationId": "workspaces_api_v1_invitations_accept_create",
+        "description": "Turns an unaskable plan ceiling into 503 for the whole view.\n\nMixed in rather than written as an ``except`` at each call site because\nthe seam is consulted from views AND from inside ``services`` under the\nworkspace lock, and the set of call sites grows: a view that gains a\nmethod later inherits the mapping instead of re-deriving it. The 402\ndenials stay per-call-site — those carry a limit the screen renders.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Members"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationAcceptRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationAcceptRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationAcceptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                },
+                "examples": {
+                  "MemberResponse": {
+                    "value": {
+                      "id": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                      "email": "alice@example.com",
+                      "role": "admin",
+                      "invited_at": "2026-05-20T10:00:00Z",
+                      "accepted_at": "2026-05-21T09:15:00Z",
+                      "last_accessed_at": "2026-05-22T08:00:00Z",
+                      "provisioned": false,
+                      "suspended_at": null,
+                      "display_name": "Ada Lovelace",
+                      "mfa_compliant": true,
+                      "is_self": false
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.invitation_already_used",
+              "error.400.invitation_declined",
+              "error.400.invitation_expired",
+              "error.400.invitation_revoked"
+            ]
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Payment Required",
+            "x-stapel-errors": [
+              "error.402.member_limit_reached"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.invitation_not_found"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "x-stapel-errors": [
+              "error.503.auth_unavailable"
+            ]
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/me/preferred-workspace": {
+      "put": {
+        "operationId": "workspaces_api_v1_me_preferred_workspace_update",
+        "description": "``PUT/DELETE me/preferred-workspace`` — the person states where home is.\n\n``STAPEL_WORKSPACES[\"DEFAULT_WORKSPACE_ID\"]`` already describes itself as\n\"a DEFAULT, not a cage: a person still switches spaces, and their\nexplicit choice wins over it\"; this endpoint is where that choice is\nwritten down, so a client never has to guess it from a recency-ordered\nlist.\n\nThe choice is stated, never inferred. ``last_accessed_at`` remains what\nit has always been: telemetry written as a side effect of a GET, used to\nsort the list and for nothing else.\n\nDeliberately user-scoped rather than workspace-scoped\n(``.../<workspace_id>/prefer``): there is exactly one answer per person,\nand a route shaped per workspace would invite a second one.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferredWorkspaceRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferredWorkspaceRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferredWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferredWorkspaceResponse"
+                },
+                "examples": {
+                  "PreferredWorkspaceResponse": {
+                    "value": {
+                      "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.workspace_not_found"
+            ]
+          }
+        }
+      },
+      "delete": {
+        "operationId": "workspaces_api_v1_me_preferred_workspace_destroy",
+        "description": "Clear the choice — back to the instance default / the client's chain.\n\nAnswers 200 with an empty id rather than 204: the client's whole job\nhere is to re-resolve, and handing it the new state saves it from\nguessing what \"no content\" left behind. Idempotent.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferredWorkspaceResponse"
+                },
+                "examples": {
+                  "PreferredWorkspaceResponse": {
+                    "value": {
+                      "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/workspaces/api/v1/roles": {
+      "get": {
+        "operationId": "workspaces_api_v1_roles_retrieve",
+        "description": "The effective role registry — metadata for frontends (spec §A2).\n\nLets a RoleSelect stop hardcoding the builtin four: builtin roles plus\nthe deployment's ``STAPEL_WORKSPACES[\"ROLES\"]`` overlay, capability\nstrings verbatim (wildcards included), ordered by descending rank.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleListResponse"
+                },
+                "examples": {
+                  "RoleListResponse": {
+                    "value": {
+                      "capability_levels": {
+                        "members.provision": "high"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuditEventResponse": {
+        "type": "object",
+        "description": "One line of a workspace's membership history.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Audit event UUID",
+            "example": "0192f1a4-af40-7e3d-c5b7-8d9e0f1a2b3c"
+          },
+          "action": {
+            "type": "string",
+            "description": "What happened — a CLOSED vocabulary (models.AuditAction): invitation_created, invitation_accepted, invitation_revoked, invitation_declined, account_created_by_invitation, member_joined, member_provisioned, member_removed, member_role_changed, member_suspended, member_unsuspended",
+            "example": "member_removed"
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Who performed it; null for a transition nobody performed (a policy sweep)",
+            "example": "0192a..."
+          },
+          "actor_display_name": {
+            "type": "string",
+            "description": "Best-effort name of the actor, resolved like every other name in this module (stapel-profiles first); \"\" when unknown",
+            "example": "Ada Lovelace"
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Whom it happened to; null for an invitation to an address with no account yet",
+            "example": "0192b..."
+          },
+          "subject_display_name": {
+            "type": "string",
+            "description": "Best-effort name of the subject; \"\" when unknown",
+            "example": "Alan Turing"
+          },
+          "subject_email": {
+            "type": "string",
+            "description": "The invited address, when the row is about an invitation",
+            "example": "new@acme.test"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role involved, when the action carries one",
+            "example": "member"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Action-specific extras — old_role/new_role for a role change, reason for a suspension",
+            "example": {
+              "old_role": "member",
+              "new_role": "admin"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "description": "ISO 8601 timestamp",
+            "example": "2026-08-13T10:00:00Z"
+          }
+        },
+        "required": [
+          "action",
+          "actor_display_name",
+          "actor_id",
+          "created_at",
+          "id",
+          "metadata",
+          "role",
+          "subject_display_name",
+          "subject_email",
+          "subject_id"
+        ]
+      },
+      "DisplayNameResponse": {
+        "type": "object",
+        "description": "What the name is after the write — the stored value, not the request.",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "The stored name, trimmed and canon-checked. Empty string when the name was cleared",
+            "example": "Ada Lovelace"
+          }
+        },
+        "required": [
+          "display_name"
+        ]
+      },
+      "InstanceShapeResponse": {
+        "type": "object",
+        "description": "How THIS instance is deployed — what the client needs to know before\ndeciding what to show a person with no workspace.\n\nThe ``landing`` axis (``STREET_LANDING_MODE``) has existed since\n2026-08-03 but lived only in backend config, with nothing exposing it —\na client had no way to tell a closed deployment from a public cloud one.\n\nThis matters because the screen shown to someone who is no longer (or\nnever was) a workspace member differs by deployment:\n\n* ``none`` — closed deployment: the person has no workspace and none is\nobtainable. An honest screen says \"you're not a member, ask for an\ninvite\" and offers no path forward;\n* ``personal`` — public cloud: they have their own workspace, and the\nclient can route them there.\n\nOffering \"create a workspace\" to someone the instance will never let\ncreate one is a dead end drawn as a button.",
+        "properties": {
+          "landing": {
+            "type": "string",
+            "description": "What a \"street\" (no-invite) arrival lands on",
+            "example": "personal"
+          },
+          "registration_open": {
+            "type": "boolean",
+            "description": "Whether self-registration is available",
+            "example": true
+          }
+        },
+        "required": [
+          "landing",
+          "registration_open"
+        ]
+      },
+      "InternalPersonalWorkspaceResponse": {
+        "type": "object",
+        "description": "Get-or-create result for a user's personal workspace (service-to-service).",
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Personal workspace UUID."
+          }
+        },
+        "required": [
+          "workspace_id"
+        ]
+      },
+      "InvitationAcceptRequest": {
+        "type": "object",
+        "description": "Accept an invite.",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Invite token from the email link"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "InvitationClaimResponse": {
+        "type": "object",
+        "description": "Login-grant mint for an unregistered invitee (claim step).",
+        "properties": {
+          "grant_token": {
+            "type": "string",
+            "description": "Single-use, short-lived login grant token — exchange it at auth's POST /grant/exchange/ for a session (creates the verified account). A credential: never log it"
+          }
+        },
+        "required": [
+          "grant_token"
+        ]
+      },
+      "InvitationPreviewResponse": {
+        "type": "object",
+        "description": "Public (AllowAny) invitation preview — what the /invite/{token} page renders before any auth decision.",
+        "properties": {
+          "workspace_name": {
+            "type": "string",
+            "description": "Display name of the inviting workspace",
+            "example": "Acme Engineering"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role granted on acceptance",
+            "example": "member"
+          },
+          "email_masked": {
+            "type": "string",
+            "description": "Invited email, masked for the public page",
+            "example": "m***@e***.com"
+          },
+          "status": {
+            "type": "string",
+            "description": "Invitation state. One of pending / expired / revoked / accepted / declined",
+            "example": "pending"
+          },
+          "email_registered": {
+            "type": "boolean",
+            "description": "Whether an account already exists for the invited email — steers the frontend to login vs claim",
+            "example": false
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "ISO 8601 expiry time",
+            "example": "2026-07-31T10:00:00Z"
+          }
+        },
+        "required": [
+          "email_masked",
+          "email_registered",
+          "expires_at",
+          "role",
+          "status",
+          "workspace_name"
+        ]
+      },
+      "InvitationResponse": {
+        "type": "object",
+        "description": "One invitation row — the admin's \"who has not accepted yet\" table (#109).\n\n``status`` is the derived label (``WorkspaceInvitation.status``), not a\nstored column: it is what the table renders and what the frontend\nroutes the revoke/resend affordances on. The raw timestamps travel\nalongside it because \"expires in 2 days\" and \"declined last Tuesday\"\nare different rows on the same screen; the label alone cannot say\nwhen.\n\nThe invite token is deliberately absent — it is a bearer secret that\nonly ever leaves this service inside the invitation email.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Invitation UUID",
+            "example": "0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workspace UUID",
+            "example": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d"
+          },
+          "email": {
+            "type": "string",
+            "description": "Invited email address (normalized lowercase)",
+            "example": "alice@example.com"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role granted on acceptance",
+            "example": "member"
+          },
+          "status": {
+            "type": "string",
+            "description": "Derived state. One of pending / accepted / declined / revoked / expired",
+            "example": "pending"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "ISO 8601 expiry time",
+            "example": "2026-07-31T10:00:00Z"
+          },
+          "accepted_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 acceptance time; null unless accepted"
+          },
+          "declined_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 decline time (the invitee said no); null unless declined"
+          },
+          "revoked_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 revocation time (the workspace withdrew it); null unless revoked"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "ISO 8601 creation time",
+            "example": "2026-07-24T10:00:00Z"
+          },
+          "invited_by_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "UUID of the admin who sent it; null when that account is gone",
+            "example": "0192a..."
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name hint typed for this invitee at invite time, if any; null otherwise",
+            "example": "Ada Lovelace"
+          },
+          "revoked_by_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "UUID of the admin who withdrew it; null unless revoked, or when that account is gone",
+            "example": "0192a..."
+          },
+          "last_sent_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 time the invitation was last emailed; null if no letter was ever sent",
+            "example": "2026-07-24T10:00:00Z"
+          }
+        },
+        "required": [
+          "accepted_at",
+          "created_at",
+          "declined_at",
+          "email",
+          "expires_at",
+          "id",
+          "revoked_at",
+          "role",
+          "status",
+          "workspace_id"
+        ]
+      },
+      "MFAEnforcementStatus": {
+        "type": "object",
+        "description": "How far the workspace's require_mfa policy has actually got.",
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "pending / enforcing / enforced / failed. Only \"enforced\" means every active member's second factor has been confirmed — a settings flag saying require_mfa=true says somebody asked for it, not that it holds",
+            "example": "enforcing"
+          },
+          "attempts": {
+            "type": "integer",
+            "description": "How many sweeps have run since the policy was switched on",
+            "example": 3
+          },
+          "checked_members": {
+            "type": "integer",
+            "description": "Members auth answered about in the last sweep",
+            "example": 12
+          },
+          "noncompliant_members": {
+            "type": "integer",
+            "description": "Of those, members with no strong factor — suspended with reason no_mfa",
+            "example": 2
+          },
+          "unverified_members": {
+            "type": "integer",
+            "description": "Active members whose factor nobody has confirmed yet. They are NOT admitted while the policy is on; this is the number an administrator has to get to zero",
+            "example": 1
+          },
+          "last_attempt_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 time of the last sweep; null before the first",
+            "example": "2026-08-11T10:00:00Z"
+          },
+          "completed_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 time coverage last became complete; null while it is not"
+          },
+          "last_error": {
+            "type": "string",
+            "description": "What auth answered when the last sweep failed, verbatim; empty otherwise. Never credential material",
+            "example": "FunctionCallError: mfa_status timed out"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "MemberInviteRequest": {
+        "type": "object",
+        "description": "Invite payload.",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name hint for the invitee (this invite's \"Name\" field), applied to every email in this request. Optional — an invite without one behaves exactly as before. NOT written into stapel-profiles directly (that store is the invitee's own): held on the invitation, copied onto the member at accept time, and shown only until stapel-profiles has a real name for the person",
+            "example": "Ada Lovelace",
+            "maxLength": 35
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "One or more emails to invite",
+            "example": [
+              "alice@example.com"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "description": "Role to grant on acceptance",
+            "example": "member"
+          }
+        },
+        "required": [
+          "emails"
+        ]
+      },
+      "MemberInviteResponse": {
+        "type": "object",
+        "description": "MemberInviteResponse(invitations: List[ForwardRef('InvitationResponse')] = <factory>)",
+        "properties": {
+          "invitations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvitationResponse"
+            }
+          }
+        }
+      },
+      "MemberPasswordResetRequest": {
+        "type": "object",
+        "description": "Reset a member's password on the organization's order (#110).",
+        "properties": {
+          "password": {
+            "type": "string",
+            "nullable": true,
+            "description": "New password chosen by the admin. Omitted: the server generates a crypto-strong one, returned once as generated_password"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Free-text note recorded on auth's audit row (e.g. the ticket the request came in on)",
+            "example": "SUP-42"
+          }
+        }
+      },
+      "MemberPasswordResetResponse": {
+        "type": "object",
+        "description": "Result of an administrative password reset (#110).",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of the member whose password was reset",
+            "example": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+          },
+          "sessions_revoked": {
+            "type": "integer",
+            "description": "How many live sessions the reset ended. A reset that left them standing would not recover the account",
+            "example": 2
+          },
+          "generated_password": {
+            "type": "string",
+            "nullable": true,
+            "description": "Server-generated password — returned exactly ONCE, only when the request omitted password. Hand it to the member out of band; it cannot be re-fetched. A credential: never log it"
+          },
+          "first_login_policies_applied": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The steps now demanded of the member before their next session",
+            "example": [
+              "password_change"
+            ]
+          },
+          "notified": {
+            "type": "boolean",
+            "description": "Whether the member was told their password was reset. False means the account has no contact channel — the admin is the only one who can tell them",
+            "example": true
+          }
+        },
+        "required": [
+          "user_id"
+        ]
+      },
+      "MemberResponse": {
+        "type": "object",
+        "description": "Workspace member.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Membership UUID",
+            "example": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workspace UUID",
+            "example": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User UUID",
+            "example": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "description": "User email (best-effort, from JWT claim cache)",
+            "example": "alice@example.com"
+          },
+          "role": {
+            "type": "string",
+            "description": "owner / admin / member / viewer",
+            "example": "admin"
+          },
+          "invited_at": {
+            "type": "string",
+            "description": "ISO 8601 invite timestamp",
+            "example": "2026-05-20T10:00:00Z"
+          },
+          "accepted_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 acceptance timestamp; null while pending",
+            "example": "2026-05-21T09:15:00Z"
+          },
+          "last_accessed_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 last access; null if never accessed",
+            "example": "2026-05-22T08:00:00Z"
+          },
+          "provisioned": {
+            "type": "boolean",
+            "description": "Whether this is an org-created (synthetic) member joined via members/provision",
+            "example": false
+          },
+          "suspended_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 suspension timestamp; null while active. Suspension is not removal — the role stays but access is closed"
+          },
+          "suspension_reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Why the membership is suspended (canonical value no_mfa); null while active"
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Best-effort display name — a live lookup in stapel-profiles when it is installed and has one, else the name typed at invite/provision time (never both, never invented when neither exists). Null when nobody has one yet",
+            "example": "Ada Lovelace"
+          },
+          "mfa_compliant": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Whether this member was PROVEN to hold a strong second factor — true, false, or null for \"nobody has asked yet\". Under a require_mfa policy the null is what an administrator acts on: those members are not admitted until the answer arrives",
+            "example": true
+          },
+          "is_self": {
+            "type": "boolean",
+            "description": "Whether this row IS the caller. Server-derived — the client is never asked to compare ids it may not have. Always false on the service-to-service membership read, where the caller is a service and not a member of anything",
+            "example": false
+          }
+        },
+        "required": [
+          "accepted_at",
+          "email",
+          "id",
+          "invited_at",
+          "last_accessed_at",
+          "role",
+          "user_id",
+          "workspace_id"
+        ]
+      },
+      "PaginatedAuditEventResponseList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEventResponse"
+            }
+          },
+          "next_anchor": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "nullable": true,
+            "example": null,
+            "description": "Anchor value for next page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
+          },
+          "prev_anchor": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "nullable": true,
+            "example": null,
+            "description": "Anchor value for previous page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
+          },
+          "has_next": {
+            "type": "boolean",
+            "description": "Whether there are more items after this page",
+            "example": false
+          },
+          "has_prev": {
+            "type": "boolean",
+            "description": "Whether there are items before this page",
+            "example": false
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of items in current page",
+            "example": 1
+          }
+        },
+        "required": [
+          "items",
+          "has_next",
+          "has_prev",
+          "count"
+        ],
+        "x-stapel-pagination": {
+          "style": "anchor",
+          "items": "items"
+        }
+      },
+      "PaginatedInvitationResponseList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvitationResponse"
+            }
+          },
+          "next_anchor": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "nullable": true,
+            "example": null,
+            "description": "Anchor value for next page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
+          },
+          "prev_anchor": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "nullable": true,
+            "example": null,
+            "description": "Anchor value for previous page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
+          },
+          "has_next": {
+            "type": "boolean",
+            "description": "Whether there are more items after this page",
+            "example": false
+          },
+          "has_prev": {
+            "type": "boolean",
+            "description": "Whether there are items before this page",
+            "example": false
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of items in current page",
+            "example": 1
+          }
+        },
+        "required": [
+          "items",
+          "has_next",
+          "has_prev",
+          "count"
+        ],
+        "x-stapel-pagination": {
+          "style": "anchor",
+          "items": "items"
+        }
+      },
+      "PaginatedMemberResponseList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            }
+          },
+          "next_anchor": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "nullable": true,
+            "example": null,
+            "description": "Anchor value for next page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
+          },
+          "prev_anchor": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "nullable": true,
+            "example": null,
+            "description": "Anchor value for previous page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
+          },
+          "has_next": {
+            "type": "boolean",
+            "description": "Whether there are more items after this page",
+            "example": false
+          },
+          "has_prev": {
+            "type": "boolean",
+            "description": "Whether there are items before this page",
+            "example": false
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of items in current page",
+            "example": 1
+          }
+        },
+        "required": [
+          "items",
+          "has_next",
+          "has_prev",
+          "count"
+        ],
+        "x-stapel-pagination": {
+          "style": "anchor",
+          "items": "items"
+        }
+      },
+      "PatchedDisplayNameUpdateRequest": {
+        "type": "object",
+        "description": "Roster-side name correction (one field, both name-edit endpoints).",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "The name to show for this person. Held to stapel-profiles' display-name canon (validate_display_name) — this module never adds a second, differently-strict rule. Blank, whitespace-only, null and a missing key all mean the same thing: clear the name",
+            "example": "Ada Lovelace",
+            "maxLength": 35
+          }
+        }
+      },
+      "PatchedMemberUpdateRequest": {
+        "type": "object",
+        "description": "MemberUpdateRequest(role: str)",
+        "properties": {
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "PatchedWorkspaceUpdateRequest": {
+        "type": "object",
+        "description": "WorkspaceUpdateRequest(name: Optional[str] = None, slug: Optional[str] = None, settings: Optional[dict] = None)",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {},
+            "nullable": true
+          }
+        }
+      },
+      "PreferredWorkspaceRequest": {
+        "type": "object",
+        "description": "Which workspace the person is choosing as home.",
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of a workspace the caller actively belongs to",
+            "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+          }
+        },
+        "required": [
+          "workspace_id"
+        ]
+      },
+      "PreferredWorkspaceResponse": {
+        "type": "object",
+        "description": "The caller's stated home workspace after the write.",
+        "properties": {
+          "preferred_workspace_id": {
+            "type": "string",
+            "description": "The workspace now recorded as the caller's choice, or \"\" after a DELETE cleared it",
+            "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+          }
+        }
+      },
+      "ProvisionMemberRequest": {
+        "type": "object",
+        "description": "Provision an org-created (synthetic) member (org-program spec §C1).",
+        "properties": {
+          "username_local": {
+            "type": "string",
+            "description": "Local part of the login; the full username becomes \"{workspace_slug}/{username_local}\". Stock username alphabet, no slash",
+            "example": "jdoe"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role to grant (effective registry; owner is not provisionable)",
+            "example": "member"
+          },
+          "password": {
+            "type": "string",
+            "nullable": true,
+            "description": "Initial password chosen by the admin. Omitted: the server generates a crypto-strong one, returned once as generated_password"
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display-name hint forwarded to auth/profiles",
+            "example": "Jane Doe"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional email anchor (stored UNVERIFIED by auth). When present, the provisioned-account email with the credentials is sent there. Normally omitted — synthetic accounts have no email"
+          }
+        },
+        "required": [
+          "username_local"
+        ]
+      },
+      "ProvisionMemberResponse": {
+        "type": "object",
+        "description": "Result of provisioning an org member.",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of the created account",
+            "example": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+          },
+          "username": {
+            "type": "string",
+            "description": "Full namespaced login",
+            "example": "acme-eng/jdoe"
+          },
+          "role": {
+            "type": "string",
+            "description": "Granted role",
+            "example": "member"
+          },
+          "generated_password": {
+            "type": "string",
+            "nullable": true,
+            "description": "Server-generated initial password — returned exactly ONCE, only when the request omitted password. Store it or hand it to the user now; it cannot be re-fetched. A credential: never log it"
+          }
+        },
+        "required": [
+          "role",
+          "user_id",
+          "username"
+        ]
+      },
+      "RoleListResponse": {
+        "type": "object",
+        "description": "The effective role registry (builtin four + STAPEL_WORKSPACES overlay).",
+        "properties": {
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleResponse"
+            },
+            "description": "One entry per effective role, descending rank"
+          },
+          "capability_levels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Step-up level per namespaced capability string, builtin ``members.provision`` / ``members.password.reset`` / ``workspace.security.manage`` plus the deployment's ``STAPEL_WORKSPACES[\"CAPABILITY_LEVELS\"]`` overlay. A capability absent from this map is ``\"standard\"`` — the client-side default. Lets a frontend stop hardcoding its own copy of this registry",
+            "example": {
+              "members.provision": "high"
+            }
+          }
+        }
+      },
+      "RoleResponse": {
+        "type": "object",
+        "description": "One role of the effective registry (builtin + STAPEL_WORKSPACES overlay).",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Role key",
+            "example": "admin"
+          },
+          "rank": {
+            "type": "integer",
+            "description": "Ordering weight; higher = more powerful",
+            "example": 300
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Granted capability strings, verbatim (wildcards like * included)",
+            "example": [
+              "workspace.view",
+              "members.invite"
+            ]
+          },
+          "builtin": {
+            "type": "boolean",
+            "description": "Whether the role key is one of the builtin four",
+            "example": true
+          }
+        },
+        "required": [
+          "builtin",
+          "capabilities",
+          "rank",
+          "role"
+        ]
+      },
+      "StapelError": {
+        "type": "object",
+        "description": "Structured error returned by all Stapel API endpoints.",
+        "properties": {
+          "localizable_error": {
+            "type": "string",
+            "description": "Translation key for client-side localization",
+            "example": "error.404.not_found"
+          },
+          "error": {
+            "type": "string",
+            "description": "Human-readable fallback/debug message — not reliably English,"
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Context values for template placeholders",
+            "example": {
+              "retry_after": 30
+            }
+          },
+          "error_language": {
+            "type": "string",
+            "description": "The language `error` is written in (e.g. 'en', 'ru'),"
+          }
+        },
+        "required": [
+          "error",
+          "localizable_error"
+        ]
+      },
+      "WorkspaceCreateRequest": {
+        "type": "object",
+        "description": "Create-workspace payload.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name",
+            "example": "Acme Engineering"
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL-safe identifier (auto-generated when omitted)",
+            "example": "acme-eng"
+          },
+          "type": {
+            "type": "string",
+            "description": "personal or work",
+            "example": "work"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "WorkspaceListResponse": {
+        "type": "object",
+        "description": "The caller's own workspace list.",
+        "properties": {
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceResponse"
+            },
+            "description": "The caller's active memberships (empty for a guest — see is_guest)"
+          },
+          "is_guest": {
+            "type": "boolean",
+            "description": "True when the caller holds NO active mandate anywhere (permissions.is_guest) — the wire form of the guest predicate, so a frontend can render the \"incomplete dashboard\" without re-deriving it from workspaces == []",
+            "example": false
+          },
+          "default_workspace_id": {
+            "type": "string",
+            "description": "Which workspace a client should open when the person has expressed no choice — the instance's STAPEL_WORKSPACES[\"DEFAULT_WORKSPACE_ID\"], echoed back ONLY when the caller actually holds an active membership in it, else \"\". Clients read this instead of guessing: `workspaces[0]` of a list ordered by last access lands a person who belongs to several spaces wherever they happened to be last. A default, not a cage: an explicit choice (preferred_workspace_id) still wins",
+            "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+          },
+          "preferred_workspace_id": {
+            "type": "string",
+            "description": "The person's OWN stated choice of home workspace (PUT me/preferred-workspace), echoed back ONLY while the membership carrying it is active, else \"\". This is the \"explicit choice\" default_workspace_id documents itself as yielding to, so a client resolves preferred first and the instance default only after it. Never inferred from behaviour — where somebody last clicked is last_accessed_at, which is telemetry, not a choice",
+            "example": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3"
+          },
+          "can_create_workspace": {
+            "type": "boolean",
+            "description": "Whether THIS caller may found a new workspace on this instance (WORKSPACE_CREATE_POLICY, evaluated by services.can_create_workspace). The ANSWER, not the policy name: resolving \"instance_owner\" client-side would mean re-implementing the instance-owner lookup in every client, and a client that got it wrong would draw a button that 403s — or hide one that should be there. Rides the list because the workspace switcher is the surface that draws \"+ New space\", and it already fetches this",
+            "example": true
+          }
+        }
+      },
+      "WorkspaceResponse": {
+        "type": "object",
+        "description": "Workspace details.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workspace UUID",
+            "example": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name",
+            "example": "Acme Engineering"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL-safe identifier",
+            "example": "acme-eng"
+          },
+          "type": {
+            "type": "string",
+            "description": "Workspace category",
+            "example": "work"
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Owner user UUID",
+            "example": "0192a..."
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Workspace settings JSON",
+            "example": {}
+          },
+          "storage_used_bytes": {
+            "type": "integer",
+            "description": "Bytes currently stored",
+            "example": 1048576
+          },
+          "storage_limit_bytes": {
+            "type": "integer",
+            "description": "Plan-determined cap",
+            "example": 10737418240
+          },
+          "member_count": {
+            "type": "integer",
+            "description": "Number of members",
+            "example": 3
+          },
+          "my_role": {
+            "type": "string",
+            "nullable": true,
+            "description": "Role of the requesting user",
+            "example": "owner"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "ISO 8601 creation time",
+            "example": "2026-05-20T10:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "ISO 8601 last update time",
+            "example": "2026-05-20T10:00:00Z"
+          },
+          "my_capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Granted capability strings of the requesting user's role, verbatim from the registry (wildcards like * included)",
+            "example": [
+              "workspace.view",
+              "members.view"
+            ]
+          },
+          "owner_display_name": {
+            "type": "string",
+            "description": "The owner's display name, best-effort from stapel-profiles (empty when it has none, is not installed, or is unreachable — never invented). Exists because a workspace NAME stopped identifying one: a person can belong to several spaces all called \"Personal\" — one per company that made them one — and ownership can be handed over, so \"Personal\" answers nothing on its own. Pickers draw it as the second line under the name. Resolved here rather than in each client, which would otherwise each need a profiles batch of its own for a caption",
+            "example": "Victor P."
+          },
+          "mfa_enforcement": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MFAEnforcementStatus"
+              }
+            ],
+            "nullable": true,
+            "description": "State of the security.require_mfa policy — present on the single-workspace responses (GET/PATCH detail) when the policy is on, null otherwise. The settings block says what was asked for; this says what actually holds, so an administrator who switched MFA on is not told \"done\" while half the organization was never checked"
+          },
+          "can_delete": {
+            "type": "boolean",
+            "description": "Whether THIS caller may delete THIS workspace right now. The ANSWER, not the inputs: a client deriving it from my_role alone draws a delete button on the instance's default workspace and on a personal workspace the next sign-in re-mints — both of which the endpoint refuses, which is the \"button that leads to a refusal\" defect. Same shape and same reason as can_create_workspace on the list response",
+            "example": false
+          },
+          "delete_blocked_reason": {
+            "type": "string",
+            "description": "The error code the DELETE would return, or \"\" when can_delete is true. The CODE rather than a sentence, so the client renders the refusal in the caller's own language through the error map it already ships. Server verdict and screen explanation are ONE evaluation (services.deletion_block_reason), so a screen cannot promise what the endpoint denies",
+            "example": "error.409.workspace_is_instance_default"
+          }
+        },
+        "required": [
+          "created_at",
+          "id",
+          "member_count",
+          "my_role",
+          "name",
+          "owner_id",
+          "settings",
+          "slug",
+          "storage_limit_bytes",
+          "storage_used_bytes",
+          "type",
+          "updated_at"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "JWTBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT access token in the `Authorization: Bearer <token>` header — the credential a native client sends. When the JWT cookie is also present, the cookie wins."
+      },
+      "JWTCookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "stapel_jwt",
+        "description": "JWT token stored in cookie. Login via /auth/admin/ to get the cookie."
+      }
+    }
+  }
+}

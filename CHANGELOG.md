@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.38.1] — 2026-11-20
+
+Patch. No migration, no consumer edit. Requires stapel-core 0.99.2.
+
+- **Examples:** 14 of 21 response examples did not validate against their own
+  schema — `WorkspaceResponse`, `MemberResponse`, `InvitationResponse`,
+  `AuditEventResponse`, `ProvisionMemberResponse` and
+  `MemberPasswordResetResponse` without required fields, and
+  `registration_open` documented as the string `"True"`. Completed in the DTO
+  docstrings (placeholder ids became real UUIDs); list examples are documented
+  as their page envelope (stapel-core 0.99.2).
+- **Contract profile 2:** `docs/schema.v2.json` beside the unchanged-profile
+  `docs/schema.json`.
+- `errors.json` and `docs/errors.<lang>.md` regenerated under stapel-core 0.99;
+  the committed-shape test accepts `param_types`.
+- Gates: `tests/test_contract_profile2.py` on stapel-tools 0.84.0's
+  `contract_gates`.
+
 ## [0.38.0] — 2026-11-13
 
 ### Added — `Workspace.storage_used_bytes` has a writer

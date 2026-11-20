@@ -35,16 +35,16 @@ class WorkspaceResponse:
     """Workspace details.
 
     Attributes:
-        id: Workspace UUID. Example: 0192f...
+        id: Workspace UUID. Example: 0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d
         name: Display name. Example: Acme Engineering
         slug: URL-safe identifier. Example: acme-eng
         type: Workspace category. Example: work
         owner_id: Owner user UUID. Example: 0192a...
         owner_display_name: The owner's display name, best-effort from stapel-profiles (empty when it has none, is not installed, or is unreachable — never invented). Exists because a workspace NAME stopped identifying one: a person can belong to several spaces all called "Personal" — one per company that made them one — and ownership can be handed over, so "Personal" answers nothing on its own. Pickers draw it as the second line under the name. Resolved here rather than in each client, which would otherwise each need a profiles batch of its own for a caption. Example: Victor P.
-        settings: Workspace settings JSON.
-        storage_used_bytes: Bytes currently stored.
-        storage_limit_bytes: Plan-determined cap.
-        member_count: Number of members.
+        settings: Workspace settings JSON. Example: {}
+        storage_used_bytes: Bytes currently stored. Example: 1048576
+        storage_limit_bytes: Plan-determined cap. Example: 10737418240
+        member_count: Number of members. Example: 3
         my_role: Role of the requesting user. Example: owner
         created_at: ISO 8601 creation time. Example: 2026-05-20T10:00:00Z
         updated_at: ISO 8601 last update time. Example: 2026-05-20T10:00:00Z
@@ -141,14 +141,14 @@ class MemberResponse:
     """Workspace member.
 
     Attributes:
-        id: Membership UUID. Example: 0192...
-        workspace_id: Workspace UUID.
-        user_id: User UUID.
-        email: User email (best-effort, from JWT claim cache).
+        id: Membership UUID. Example: 0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a
+        workspace_id: Workspace UUID. Example: 0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d
+        user_id: User UUID. Example: 3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+        email: User email (best-effort, from JWT claim cache). Example: alice@example.com
         role: owner / admin / member / viewer. Example: admin
-        invited_at: ISO 8601 invite timestamp.
-        accepted_at: ISO 8601 acceptance timestamp; null while pending.
-        last_accessed_at: ISO 8601 last access; null if never accessed.
+        invited_at: ISO 8601 invite timestamp. Example: 2026-05-20T10:00:00Z
+        accepted_at: ISO 8601 acceptance timestamp; null while pending. Example: 2026-05-21T09:15:00Z
+        last_accessed_at: ISO 8601 last access; null if never accessed. Example: 2026-05-22T08:00:00Z
         provisioned: Whether this is an org-created (synthetic) member joined via members/provision. Example: false
         suspended_at: ISO 8601 suspension timestamp; null while active. Suspension is not removal — the role stays but access is closed. Example: null
         suspension_reason: Why the membership is suspended (canonical value no_mfa); null while active.
@@ -208,16 +208,16 @@ class InvitationResponse:
     only ever leaves this service inside the invitation email.
 
     Attributes:
-        id: Invitation UUID. Example: 0192f...
-        workspace_id: Workspace UUID.
+        id: Invitation UUID. Example: 0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b
+        workspace_id: Workspace UUID. Example: 0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d
         email: Invited email address (normalized lowercase). Example: alice@example.com
         role: Role granted on acceptance. Example: member
         status: Derived state. One of pending / accepted / declined / revoked / expired. Example: pending
         expires_at: ISO 8601 expiry time. Example: 2026-07-31T10:00:00Z
-        accepted_at: ISO 8601 acceptance time; null unless accepted.
-        declined_at: ISO 8601 decline time (the invitee said no); null unless declined.
-        revoked_at: ISO 8601 revocation time (the workspace withdrew it); null unless revoked.
-        created_at: ISO 8601 creation time.
+        accepted_at: ISO 8601 acceptance time; null unless accepted. Example: null
+        declined_at: ISO 8601 decline time (the invitee said no); null unless declined. Example: null
+        revoked_at: ISO 8601 revocation time (the workspace withdrew it); null unless revoked. Example: null
+        created_at: ISO 8601 creation time. Example: 2026-07-24T10:00:00Z
         invited_by_id: UUID of the admin who sent it; null when that account is gone. Example: 0192a...
         display_name: Name hint typed for this invitee at invite time, if any; null otherwise. Example: Ada Lovelace
         revoked_by_id: UUID of the admin who withdrew it; null unless revoked, or when that account is gone. Example: 0192a...
@@ -425,7 +425,7 @@ class ProvisionMemberResponse:
     """Result of provisioning an org member.
 
     Attributes:
-        user_id: UUID of the created account.
+        user_id: UUID of the created account. Example: 3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
         username: Full namespaced login. Example: acme-eng/jdoe
         role: Granted role. Example: member
         generated_password: Server-generated initial password — returned exactly ONCE, only when the request omitted password. Store it or hand it to the user now; it cannot be re-fetched. A credential: never log it.
@@ -455,7 +455,7 @@ class MemberPasswordResetResponse:
     """Result of an administrative password reset (#110).
 
     Attributes:
-        user_id: UUID of the member whose password was reset.
+        user_id: UUID of the member whose password was reset. Example: 3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
         generated_password: Server-generated password — returned exactly ONCE, only when the request omitted password. Hand it to the member out of band; it cannot be re-fetched. A credential: never log it. Example: null
         sessions_revoked: How many live sessions the reset ended. A reset that left them standing would not recover the account. Example: 2
         first_login_policies_applied: The steps now demanded of the member before their next session. Example: ["password_change"]
@@ -522,7 +522,7 @@ class InstanceShapeResponse:
 
     Attributes:
         landing: What a "street" (no-invite) arrival lands on. Example: personal
-        registration_open: Whether self-registration is available. Example: True
+        registration_open: Whether self-registration is available. Example: true
     """
 
     landing: str
@@ -534,15 +534,15 @@ class AuditEventResponse:
     """One line of a workspace's membership history.
 
     Attributes:
-        id: Audit event UUID.
+        id: Audit event UUID. Example: 0192f1a4-af40-7e3d-c5b7-8d9e0f1a2b3c
         action: What happened — a CLOSED vocabulary (models.AuditAction): invitation_created, invitation_accepted, invitation_revoked, invitation_declined, account_created_by_invitation, member_joined, member_provisioned, member_removed, member_role_changed, member_suspended, member_unsuspended. Example: member_removed
         actor_id: Who performed it; null for a transition nobody performed (a policy sweep). Example: 0192a...
-        actor_display_name: Best-effort name of the actor, resolved like every other name in this module (stapel-profiles first); "" when unknown.
+        actor_display_name: Best-effort name of the actor, resolved like every other name in this module (stapel-profiles first); "" when unknown. Example: Ada Lovelace
         subject_id: Whom it happened to; null for an invitation to an address with no account yet. Example: 0192b...
-        subject_display_name: Best-effort name of the subject; "" when unknown.
+        subject_display_name: Best-effort name of the subject; "" when unknown. Example: Alan Turing
         subject_email: The invited address, when the row is about an invitation. Example: new@acme.test
         role: Role involved, when the action carries one. Example: member
-        metadata: Action-specific extras — old_role/new_role for a role change, reason for a suspension.
+        metadata: Action-specific extras — old_role/new_role for a role change, reason for a suspension. Example: {"old_role": "member", "new_role": "admin"}
         created_at: ISO 8601 timestamp. Example: 2026-08-13T10:00:00Z
     """
 

@@ -27,6 +27,7 @@
                 "examples": {
                   "WorkspaceListResponse": {
                     "value": {
+                      "is_guest": false,
                       "default_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3",
                       "preferred_workspace_id": "a8bba7ae-5d2e-43e5-9911-0553e7df50b3",
                       "can_create_workspace": true
@@ -80,11 +81,15 @@
                 "examples": {
                   "WorkspaceResponse": {
                     "value": {
-                      "id": "0192f...",
+                      "id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
                       "name": "Acme Engineering",
                       "slug": "acme-eng",
                       "type": "work",
                       "owner_id": "0192a...",
+                      "settings": {},
+                      "storage_used_bytes": 1048576,
+                      "storage_limit_bytes": 10737418240,
+                      "member_count": 3,
                       "my_role": "owner",
                       "created_at": "2026-05-20T10:00:00Z",
                       "updated_at": "2026-05-20T10:00:00Z",
@@ -93,6 +98,7 @@
                         "members.view"
                       ],
                       "owner_display_name": "Victor P.",
+                      "can_delete": false,
                       "delete_blocked_reason": "error.409.workspace_is_instance_default"
                     }
                   }
@@ -137,11 +143,15 @@
                 "examples": {
                   "WorkspaceResponse": {
                     "value": {
-                      "id": "0192f...",
+                      "id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
                       "name": "Acme Engineering",
                       "slug": "acme-eng",
                       "type": "work",
                       "owner_id": "0192a...",
+                      "settings": {},
+                      "storage_used_bytes": 1048576,
+                      "storage_limit_bytes": 10737418240,
+                      "member_count": 3,
                       "my_role": "owner",
                       "created_at": "2026-05-20T10:00:00Z",
                       "updated_at": "2026-05-20T10:00:00Z",
@@ -150,6 +160,7 @@
                         "members.view"
                       ],
                       "owner_display_name": "Victor P.",
+                      "can_delete": false,
                       "delete_blocked_reason": "error.409.workspace_is_instance_default"
                     }
                   }
@@ -211,11 +222,15 @@
                 "examples": {
                   "WorkspaceResponse": {
                     "value": {
-                      "id": "0192f...",
+                      "id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
                       "name": "Acme Engineering",
                       "slug": "acme-eng",
                       "type": "work",
                       "owner_id": "0192a...",
+                      "settings": {},
+                      "storage_used_bytes": 1048576,
+                      "storage_limit_bytes": 10737418240,
+                      "member_count": 3,
                       "my_role": "owner",
                       "created_at": "2026-05-20T10:00:00Z",
                       "updated_at": "2026-05-20T10:00:00Z",
@@ -224,6 +239,7 @@
                         "members.view"
                       ],
                       "owner_display_name": "Victor P.",
+                      "can_delete": false,
                       "delete_blocked_reason": "error.409.workspace_is_instance_default"
                     }
                   }
@@ -345,12 +361,28 @@
                 "examples": {
                   "AuditEventResponse": {
                     "value": {
-                      "action": "member_removed",
-                      "actor_id": "0192a...",
-                      "subject_id": "0192b...",
-                      "subject_email": "new@acme.test",
-                      "role": "member",
-                      "created_at": "2026-08-13T10:00:00Z"
+                      "items": [
+                        {
+                          "id": "0192f1a4-af40-7e3d-c5b7-8d9e0f1a2b3c",
+                          "action": "member_removed",
+                          "actor_id": "0192a...",
+                          "actor_display_name": "Ada Lovelace",
+                          "subject_id": "0192b...",
+                          "subject_display_name": "Alan Turing",
+                          "subject_email": "new@acme.test",
+                          "role": "member",
+                          "metadata": {
+                            "old_role": "member",
+                            "new_role": "admin"
+                          },
+                          "created_at": "2026-08-13T10:00:00Z"
+                        }
+                      ],
+                      "next_anchor": null,
+                      "prev_anchor": null,
+                      "has_next": false,
+                      "has_prev": false,
+                      "count": 1
                     }
                   }
                 }
@@ -448,15 +480,29 @@
                 "examples": {
                   "InvitationResponse": {
                     "value": {
-                      "id": "0192f...",
-                      "email": "alice@example.com",
-                      "role": "member",
-                      "status": "pending",
-                      "expires_at": "2026-07-31T10:00:00Z",
-                      "invited_by_id": "0192a...",
-                      "display_name": "Ada Lovelace",
-                      "revoked_by_id": "0192a...",
-                      "last_sent_at": "2026-07-24T10:00:00Z"
+                      "items": [
+                        {
+                          "id": "0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b",
+                          "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                          "email": "alice@example.com",
+                          "role": "member",
+                          "status": "pending",
+                          "expires_at": "2026-07-31T10:00:00Z",
+                          "accepted_at": null,
+                          "declined_at": null,
+                          "revoked_at": null,
+                          "created_at": "2026-07-24T10:00:00Z",
+                          "invited_by_id": "0192a...",
+                          "display_name": "Ada Lovelace",
+                          "revoked_by_id": "0192a...",
+                          "last_sent_at": "2026-07-24T10:00:00Z"
+                        }
+                      ],
+                      "next_anchor": null,
+                      "prev_anchor": null,
+                      "has_next": false,
+                      "has_prev": false,
+                      "count": 1
                     }
                   }
                 }
@@ -581,11 +627,16 @@
                 "examples": {
                   "InvitationResponse": {
                     "value": {
-                      "id": "0192f...",
+                      "id": "0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
                       "email": "alice@example.com",
                       "role": "member",
                       "status": "pending",
                       "expires_at": "2026-07-31T10:00:00Z",
+                      "accepted_at": null,
+                      "declined_at": null,
+                      "revoked_at": null,
+                      "created_at": "2026-07-24T10:00:00Z",
                       "invited_by_id": "0192a...",
                       "display_name": "Ada Lovelace",
                       "revoked_by_id": "0192a...",
@@ -642,11 +693,16 @@
                 "examples": {
                   "InvitationResponse": {
                     "value": {
-                      "id": "0192f...",
+                      "id": "0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
                       "email": "alice@example.com",
                       "role": "member",
                       "status": "pending",
                       "expires_at": "2026-07-31T10:00:00Z",
+                      "accepted_at": null,
+                      "declined_at": null,
+                      "revoked_at": null,
+                      "created_at": "2026-07-24T10:00:00Z",
                       "invited_by_id": "0192a...",
                       "display_name": "Ada Lovelace",
                       "revoked_by_id": "0192a...",
@@ -735,10 +791,28 @@
                 "examples": {
                   "MemberResponse": {
                     "value": {
-                      "id": "0192...",
-                      "role": "admin",
-                      "display_name": "Ada Lovelace",
-                      "mfa_compliant": true
+                      "items": [
+                        {
+                          "id": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a",
+                          "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                          "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                          "email": "alice@example.com",
+                          "role": "admin",
+                          "invited_at": "2026-05-20T10:00:00Z",
+                          "accepted_at": "2026-05-21T09:15:00Z",
+                          "last_accessed_at": "2026-05-22T08:00:00Z",
+                          "provisioned": false,
+                          "suspended_at": null,
+                          "display_name": "Ada Lovelace",
+                          "mfa_compliant": true,
+                          "is_self": false
+                        }
+                      ],
+                      "next_anchor": null,
+                      "prev_anchor": null,
+                      "has_next": false,
+                      "has_prev": false,
+                      "count": 1
                     }
                   }
                 }
@@ -810,10 +884,19 @@
                 "examples": {
                   "MemberResponse": {
                     "value": {
-                      "id": "0192...",
+                      "id": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                      "email": "alice@example.com",
                       "role": "admin",
+                      "invited_at": "2026-05-20T10:00:00Z",
+                      "accepted_at": "2026-05-21T09:15:00Z",
+                      "last_accessed_at": "2026-05-22T08:00:00Z",
+                      "provisioned": false,
+                      "suspended_at": null,
                       "display_name": "Ada Lovelace",
-                      "mfa_compliant": true
+                      "mfa_compliant": true,
+                      "is_self": false
                     }
                   }
                 }
@@ -994,7 +1077,9 @@
                 "examples": {
                   "MemberPasswordResetResponse": {
                     "value": {
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
                       "sessions_revoked": 2,
+                      "generated_password": null,
                       "first_login_policies_applied": [
                         "password_change"
                       ],
@@ -1119,6 +1204,7 @@
                 "examples": {
                   "ProvisionMemberResponse": {
                     "value": {
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
                       "username": "acme-eng/jdoe",
                       "role": "member"
                     }
@@ -1152,7 +1238,7 @@
                   "InstanceShapeResponse": {
                     "value": {
                       "landing": "personal",
-                      "registration_open": "True"
+                      "registration_open": true
                     }
                   }
                 }
@@ -1205,10 +1291,19 @@
                 "examples": {
                   "MemberResponse": {
                     "value": {
-                      "id": "0192...",
+                      "id": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                      "email": "alice@example.com",
                       "role": "admin",
+                      "invited_at": "2026-05-20T10:00:00Z",
+                      "accepted_at": "2026-05-21T09:15:00Z",
+                      "last_accessed_at": "2026-05-22T08:00:00Z",
+                      "provisioned": false,
+                      "suspended_at": null,
                       "display_name": "Ada Lovelace",
-                      "mfa_compliant": true
+                      "mfa_compliant": true,
+                      "is_self": false
                     }
                   }
                 }
@@ -1303,6 +1398,7 @@
                       "role": "member",
                       "email_masked": "m***@e***.com",
                       "status": "pending",
+                      "email_registered": false,
                       "expires_at": "2026-07-31T10:00:00Z"
                     }
                   }
@@ -1423,10 +1519,19 @@
                 "examples": {
                   "MemberResponse": {
                     "value": {
-                      "id": "0192...",
+                      "id": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a",
+                      "workspace_id": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d",
+                      "user_id": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                      "email": "alice@example.com",
                       "role": "admin",
+                      "invited_at": "2026-05-20T10:00:00Z",
+                      "accepted_at": "2026-05-21T09:15:00Z",
+                      "last_accessed_at": "2026-05-22T08:00:00Z",
+                      "provisioned": false,
+                      "suspended_at": null,
                       "display_name": "Ada Lovelace",
-                      "mfa_compliant": true
+                      "mfa_compliant": true,
+                      "is_self": false
                     }
                   }
                 }
@@ -1566,7 +1671,8 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Audit event UUID"
+            "description": "Audit event UUID",
+            "example": "0192f1a4-af40-7e3d-c5b7-8d9e0f1a2b3c"
           },
           "action": {
             "type": "string",
@@ -1582,7 +1688,8 @@
           },
           "actor_display_name": {
             "type": "string",
-            "description": "Best-effort name of the actor, resolved like every other name in this module (stapel-profiles first); \"\" when unknown"
+            "description": "Best-effort name of the actor, resolved like every other name in this module (stapel-profiles first); \"\" when unknown",
+            "example": "Ada Lovelace"
           },
           "subject_id": {
             "type": "string",
@@ -1593,7 +1700,8 @@
           },
           "subject_display_name": {
             "type": "string",
-            "description": "Best-effort name of the subject; \"\" when unknown"
+            "description": "Best-effort name of the subject; \"\" when unknown",
+            "example": "Alan Turing"
           },
           "subject_email": {
             "type": "string",
@@ -1608,7 +1716,11 @@
           "metadata": {
             "type": "object",
             "additionalProperties": {},
-            "description": "Action-specific extras — old_role/new_role for a role change, reason for a suspension"
+            "description": "Action-specific extras — old_role/new_role for a role change, reason for a suspension",
+            "example": {
+              "old_role": "member",
+              "new_role": "admin"
+            }
           },
           "created_at": {
             "type": "string",
@@ -1655,7 +1767,7 @@
           "registration_open": {
             "type": "boolean",
             "description": "Whether self-registration is available",
-            "example": "True"
+            "example": true
           }
         },
         "required": [
@@ -1729,7 +1841,8 @@
           },
           "email_registered": {
             "type": "boolean",
-            "description": "Whether an account already exists for the invited email — steers the frontend to login vs claim"
+            "description": "Whether an account already exists for the invited email — steers the frontend to login vs claim",
+            "example": false
           },
           "expires_at": {
             "type": "string",
@@ -1754,12 +1867,13 @@
             "type": "string",
             "format": "uuid",
             "description": "Invitation UUID",
-            "example": "0192f..."
+            "example": "0192f1a4-9e3f-7d2c-b4a6-7c8d9e0f1a2b"
           },
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Workspace UUID"
+            "description": "Workspace UUID",
+            "example": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d"
           },
           "email": {
             "type": "string",
@@ -1798,7 +1912,8 @@
           },
           "created_at": {
             "type": "string",
-            "description": "ISO 8601 creation time"
+            "description": "ISO 8601 creation time",
+            "example": "2026-07-24T10:00:00Z"
           },
           "invited_by_id": {
             "type": "string",
@@ -1957,7 +2072,8 @@
           "user_id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the member whose password was reset"
+            "description": "UUID of the member whose password was reset",
+            "example": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
           },
           "sessions_revoked": {
             "type": "integer",
@@ -1997,22 +2113,25 @@
             "type": "string",
             "format": "uuid",
             "description": "Membership UUID",
-            "example": "0192..."
+            "example": "0192f1a4-8d2e-7c1b-a3f5-6b7c8d9e0f1a"
           },
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Workspace UUID"
+            "description": "Workspace UUID",
+            "example": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d"
           },
           "user_id": {
             "type": "string",
             "format": "uuid",
-            "description": "User UUID"
+            "description": "User UUID",
+            "example": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
           },
           "email": {
             "type": "string",
             "nullable": true,
-            "description": "User email (best-effort, from JWT claim cache)"
+            "description": "User email (best-effort, from JWT claim cache)",
+            "example": "alice@example.com"
           },
           "role": {
             "type": "string",
@@ -2021,21 +2140,25 @@
           },
           "invited_at": {
             "type": "string",
-            "description": "ISO 8601 invite timestamp"
+            "description": "ISO 8601 invite timestamp",
+            "example": "2026-05-20T10:00:00Z"
           },
           "accepted_at": {
             "type": "string",
             "nullable": true,
-            "description": "ISO 8601 acceptance timestamp; null while pending"
+            "description": "ISO 8601 acceptance timestamp; null while pending",
+            "example": "2026-05-21T09:15:00Z"
           },
           "last_accessed_at": {
             "type": "string",
             "nullable": true,
-            "description": "ISO 8601 last access; null if never accessed"
+            "description": "ISO 8601 last access; null if never accessed",
+            "example": "2026-05-22T08:00:00Z"
           },
           "provisioned": {
             "type": "boolean",
-            "description": "Whether this is an org-created (synthetic) member joined via members/provision"
+            "description": "Whether this is an org-created (synthetic) member joined via members/provision",
+            "example": false
           },
           "suspended_at": {
             "type": "string",
@@ -2061,7 +2184,8 @@
           },
           "is_self": {
             "type": "boolean",
-            "description": "Whether this row IS the caller. Server-derived — the client is never asked to compare ids it may not have. Always false on the service-to-service membership read, where the caller is a service and not a member of anything"
+            "description": "Whether this row IS the caller. Server-derived — the client is never asked to compare ids it may not have. Always false on the service-to-service membership read, where the caller is a service and not a member of anything",
+            "example": false
           }
         },
         "required": [
@@ -2094,6 +2218,7 @@
               }
             ],
             "nullable": true,
+            "example": null,
             "description": "Anchor value for next page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
           },
           "prev_anchor": {
@@ -2106,19 +2231,23 @@
               }
             ],
             "nullable": true,
+            "example": null,
             "description": "Anchor value for previous page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
           },
           "has_next": {
             "type": "boolean",
-            "description": "Whether there are more items after this page"
+            "description": "Whether there are more items after this page",
+            "example": false
           },
           "has_prev": {
             "type": "boolean",
-            "description": "Whether there are items before this page"
+            "description": "Whether there are items before this page",
+            "example": false
           },
           "count": {
             "type": "integer",
-            "description": "Number of items in current page"
+            "description": "Number of items in current page",
+            "example": 1
           }
         },
         "required": [
@@ -2147,6 +2276,7 @@
               }
             ],
             "nullable": true,
+            "example": null,
             "description": "Anchor value for next page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
           },
           "prev_anchor": {
@@ -2159,19 +2289,23 @@
               }
             ],
             "nullable": true,
+            "example": null,
             "description": "Anchor value for previous page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
           },
           "has_next": {
             "type": "boolean",
-            "description": "Whether there are more items after this page"
+            "description": "Whether there are more items after this page",
+            "example": false
           },
           "has_prev": {
             "type": "boolean",
-            "description": "Whether there are items before this page"
+            "description": "Whether there are items before this page",
+            "example": false
           },
           "count": {
             "type": "integer",
-            "description": "Number of items in current page"
+            "description": "Number of items in current page",
+            "example": 1
           }
         },
         "required": [
@@ -2200,6 +2334,7 @@
               }
             ],
             "nullable": true,
+            "example": null,
             "description": "Anchor value for next page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
           },
           "prev_anchor": {
@@ -2212,19 +2347,23 @@
               }
             ],
             "nullable": true,
+            "example": null,
             "description": "Anchor value for previous page. The raw value of the ordering field: a string for a datetime anchor, an integer for a sequence one. Set `anchor_type` on the paginator to narrow this."
           },
           "has_next": {
             "type": "boolean",
-            "description": "Whether there are more items after this page"
+            "description": "Whether there are more items after this page",
+            "example": false
           },
           "has_prev": {
             "type": "boolean",
-            "description": "Whether there are items before this page"
+            "description": "Whether there are items before this page",
+            "example": false
           },
           "count": {
             "type": "integer",
-            "description": "Number of items in current page"
+            "description": "Number of items in current page",
+            "example": 1
           }
         },
         "required": [
@@ -2343,7 +2482,8 @@
           "user_id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the created account"
+            "description": "UUID of the created account",
+            "example": "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
           },
           "username": {
             "type": "string",
@@ -2497,7 +2637,8 @@
           },
           "is_guest": {
             "type": "boolean",
-            "description": "True when the caller holds NO active mandate anywhere (permissions.is_guest) — the wire form of the guest predicate, so a frontend can render the \"incomplete dashboard\" without re-deriving it from workspaces == []"
+            "description": "True when the caller holds NO active mandate anywhere (permissions.is_guest) — the wire form of the guest predicate, so a frontend can render the \"incomplete dashboard\" without re-deriving it from workspaces == []",
+            "example": false
           },
           "default_workspace_id": {
             "type": "string",
@@ -2524,7 +2665,7 @@
             "type": "string",
             "format": "uuid",
             "description": "Workspace UUID",
-            "example": "0192f..."
+            "example": "0192f1a4-7c3e-7b2a-9d41-5e6f7a8b9c0d"
           },
           "name": {
             "type": "string",
@@ -2550,19 +2691,23 @@
           "settings": {
             "type": "object",
             "additionalProperties": {},
-            "description": "Workspace settings JSON"
+            "description": "Workspace settings JSON",
+            "example": {}
           },
           "storage_used_bytes": {
             "type": "integer",
-            "description": "Bytes currently stored"
+            "description": "Bytes currently stored",
+            "example": 1048576
           },
           "storage_limit_bytes": {
             "type": "integer",
-            "description": "Plan-determined cap"
+            "description": "Plan-determined cap",
+            "example": 10737418240
           },
           "member_count": {
             "type": "integer",
-            "description": "Number of members"
+            "description": "Number of members",
+            "example": 3
           },
           "my_role": {
             "type": "string",
@@ -2607,7 +2752,8 @@
           },
           "can_delete": {
             "type": "boolean",
-            "description": "Whether THIS caller may delete THIS workspace right now. The ANSWER, not the inputs: a client deriving it from my_role alone draws a delete button on the instance's default workspace and on a personal workspace the next sign-in re-mints — both of which the endpoint refuses, which is the \"button that leads to a refusal\" defect. Same shape and same reason as can_create_workspace on the list response"
+            "description": "Whether THIS caller may delete THIS workspace right now. The ANSWER, not the inputs: a client deriving it from my_role alone draws a delete button on the instance's default workspace and on a personal workspace the next sign-in re-mints — both of which the endpoint refuses, which is the \"button that leads to a refusal\" defect. Same shape and same reason as can_create_workspace on the list response",
+            "example": false
           },
           "delete_blocked_reason": {
             "type": "string",

@@ -1,6 +1,6 @@
 # Errors — Español
 
-`74` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
+`75` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
 
 | Código | Estado | Parámetros | Acción | Texto |
 |---|---|---|---|---|
@@ -31,6 +31,7 @@
 | `error.400.invitation_declined` | 400 | — | `contact_support` | La invitación ha sido rechazada |
 | `error.400.invitation_expired` | 400 | — | `contact_support` | La invitación ha caducado |
 | `error.400.invitation_revoked` | 400 | — | `contact_support` | La invitación ha sido revocada |
+| `error.400.too_many_ids` | 400 | `requested`, `limit` | `fix_input` | Demasiados identificadores: {requested} solicitados, como máximo {limit} por solicitud por lotes |
 | `error.400.validation_error` | 400 | — | `fix_input` | Error de validación |
 | `error.400.verification_failed` | 400 | — | `verify` | La verificación ha fallado |
 | `error.400.verification_invalid_factor` | 400 | — | `verify` | Este factor de verificación no está disponible |
@@ -70,7 +71,7 @@
 | `error.423.verification_locked` | 423 | — | `wait_and_retry` | Demasiados intentos fallidos — verificación bloqueada |
 | `error.429.invitation_grant_pending` | 429 | `retry_after` | `wait_and_retry` | El enlace de acceso de esta invitación sigue siendo válido; puedes solicitar otro en {retry_after} segundos |
 | `error.429.invitation_resend_cooldown` | 429 | `retry_after` | `wait_and_retry` | Esta invitación se envió por correo hace poco; puedes volver a enviarla en {retry_after} segundos |
-| `error.429.rate_limit` | 429 | `retry_after_minutes` | `wait_and_retry` | Demasiados intentos. Inténtalo de nuevo en {retry_after_minutes} minutos. |
+| `error.429.rate_limit` | 429 | `retry_after_display`, `retry_after`, `retry_after_minutes` | `wait_and_retry` | Demasiados intentos. Inténtalo de nuevo en {retry_after_display} ({retry_after} s, unos {retry_after_minutes} min). |
 | `error.429.too_many_requests` | 429 | — | `wait_and_retry` | Demasiadas solicitudes. Inténtalo de nuevo más tarde. |
 | `error.500.internal` | 500 | — | `contact_support` | Algo salió mal |
 | `error.503.auth_unavailable` | 503 | — | `wait_and_retry` | El servicio de autenticación no está disponible; inténtalo de nuevo más tarde |

@@ -77,7 +77,7 @@ TRIAD = ("schema.json", "flows.json", "errors.json")
 # the MFA enforcement record with its verification/retry seams, and the
 # provisioning saga with its reconciliation. The budget stays enforced,
 # just at 7000 — keep it in step with the Makefile.
-ARTIFACTS = TRIAD + ("capabilities.json", "llms.txt")
+ARTIFACTS = TRIAD + ("schema.v2.json", "capabilities.json", "llms.txt")
 LLMS_TXT_BUDGET = "7000"
 
 

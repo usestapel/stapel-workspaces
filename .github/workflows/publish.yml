@@ -116,7 +116,7 @@ jobs:
         run: python -c "import stapel_workspaces; print('import OK')"
 
       - name: Install test dependencies
-        run: pip install pytest pytest-django pytest-cov "stapel-tools>=0.9.1,<1"
+        run: pip install pytest pytest-django pytest-cov "stapel-tools>=0.84.0,<1"
 
       # Test-only sibling, --no-deps so it cannot pull stapel-core from PyPI
       # over the git-main core installed above. NOT a dependency of this
